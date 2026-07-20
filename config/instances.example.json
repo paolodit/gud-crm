@@ -1,0 +1,16 @@
+{
+  "instances": {
+    "product": {
+      "label": "Product sales workspace",
+      "model": "focused",
+      "database": "data/instances/product.db",
+      "port": 3000
+    },
+    "agency": {
+      "label": "Agency sales workspace",
+      "model": "service",
+      "database": "data/instances/agency.db",
+      "port": 3001
+    }
+  }
+}
