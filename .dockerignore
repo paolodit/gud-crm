@@ -1,0 +1,18 @@
+.git
+.next
+.next-e2e
+node_modules
+.env
+.env.*
+!.env.example
+business dev
+data
+.agents
+.codex
+.codex-browser-runtime
+.codex-tmp
+coverage
+uploads/*
+!uploads/.gitkeep
+*.tsbuildinfo
+README.md

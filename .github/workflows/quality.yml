@@ -1,0 +1,58 @@
+name: Quality and auth
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: gud_crm_test
+          POSTGRES_USER: gud
+          POSTGRES_PASSWORD: gud-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gud -d gud_crm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run privacy:audit
+      - run: npm run security:audit
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm run build
+      - name: Exercise real PostgreSQL authentication
+        env:
+          DATA_BACKEND: postgres
+          DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_crm_test
+          BETTER_AUTH_SECRET: ci-only-auth-secret-with-more-than-thirty-two-characters
+          BETTER_AUTH_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+          SEED_ADMIN_EMAIL: auth-smoke@gud.test
+          SEED_ADMIN_PASSWORD: Auth-Smoke-Password-123!
+          AUTH_SMOKE_EMAIL: auth-smoke@gud.test
+          AUTH_SMOKE_PASSWORD: Auth-Smoke-Password-123!
+        run: |
+          npm run db:migrate
+          npm run db:seed
+          npm run start > /tmp/gud-crm.log 2>&1 &
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:3000/api/health && break
+            sleep 1
+          done
+          npm run auth:smoke

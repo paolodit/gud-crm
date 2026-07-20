@@ -1,0 +1,38 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Next.js
+/.next/
+/.next-e2e/
+/out/
+
+# production
+/build
+
+# local data and secrets
+.env
+.env.local
+.env.*.local
+/uploads/*
+!/uploads/.gitkeep
+/business dev/
+/data/
+/config/instances.local.json
+
+# tests and tooling
+/coverage
+/playwright-report/
+/test-results/
+/debug.log
+*.tsbuildinfo
+next-env.d.ts
+/.codex-tmp/
+/.codex/
+/.codex-browser-runtime/
+/.agents/
+
+# operating systems
+.DS_Store
+Thumbs.db
