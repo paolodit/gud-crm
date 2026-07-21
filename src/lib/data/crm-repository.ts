@@ -18,7 +18,7 @@ import {
   users,
 } from "@/db/schema";
 import { aiCoachModeSchema, aiCoachOutputSchema, aiFeedbackRatingSchema } from "@/lib/ai/schema";
-import { demoBoard } from "@/lib/demo-data";
+import { demoBoardForEdition } from "@/lib/demo-data";
 import { getLocalBoardSnapshot } from "@/lib/data/local-store";
 import type {
   ActivitySummary,
@@ -33,7 +33,7 @@ import { getEdition, normaliseEditionKey } from "@/lib/editions";
 const iso = (value: Date | null) => value?.toISOString() ?? null;
 
 export async function getBoardSnapshot(organisationId: string): Promise<BoardSnapshot> {
-  if (env.demoMode) return structuredClone(demoBoard);
+  if (env.demoMode) return demoBoardForEdition(env.defaultEdition);
   if (env.sqliteMode) return getLocalBoardSnapshot();
 
   const [[organisation], [pipeline]] = await Promise.all([db

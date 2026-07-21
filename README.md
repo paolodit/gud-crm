@@ -8,7 +8,7 @@
 
 GUD CRM turns sales research into an operating rhythm: a separate target pool, one visible sales pipeline, clear context about what is being pitched, and one owned next action. It runs locally with persistent SQLite in about two minutes, grows into PostgreSQL on a VPS, and includes an on-demand AI outreach coach that never sends anything for you.
 
-The bundled workspace uses fictional `DEMO ·` records and a single core product. It demonstrates the workflow without publishing any operating company, contact or outreach data.
+The repository ships two fictional, reset-on-refresh demonstrations: one shows a single-product sales motion and the other shows an agency-style pipeline with several services. No operating company, contact or outreach data belongs in the public tree.
 
 GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a single product, SaaS offer or tightly connected product family, and **Service Sales** for agencies and consultancies pitching several kinds of project or retainer. Both share the same secure CRM core. The product ends at a clean client handoff rather than expanding into project delivery, invoicing or support. See [the product charter](docs/product/PRODUCT-CHARTER.md), [sales models](docs/product/EDITIONS.md), [development environments](docs/product/DEVELOPMENT.md) and the [public-release privacy checklist](docs/PUBLIC-RELEASE.md).
 
@@ -78,7 +78,16 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Choose **Open local workspace** and GUD lands on Today.
 
-With no environment file, GUD CRM uses SQLite at `data/gud-crm.db`, creates the schema automatically, and boots a useful starter workspace. Changes survive refreshes and restarts. Local mode deliberately has no login ceremony; it is intended for fast development and single-user evaluation.
+With no environment file, GUD CRM uses SQLite at `data/gud-crm.db`, creates a clean Focused Sales workspace, and keeps changes across refreshes and restarts. Local mode deliberately has no login ceremony; it is intended for trusted development and single-user evaluation.
+
+To explore the public fixtures without creating or changing a database, run either demonstration:
+
+```powershell
+npm run demo:focused   # single product / SaaS-style, http://localhost:3200
+npm run demo:service   # agency / multi-service, http://localhost:3201
+```
+
+Both contain only fictional `DEMO ·` organisations and reset on restart. They can run side by side because each uses a separate development build directory and port.
 
 To run several private instances from this one checkout, copy `config/instances.example.json` to the ignored `config/instances.local.json`, add one entry per workspace, then run `npm run dev:instance -- <name>`. Each entry supplies its own label, sales model, SQLite database and port. The label is shown in the navigation so it is always clear which instance is open.
 
@@ -87,12 +96,12 @@ Useful local data commands:
 ```powershell
 npm run db:local:status                 # counts and database location
 npm run db:local:export                 # export a readable JSON backup
-npm run db:local:reset                  # reset to the starter workspace
+npm run db:local:reset -- --confirm-reset  # safety backup, then reset to a clean workspace
 ```
 
 The `data/` directory is ignored by Git. Do not commit a real CRM database or an export containing personal data.
 
-Settings also has **Download SQLite backup**, which uses SQLite’s online backup API to produce a consistent `.sqlite` copy while the app is running. This is the deliberately light local strategy: download after meaningful work and store it away from the development machine. Once deployed, use encrypted daily PostgreSQL/volume snapshots with retention and restore tests; do not email a database containing contact details.
+Settings also has **Download SQLite backup**, which uses SQLite's online backup API to produce a consistent `.sqlite` copy while the app is running. Store it away from the development machine. The CLI reset refuses to continue without an explicit confirmation flag and creates another consistent backup before changing anything. Do not email a database containing contact details.
 
 ### Choose a runtime explicitly
 
@@ -177,9 +186,11 @@ The action requires a confirmed company website and contact name, refuses do-not
 
 Hunter currently provides 50 free credits each month with API access. Norbert provides the first 50 successful leads free; this is a starter pool, not a monthly refill. Provider terms can change, so the limits are environment-controlled instead of hard-coded into the workflow.
 
-## Move to PostgreSQL on a VPS
+## Choose the VPS database deliberately
 
-SQLite is the right development default here: it is fast, persistent, disposable, and removes infrastructure from the inner loop. PostgreSQL remains the production system of record because it gives the multi-user app stronger concurrent writes, relational reporting, authentication boundaries, migrations, backups, and operational tooling.
+SQLite can comfortably handle the expected data volume on one small VPS. Database size is not the reason PostgreSQL is currently the supported live path. The reason is authentication: GUD's SQLite runtime intentionally acts as one trusted admin session, while PostgreSQL mode activates separate users, passwords, revocable sessions and organisation scoping.
+
+That means **SQLite is suitable now for local/private work, but the current build must not expose SQLite mode directly to the internet**. An internet-facing team deployment should use PostgreSQL until the planned SQLite team-auth mode is implemented and security-tested. See [VPS deployment and database choices](docs/VPS-DEPLOYMENT.md) for the exact boundary and [the CapRover runbook](docs/CAPROVER.md) for deployment.
 
 For the database only:
 
@@ -198,7 +209,7 @@ For the complete application stack:
 docker compose up --build
 ```
 
-Sign in with the seed administrator configured by `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`. The seed now refuses to run without an explicit 12+ character password. Docker Compose also refuses to start without explicit database, auth and public HTTPS settings, so an example secret or the local SQLite default cannot silently become production configuration.
+The production image automatically applies committed migrations before starting Next.js. For the first empty database, set `GUD_BOOTSTRAP=if-empty` and provide the four explicit `SEED_*` values; after the first successful sign-in, turn bootstrap off and remove the temporary password. Docker Compose and the production environment refuse missing database/auth/public URL secrets, so local defaults cannot silently become live configuration.
 
 ### Team access and password recovery
 
@@ -219,8 +230,9 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | --- | --- | --- |
 | `DATA_BACKEND` | inferred | `sqlite`, `demo`, or `postgres`; SQLite is used when no database URL exists. |
 | `SQLITE_PATH` | `data/gud-crm.db` | Local database location. |
-| `GUD_DEFAULT_MODEL` | `focused` | `focused` or `service`; used only when creating a new workspace. Existing workspaces keep their saved model. |
+| `GUD_DEFAULT_MODEL` | `focused` | `focused` or `service`; selects the public fixture in demo mode and seeds the model for a new persistent workspace. Existing workspaces keep their saved model. |
 | `GUD_INSTANCE_NAME` | `Local sales workspace` | Private deployment label shown in the navigation. |
+| `GUD_BOOTSTRAP` | `off` | Production startup bootstrap: `off` or `if-empty`; use only for a new PostgreSQL database. |
 | `LOCAL_TRACKER_PATH` | `data/imports/outreach-tracker.xlsx` | Optional local workbook shown in Settings; keep it outside Git. |
 | `DATABASE_URL` | none | PostgreSQL connection string; required with `DATA_BACKEND=postgres`. |
 | `BETTER_AUTH_SECRET` | none in PostgreSQL | Required random 32+ character secret for persistent multi-user use. |
@@ -319,12 +331,15 @@ business dev/             product plan and non-runtime working material
 
 ```powershell
 npm run dev               # local development server
+npm run demo:focused      # fictional single-product demonstration
+npm run demo:service      # fictional multi-service demonstration
 npm run typecheck         # strict TypeScript check
 npm run lint              # ESLint
 npm test                  # domain, import, and AI contract tests
 npm run security:audit    # advisories plus the documented dev-only exception
 npm run privacy:audit     # tracked data files and non-placeholder identities
 npm run build             # production build
+npm run build:runtime-tools # bundle migration/bootstrap utilities for the standalone image
 npm run start             # serve .next/standalone
 npm run auth:smoke        # real HTTP auth flow against a running PostgreSQL app
 npm run db:generate       # generate a PostgreSQL migration
@@ -340,10 +355,10 @@ SQLite snapshots are versioned and migrated in place. The Offer upgrade is addit
 
 ## Production checklist
 
-1. Select `DATA_BACKEND=postgres`; use a separately backed-up PostgreSQL database.
+1. For the currently supported internet-facing team deployment, select `DATA_BACKEND=postgres`; use a separately backed-up PostgreSQL database.
 2. Store strong auth, database, and provider secrets outside the repository; the app now refuses an insecure PostgreSQL auth configuration.
 3. Terminate TLS at Caddy, nginx, or the platform edge and set the canonical HTTPS auth URL.
-4. Run migrations as an explicit release step before starting the new image.
+4. Confirm the image's startup migration succeeds in staging before deploying the same image to production.
 5. Back up PostgreSQL and the persistent `/app/uploads` volume daily; encrypt backups, retain multiple restore points, and test restores.
 6. Keep trackers, SQLite databases, exports, and uploads outside Git and limited to authorised staff.
 7. Review retention, lawful-basis, suppression, access, and deletion obligations before loading real personal data.
@@ -359,7 +374,7 @@ Attachment schema/storage foundations exist, but authenticated upload/download r
 - Organisation-wide privacy export/delete tooling and fuller suppression audit workflows.
 - Stage conversion and time-in-stage reporting from history.
 - Broader browser regression coverage beyond the committed PostgreSQL authentication smoke test.
-- A reviewed SQLite-to-PostgreSQL promotion/import command before the first VPS cutover.
+- A reviewed SQLite-to-PostgreSQL promotion/import command before moving either existing private workspace to the VPS.
 
 ## Licence
 

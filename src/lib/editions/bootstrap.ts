@@ -11,20 +11,13 @@ export function createInitialSnapshot(editionKey: EditionKey, storageMode: Stora
   snapshot.demoMode = storageMode === "demo";
   snapshot.generatedAt = new Date().toISOString();
 
-  if (definition.key === "service") {
-    snapshot.offers = [structuredClone(definition.defaultOffer)];
-    snapshot.stages = snapshot.stages.map((stage, index) => ({
-      ...stage,
-      name: definition.stageNames[index] ?? stage.name,
-    }));
-    snapshot.opportunities = [];
-    snapshot.users = snapshot.users.slice(0, 1);
-  } else {
-    snapshot.stages = snapshot.stages.map((stage, index) => ({
-      ...stage,
-      name: definition.stageNames[index] ?? stage.name,
-    }));
-  }
+  snapshot.offers = [structuredClone(definition.defaultOffer)];
+  snapshot.stages = snapshot.stages.map((stage, index) => ({
+    ...stage,
+    name: definition.stageNames[index] ?? stage.name,
+  }));
+  snapshot.opportunities = [];
+  snapshot.users = snapshot.users.slice(0, 1);
 
   snapshot.opportunities = snapshot.opportunities.map((item) => ({ ...item, aiSuggestions: [] }));
   return snapshot;
