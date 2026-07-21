@@ -39,6 +39,8 @@ Use **Settings → Download SQLite backup** after meaningful sessions. Store the
 
 Take encrypted daily database or volume snapshots, retain multiple restore points and perform a documented restore test. Back up the uploads volume separately when authenticated attachments are introduced.
 
+On CapRover, platform configuration backups do not contain PostgreSQL volume data. Back up each database separately and follow the launch/restore procedure in `docs/CAPROVER.md`.
+
 ## Imports
 
 Preview first. Resolve every invalid row. Commit only after the counts and stage mapping make sense. Exact workbook imports are checksum-protected, but a changed file is a new import and deserves a fresh review.

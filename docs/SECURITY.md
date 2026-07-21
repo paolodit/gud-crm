@@ -5,9 +5,12 @@ This document records the implemented controls and known limits. It is an engine
 ## Runtime boundary
 
 - SQLite and demo modes intentionally bypass individual login. They are for trusted local development and must not be internet-facing.
+- This is an authentication limitation, not a SQLite capacity limitation. A future SQLite team mode must add persisted users/sessions, production cookie/origin checks, role tests and off-host backup/restore verification before this boundary changes.
 - PostgreSQL mode requires a database URL and a 32+ character auth secret.
 - A production PostgreSQL runtime requires matching canonical application/auth origins and HTTPS, except for explicit localhost smoke testing.
 - Docker Compose refuses missing database, auth and public URL secrets rather than falling back to example credentials.
+- The production container applies committed migrations before accepting traffic. Migration failure stops startup, preventing the application from serving against an incompatible schema.
+- First-run bootstrap is disabled by default. `GUD_BOOTSTRAP=if-empty` requires a non-placeholder administrator email and a 12+ character password, becomes a no-op once the workspace is complete, and should be returned to `off` with the temporary password removed after initial sign-in.
 
 ## Authentication and access
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { demoBoardForEdition } from "@/lib/demo-data";
 import { createInitialSnapshot } from "@/lib/editions/bootstrap";
 import { getEdition, isEditionKey } from "@/lib/editions";
 
@@ -21,13 +22,25 @@ describe("sales editions", () => {
     expect(snapshot.stages.some((stage) => stage.name === "Proposal sent")).toBe(true);
   });
 
-  it("creates a fictional single-product fixture for Focused Sales workspaces", () => {
+  it("creates a clean Focused Sales workspace without mixing in public demo records", () => {
     const snapshot = createInitialSnapshot("focused", "sqlite");
 
     expect(snapshot.edition).toBe("focused");
     expect(snapshot.pipeline.name).toBe("Focused Sales");
-    expect(snapshot.opportunities.length).toBeGreaterThan(0);
+    expect(snapshot.opportunities).toEqual([]);
     expect(snapshot.offers[0]?.name).toBe("Core product");
-    expect(snapshot.opportunities.every((item) => item.company.name.startsWith("DEMO ·"))).toBe(true);
+  });
+
+  it("ships distinct fictional fixtures for both public demo modes", () => {
+    const focused = demoBoardForEdition("focused");
+    const service = demoBoardForEdition("service");
+
+    expect(focused.edition).toBe("focused");
+    expect(focused.offers).toHaveLength(1);
+    expect(service.edition).toBe("service");
+    expect(service.offers.length).toBeGreaterThan(1);
+    expect(service.opportunities.length).toBeGreaterThan(0);
+    expect(service.opportunities.every((item) => item.company.name.startsWith("DEMO ·"))).toBe(true);
+    expect(new Set(service.opportunities.map((item) => item.offer?.id)).size).toBeGreaterThan(1);
   });
 });

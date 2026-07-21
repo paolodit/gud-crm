@@ -25,3 +25,12 @@ Changing the model updates product guidance and terminology. It deliberately doe
 Run every real organisation as a separate instance with its own database, secrets, users, uploads, backups and deployment configuration. A Focused Sales instance may contain any single-product business's private operating data; a Service Sales instance may contain any agency's private data. Neither organisation identity belongs in the generic code or fixtures.
 
 One repository and one application image are enough. Separate codebases would create drift without adding isolation; separate databases and deployments provide the required isolation.
+
+## Public demonstrations
+
+The repository includes two deliberately fictional fixture snapshots:
+
+- `npm run demo:focused` demonstrates a one-product pipeline;
+- `npm run demo:service` demonstrates several kinds of service in one coherent pipeline.
+
+Demo mode does not open or seed a private database. A new persistent SQLite or PostgreSQL workspace starts clean, so sample opportunities cannot be mistaken for operating data.

@@ -36,6 +36,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - run: npm run build
+      - run: npm run build:runtime-tools
       - name: Exercise real PostgreSQL authentication
         env:
           DATA_BACKEND: postgres
@@ -43,16 +44,20 @@ jobs:
           BETTER_AUTH_SECRET: ci-only-auth-secret-with-more-than-thirty-two-characters
           BETTER_AUTH_URL: http://127.0.0.1:3000
           NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+          GUD_BOOTSTRAP: if-empty
+          SEED_ORGANISATION_NAME: Auth smoke workspace
+          SEED_ADMIN_NAME: Auth Smoke Admin
           SEED_ADMIN_EMAIL: auth-smoke@gud.test
           SEED_ADMIN_PASSWORD: Auth-Smoke-Password-123!
           AUTH_SMOKE_EMAIL: auth-smoke@gud.test
           AUTH_SMOKE_PASSWORD: Auth-Smoke-Password-123!
         run: |
-          npm run db:migrate
-          npm run db:seed
-          npm run start > /tmp/gud-crm.log 2>&1 &
+          cd .next/standalone
+          node production-entrypoint.mjs > /tmp/gud-crm.log 2>&1 &
+          cd ../..
           for attempt in {1..30}; do
             curl --fail --silent http://127.0.0.1:3000/api/health && break
             sleep 1
           done
+          node .next/standalone/container-healthcheck.mjs
           npm run auth:smoke
