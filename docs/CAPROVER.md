@@ -92,9 +92,22 @@ A code rollback does not reverse a database migration. Restore into an isolated 
 
 ## 6. Data cutover
 
-The image is ready to create a fresh authenticated workspace, but the current local SQLite-to-PostgreSQL promotion is not yet a one-command operation. Do not manually retype the existing private CRM data and do not copy a SQLite file into PostgreSQL storage.
+Do not manually retype a private CRM or copy a SQLite file into PostgreSQL storage. Generate a guarded, transaction-wrapped promotion script from the local database instead:
 
-Before switching either private workspace to live use, complete and rehearse the dedicated promotion process against a staging database. It must preserve companies, contacts, opportunities, offers, stages, activities, tasks, ownership and relevant workspace settings, then compare source/target counts and sample records. The SQLite source and every intermediate export remain private and must never enter Git, CI artifacts or CapRover build logs.
+```powershell
+npm run db:promote:sql -- `
+  --source data/your-private-instance.db `
+  --output data/promotions/your-instance.sql `
+  --admin-email you@your-company.example `
+  --organisation-name "Your sales workspace" `
+  --confirm-private-export
+```
+
+Both paths must remain under the ignored `data/` directory. The command first makes an online SQLite safety backup, then writes the SQL and a manifest containing its SHA-256 checksum and expected source counts. The export contains private CRM data: never add it to Git, CI artifacts, Docker build contexts or CapRover logs.
+
+Deploy the application once with `GUD_BOOTSTRAP=if-empty` before importing. That creates the PostgreSQL schema, base workspace and administrator. Apply the generated SQL while connected directly to the new instance database with pgAdmin or `psql`. The script refuses to run when the bootstrap workspace is missing or the target already contains opportunities, and the transaction rolls back on any error.
+
+After import, compare the script's final count result with its adjacent `.manifest.json`, inspect several companies, contacts, activities and next actions in the application, and take a PostgreSQL backup. Then set `GUD_BOOTSTRAP=off`, remove `SEED_ADMIN_PASSWORD` and redeploy.
 
 ## 7. Launch checklist
 
