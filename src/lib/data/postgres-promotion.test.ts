@@ -18,6 +18,8 @@ describe("PostgreSQL promotion export", () => {
     expect(result.sql).toContain("Target workspace is not empty");
     expect(result.sql).toContain("O''Brien DEMO pipeline");
     expect(result.sql).toContain("workspace.promoted_from_sqlite");
+    expect(result.sql).toContain('contact_id, "primary", created_at');
+    expect(result.sql).toContain('SET "primary" = EXCLUDED."primary"');
     expect(result.sql).toContain("BEGIN;");
     expect(result.sql).toContain("COMMIT;");
   });

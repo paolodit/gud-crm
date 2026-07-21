@@ -113,7 +113,7 @@ export function buildPostgresPromotionSql(snapshot: BoardSnapshot, input: {
       ON CONFLICT (id) DO UPDATE SET offer_id = EXCLUDED.offer_id, company_id = EXCLUDED.company_id, stage_id = EXCLUDED.stage_id, owner_id = EXCLUDED.owner_id, title = EXCLUDED.title, priority = EXCLUDED.priority, temperature = EXCLUDED.temperature, value = EXCLUDED.value, probability = EXCLUDED.probability, expected_close_date = EXCLUDED.expected_close_date, outreach_angle = EXCLUDED.outreach_angle, last_activity_at = EXCLUDED.last_activity_at, next_action_at = EXCLUDED.next_action_at, no_next_action_reason = EXCLUDED.no_next_action_reason, import_metadata = EXCLUDED.import_metadata, updated_at = now();`);
 
     for (const contact of opportunity.contacts) {
-      sql.push(`INSERT INTO opportunity_contacts (opportunity_id, contact_id, primary, created_at) VALUES (${text(opportunity.id)}::uuid, ${text(contact.id)}::uuid, ${bool(contact.primary)}, now()) ON CONFLICT (opportunity_id, contact_id) DO UPDATE SET primary = EXCLUDED.primary;`);
+      sql.push(`INSERT INTO opportunity_contacts (opportunity_id, contact_id, "primary", created_at) VALUES (${text(opportunity.id)}::uuid, ${text(contact.id)}::uuid, ${bool(contact.primary)}, now()) ON CONFLICT (opportunity_id, contact_id) DO UPDATE SET "primary" = EXCLUDED."primary";`);
     }
     for (const activity of opportunity.activities) {
       sql.push(`INSERT INTO activities (id, organisation_id, opportunity_id, company_id, contact_id, activity_type_id, outcome, notes, metadata, occurred_at, created_at, created_by_id, updated_at)
