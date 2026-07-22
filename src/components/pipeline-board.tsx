@@ -68,7 +68,7 @@ import {
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
-import { activeOffers, contextualOffers, defaultOffer } from "@/lib/domain/offers";
+import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type {
   ActivitySummary,
@@ -95,7 +95,7 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
   const [offerFilter, setOfferFilter] = useState<string>(availableOffers.length > 1
     ? requestedOffer === "all" || availableOffers.some((offer) => offer.id === requestedOffer)
       ? requestedOffer ?? "all"
-      : defaultOffer(initialSnapshot.offers)?.id ?? "all"
+      : "all"
     : "all");
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [compact, setCompact] = useState(false);

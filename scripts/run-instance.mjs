@@ -51,6 +51,8 @@ const child = spawn(process.execPath, [nextBin, "dev", "--hostname", "127.0.0.1"
     GUD_DEFAULT_MODEL: instance.model,
     GUD_INSTANCE_NAME: instance.label,
     NEXT_PUBLIC_APP_URL: `http://127.0.0.1:${instance.port}`,
+    BETTER_AUTH_URL: `http://127.0.0.1:${instance.port}`,
+    NEXT_DIST_DIR: ".next-instance",
   },
 });
 
