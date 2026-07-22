@@ -5,11 +5,17 @@ import {
   DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
@@ -50,7 +56,7 @@ import { FormEvent, startTransition, useMemo, useState } from "react";
 import {
   completeTaskAction,
   logActivityAction,
-  moveOpportunityAction,
+  reorderOpportunityAction,
   saveContactAction,
   saveOpportunityDetailsAction,
 } from "@/app/actions/crm";
@@ -97,7 +103,7 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
   const [creating, setCreating] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const selectedId = searchParams.get("opportunity");
@@ -140,16 +146,15 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
   function moveOpportunity(opportunityId: string, stageId: string) {
     const previous = opportunities.find((item) => item.id === opportunityId);
     if (!previous || previous.stageId === stageId) return;
-
-    setOpportunities((items) =>
-      items.map((item) => (item.id === opportunityId ? { ...item, stageId } : item)),
-    );
+    const previousItems = opportunities;
+    const target = opportunities.filter((item) => item.stageId === stageId && item.id !== opportunityId).sort((a, b) => a.position - b.position);
+    target.push({ ...previous, stageId, position: (target.length + 1) * 1000 });
+    const positions = new Map(target.map((item, index) => [item.id, (index + 1) * 1000]));
+    setOpportunities((items) => items.map((item) => positions.has(item.id) ? { ...item, stageId, position: positions.get(item.id) ?? item.position } : item));
     startTransition(async () => {
-      const result = await moveOpportunityAction({ opportunityId, toStageId: stageId });
+      const result = await reorderOpportunityAction({ opportunityId, toStageId: stageId, orderedOpportunityIds: target.map((item) => item.id) });
       if (!result.ok) {
-        setOpportunities((items) =>
-          items.map((item) => (item.id === opportunityId ? previous : item)),
-        );
+        setOpportunities(previousItems);
         showToast(result.error);
       } else {
         const stage = initialSnapshot.stages.find((item) => item.id === stageId);
@@ -160,7 +165,47 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
 
   function onDragEnd(event: DragEndEvent) {
     if (!event.over) return;
-    moveOpportunity(String(event.active.id), String(event.over.id));
+    const opportunityId = String(event.active.id);
+    const overId = String(event.over.id);
+    const moving = opportunities.find((item) => item.id === opportunityId);
+    if (!moving) return;
+    const overOpportunity = opportunities.find((item) => item.id === overId);
+    const targetStageId = overOpportunity?.stageId ?? initialSnapshot.stages.find((stage) => stage.id === overId)?.id;
+    if (!targetStageId) return;
+
+    const previous = opportunities;
+    const currentStageItems = opportunities.filter((item) => item.stageId === moving.stageId).sort((a, b) => a.position - b.position);
+    let target: OpportunitySummary[];
+    if (moving.stageId === targetStageId && overOpportunity) {
+      const fromIndex = currentStageItems.findIndex((item) => item.id === opportunityId);
+      const toIndex = currentStageItems.findIndex((item) => item.id === overOpportunity.id);
+      if (fromIndex === toIndex) return;
+      target = arrayMove(currentStageItems, fromIndex, toIndex);
+    } else {
+      target = opportunities.filter((item) => item.stageId === targetStageId && item.id !== opportunityId).sort((a, b) => a.position - b.position);
+      const insertAt = overOpportunity ? Math.max(0, target.findIndex((item) => item.id === overOpportunity.id)) : target.length;
+      target.splice(insertAt < 0 ? target.length : insertAt, 0, { ...moving, stageId: targetStageId });
+    }
+    const positions = new Map(target.map((item, index) => [item.id, (index + 1) * 1000]));
+    setOpportunities((items) => items.map((item) => positions.has(item.id)
+      ? { ...item, stageId: targetStageId, position: positions.get(item.id) ?? item.position }
+      : item));
+    startTransition(async () => {
+      const result = await reorderOpportunityAction({
+        opportunityId,
+        toStageId: targetStageId,
+        orderedOpportunityIds: target.map((item) => item.id),
+      });
+      if (!result.ok) {
+        setOpportunities(previous);
+        showToast(result.error);
+      } else if (moving.stageId === targetStageId) {
+        showToast("Card order saved");
+      } else {
+        const stage = initialSnapshot.stages.find((item) => item.id === targetStageId);
+        showToast(`Moved to ${stage?.name ?? "new stage"}`);
+      }
+    });
   }
 
   function showToast(message: string) {
@@ -248,7 +293,7 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
                   key={stage.id}
                   stage={stage}
                   stages={initialSnapshot.stages}
-                  opportunities={filtered.filter((item) => item.stageId === stage.id)}
+                  opportunities={filtered.filter((item) => item.stageId === stage.id).sort((a, b) => a.position - b.position)}
                   now={now}
                   onOpen={openOpportunity}
                   onMove={moveOpportunity}
@@ -312,6 +357,7 @@ function BoardColumn({
         <span className="column-count">{opportunities.length}</span>
       </header>
       <div className="column-cards">
+        <SortableContext items={opportunities.map((opportunity) => opportunity.id)} strategy={verticalListSortingStrategy}>
         {opportunities.map((opportunity) => (
           <OpportunityCard
             key={opportunity.id}
@@ -325,6 +371,7 @@ function BoardColumn({
             showOffer={showOffer}
           />
         ))}
+        </SortableContext>
         {opportunities.length === 0 ? <div className="empty-column">Drop an opportunity here</div> : null}
       </div>
     </section>
@@ -350,8 +397,9 @@ function OpportunityCard({
   compact: boolean;
   showOffer: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: opportunity.id,
+    data: { stageId: opportunity.stageId },
   });
   const primaryContact = opportunity.contacts.find((item) => item.primary) ?? opportunity.contacts[0];
   const nextTask = opportunity.tasks.find((item) => item.status === "open");
@@ -363,7 +411,7 @@ function OpportunityCard({
       className="opportunity-card"
       data-dragging={isDragging}
       data-compact={compact}
-      style={{ borderLeftColor: stageColour, transform: CSS.Translate.toString(transform) }}
+      style={{ borderLeftColor: stageColour, transform: CSS.Transform.toString(transform), transition }}
       {...listeners}
       {...attributes}
     >
@@ -371,7 +419,7 @@ function OpportunityCard({
         <div className="card-topline">
           <span className="company-name">{opportunity.company.name}</span>
           {opportunity.isExample ? <span className="demo-label">Demo</span> : null}
-          <GripVertical size={14} color="#98A2B3" aria-hidden="true" />
+          <span className="card-drag-handle"><GripVertical size={14} color="#98A2B3" aria-hidden="true" /></span>
         </div>
         <p className="opportunity-title">{opportunity.title}</p>
         {showOffer && opportunity.offer ? <span className="offer-chip card-offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}

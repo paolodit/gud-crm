@@ -90,6 +90,33 @@ Database migrations must remain backward-compatible with the previous applicatio
 
 A code rollback does not reverse a database migration. Restore into an isolated database first; never overwrite the only live copy under pressure.
 
+### Guarded in-app update control
+
+Settings can expose **Back up & update** without giving the browser a CapRover password. Configure two private, server-side webhook URLs:
+
+```text
+GUD_VERSION=release-or-commit-label
+GUD_BACKUP_WEBHOOK_URL=https://private-automation.example/backup/gud-instance
+GUD_DEPLOY_WEBHOOK_URL=https://private-automation.example/deploy/gud-instance
+```
+
+The backup hook receives a POST request and must return a successful HTTP status only after a fresh database dump is complete and copied to the intended backup destination. GUD then calls the deployment hook. Keep both webhook tokens out of Git and out of `NEXT_PUBLIC_*` variables. Use an app-specific CapRover deployment webhook or a narrowly scoped release service, never the CapRover root password.
+
+Until both hooks exist, the update button remains disabled. This is intentional: a one-click deployment without a verified backup is not a safe upgrade.
+
+### PostgreSQL backup helper
+
+The repository includes `npm run db:postgres:backup`. Run it from a trusted VPS backup job or utility container that has a compatible `pg_dump` binary:
+
+```text
+DATABASE_URL=postgresql://.../gud_instance
+GUD_BACKUP_DIR=/encrypted/offsite-mounted/gud-instance
+GUD_BACKUP_RETENTION=21
+npm run db:postgres:backup
+```
+
+It writes a custom-format dump atomically, adds a SHA-256 sidecar and prunes only older dumps for the same database. Replicate that destination off the VPS. Schedule and test every private instance separately; never reuse one database URL for both jobs.
+
 ## 6. Data cutover
 
 Do not manually retype a private CRM or copy a SQLite file into PostgreSQL storage. Generate a guarded, transaction-wrapped promotion script from the local database instead:

@@ -134,6 +134,7 @@ export type OpportunitySummary = {
   id: string;
   isExample?: boolean;
   stageId: string;
+  position: number;
   offer: OfferSummary | null;
   company: CompanySummary;
   title: string;
@@ -154,6 +155,19 @@ export type OpportunitySummary = {
   aiSuggestions?: AISuggestionSummary[];
 };
 
+export type ResearchThemeSummary = {
+  id: string;
+  title: string;
+  audience: string | null;
+  problem: string | null;
+  signal: string | null;
+  angle: string | null;
+  status: "idea" | "evidence" | "ready";
+  offerId: string | null;
+  sourceUrls: string[];
+  updatedAt: string;
+};
+
 export type StageSummary = {
   id: string;
   name: string;
@@ -168,6 +182,7 @@ export type BoardSnapshot = {
   offers: OfferSummary[];
   stages: StageSummary[];
   opportunities: OpportunitySummary[];
+  researchThemes: ResearchThemeSummary[];
   activityTypes: ActivityTypeSummary[];
   users: PersonSummary[];
   generatedAt: string;

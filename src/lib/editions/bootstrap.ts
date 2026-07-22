@@ -17,6 +17,7 @@ export function createInitialSnapshot(editionKey: EditionKey, storageMode: Stora
     name: definition.stageNames[index] ?? stage.name,
   }));
   snapshot.opportunities = [];
+  snapshot.researchThemes = [];
   snapshot.users = snapshot.users.slice(0, 1);
 
   snapshot.opportunities = snapshot.opportunities.map((item) => ({ ...item, aiSuggestions: [] }));

@@ -27,6 +27,9 @@ const environmentSchema = z.object({
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   AUTH_FROM_EMAIL: z.string().min(3).optional(),
+  GUD_VERSION: z.string().trim().min(1).max(80).default("0.1.0"),
+  GUD_BACKUP_WEBHOOK_URL: z.string().url().optional(),
+  GUD_DEPLOY_WEBHOOK_URL: z.string().url().optional(),
 });
 
 const parsed = environmentSchema.safeParse(process.env);

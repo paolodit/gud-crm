@@ -90,7 +90,7 @@ const contacts = {
   morgan: contact("41000000-0000-4000-8000-000000000006", "Morgan Reed", "Managing Director"),
 };
 
-const opportunityRecords: Array<Omit<OpportunitySummary, "offer">> = [
+const opportunityRecords: Array<Omit<OpportunitySummary, "offer" | "position">> = [
   {
     id: "51000000-0000-4000-8000-000000000001", isExample: true, stageId: stages[4].id, company: companies.northstar,
     title: "Operations platform rollout", priority: "high", temperature: "warm", expectedValue: 24000, probability: 60, expectedCloseDate: "2026-09-30T00:00:00.000Z", owner: users[0],
@@ -131,7 +131,7 @@ const opportunityRecords: Array<Omit<OpportunitySummary, "offer">> = [
   },
 ];
 
-const opportunities: OpportunitySummary[] = opportunityRecords.map((opportunity) => ({ ...opportunity, offer: coreOffer }));
+const opportunities: OpportunitySummary[] = opportunityRecords.map((opportunity, index) => ({ ...opportunity, position: (index + 1) * 1000, offer: coreOffer }));
 
 export const demoBoard: BoardSnapshot = {
   edition: "focused",
@@ -139,6 +139,7 @@ export const demoBoard: BoardSnapshot = {
   offers: [coreOffer],
   stages,
   opportunities,
+  researchThemes: [],
   activityTypes,
   users,
   generatedAt: "2026-07-17T09:00:00.000Z",
@@ -238,6 +239,9 @@ export const serviceDemoBoard: BoardSnapshot = (() => {
   snapshot.edition = "service";
   snapshot.pipeline.name = serviceEdition.pipelineName;
   snapshot.offers = structuredClone(serviceOffers);
+  snapshot.researchThemes = [
+    { id: "81000000-0000-4000-8000-000000000001", title: "DEMO · Better follow-up for specialist firms", audience: "Small professional-service teams", problem: "Good conversations are being lost between inboxes and informal notes.", signal: "Teams are adopting narrower workflow tools instead of heavyweight CRMs.", angle: "Offer a short sales-workflow review tied to one measurable handoff problem.", status: "evidence", offerId: serviceOffers[2]?.id ?? null, sourceUrls: ["https://example.com/fictional-research"], updatedAt: "2026-07-17T09:00:00.000Z" },
+  ];
   snapshot.stages = snapshot.stages.map((stage, index) => ({
     ...stage,
     name: serviceEdition.stageNames[index] ?? stage.name,

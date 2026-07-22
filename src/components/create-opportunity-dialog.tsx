@@ -1,9 +1,10 @@
 "use client";
 
 import { LoaderCircle, Plus, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 import { createOpportunityAction } from "@/app/actions/crm";
+import { applySpokenDraft, VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, defaultOffer } from "@/lib/domain/offers";
 import type { BoardSnapshot, OpportunitySummary, Priority, Temperature } from "@/lib/domain/types";
 import { getEdition } from "@/lib/editions";
@@ -23,6 +24,7 @@ export function CreateOpportunityDialog({
   const edition = getEdition(snapshot.edition);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,6 +77,7 @@ export function CreateOpportunityDialog({
     const created: OpportunitySummary = {
       id: result.opportunityId,
       stageId: input.stageId,
+      position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === input.stageId).map((item) => item.position)) + 1000,
       offer,
       company: {
         id: result.companyId,
@@ -137,10 +140,10 @@ export function CreateOpportunityDialog({
             <h2 id="create-title">Start with enough context to act</h2>
             <p>Company and opportunity are required. Everything else can grow with the relationship.</p>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close new opportunity form"><X size={18} /></button>
+          <div className="dialog-header-actions"><VoiceFillButton kind="opportunity" onDraft={(draft) => applySpokenDraft(formRef.current, { ...draft, offerId: draft.offerName, ownerId: draft.ownerName })} /><button className="icon-button" type="button" onClick={onClose} aria-label="Close new opportunity form"><X size={18} /></button></div>
         </header>
 
-        <form className="dialog-form" onSubmit={submit}>
+        <form ref={formRef} className="dialog-form" onSubmit={submit}>
           <fieldset>
             <legend>{sentenceCase(edition.language.company)}</legend>
             <div className="form-grid">

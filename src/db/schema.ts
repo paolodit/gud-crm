@@ -261,6 +261,7 @@ export const opportunities = pgTable(
     stageId: uuid("stage_id")
       .notNull()
       .references(() => stages.id, { onDelete: "restrict" }),
+    position: integer("position").default(0).notNull(),
     ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
     title: varchar("title", { length: 220 }).notNull(),
     priority: priority("priority").default("medium").notNull(),
@@ -278,10 +279,29 @@ export const opportunities = pgTable(
     ...timestamps,
   },
   (table) => [
-    index("opportunities_board_idx").on(table.organisationId, table.pipelineId, table.stageId),
+    index("opportunities_board_idx").on(table.organisationId, table.pipelineId, table.stageId, table.position),
     index("opportunities_offer_stage_idx").on(table.organisationId, table.offerId, table.stageId),
     index("opportunities_owner_due_idx").on(table.ownerId, table.nextActionAt),
   ],
+);
+
+export const researchThemes = pgTable(
+  "research_themes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+    offerId: uuid("offer_id").references(() => offers.id, { onDelete: "set null" }),
+    ownerId: text("owner_id").references(() => users.id, { onDelete: "set null" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    audience: text("audience"),
+    problem: text("problem"),
+    signal: text("signal"),
+    angle: text("angle"),
+    status: varchar("status", { length: 24 }).default("idea").notNull(),
+    sourceUrls: jsonb("source_urls").$type<string[]>().default([]).notNull(),
+    ...timestamps,
+  },
+  (table) => [index("research_themes_org_status_idx").on(table.organisationId, table.status, table.updatedAt)],
 );
 
 export const opportunityContacts = pgTable(

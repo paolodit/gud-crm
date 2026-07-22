@@ -46,6 +46,14 @@ const moveOpportunitySchema = z.object({
   toStageId: z.uuid(),
 });
 
+const reorderOpportunitySchema = z.object({
+  opportunityId: z.uuid(),
+  toStageId: z.uuid(),
+  orderedOpportunityIds: z.array(z.uuid()).min(1).max(10_000),
+}).refine((value) => new Set(value.orderedOpportunityIds).size === value.orderedOpportunityIds.length, {
+  message: "The requested card order contains duplicates.",
+});
+
 const logActivitySchema = z.object({
   opportunityId: z.uuid(),
   activityTypeId: z.uuid(),
@@ -224,6 +232,7 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
           snapshot.opportunities.unshift({
             id: opportunityId,
             stageId: researchStage.id,
+            position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === researchStage.id).map((item) => item.position)) + 1000,
             offer: chooseLocalOffer(snapshot, data.offerId, true),
             company,
             title: `${company.name} research`,
@@ -452,6 +461,7 @@ export async function createOpportunityAction(input: unknown): Promise<CreateAct
       snapshot.opportunities.unshift({
         id: opportunityId,
         stageId: input.stageId,
+        position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === input.stageId).map((item) => item.position)) + 1000,
         offer,
         company,
         title: input.title,
@@ -953,6 +963,97 @@ export async function moveOpportunityAction(input: unknown): Promise<ActionResul
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Stage change failed.") };
+  }
+}
+
+export async function reorderOpportunityAction(input: unknown): Promise<ActionResult> {
+  const parsed = reorderOpportunitySchema.safeParse(input);
+  if (!parsed.success || !parsed.data.orderedOpportunityIds.includes(parsed.data.opportunityId)) {
+    return { ok: false, error: "That card order is invalid." };
+  }
+
+  const member = await requireMember();
+  const { opportunityId, toStageId, orderedOpportunityIds } = parsed.data;
+  if (member.storageMode === "sqlite") {
+    let fromStageId = "";
+    updateLocalBoardSnapshot((snapshot) => {
+      const opportunity = snapshot.opportunities.find((item) => item.id === opportunityId);
+      const targetStage = snapshot.stages.find((item) => item.id === toStageId);
+      if (!opportunity || !targetStage) throw new Error("Opportunity or target stage not found.");
+      if (!["Researching", "Research holding"].includes(targetStage.name) && !opportunity.offer) {
+        throw new Error("Choose what you are pitching before moving this target onto the sales board.");
+      }
+      fromStageId = opportunity.stageId;
+      const expected = snapshot.opportunities
+        .filter((item) => item.stageId === toStageId && item.id !== opportunityId)
+        .map((item) => item.id);
+      const supplied = orderedOpportunityIds.filter((id) => id !== opportunityId);
+      if (expected.length !== supplied.length || expected.some((id) => !supplied.includes(id))) {
+        throw new Error("The board changed while you were dragging. Refresh and try again.");
+      }
+      opportunity.stageId = toStageId;
+      orderedOpportunityIds.forEach((id, index) => {
+        const item = snapshot.opportunities.find((candidate) => candidate.id === id);
+        if (item) item.position = (index + 1) * 1000;
+      });
+    });
+    recordLocalAuditEvent({ actorId: member.id, action: "opportunity.reordered", entityType: "opportunity", entityId: opportunityId, detail: { fromStageId, toStageId, position: orderedOpportunityIds.indexOf(opportunityId) } });
+    revalidatePath("/pipeline");
+    return { ok: true };
+  }
+  if (member.demoMode) return { ok: true };
+
+  try {
+    await db.transaction(async (tx) => {
+      const [opportunity] = await tx.select().from(opportunities).where(and(
+        eq(opportunities.id, opportunityId),
+        eq(opportunities.organisationId, member.organisationId),
+      )).limit(1);
+      if (!opportunity) throw new Error("Opportunity not found.");
+      const [targetStage] = await tx.select().from(stages).where(and(
+        eq(stages.id, toStageId),
+        eq(stages.pipelineId, opportunity.pipelineId),
+        eq(stages.active, true),
+      )).limit(1);
+      if (!targetStage) throw new Error("Target stage is not available.");
+      if (!["Researching", "Research holding"].includes(targetStage.name) && !opportunity.offerId) {
+        throw new Error("Choose what you are pitching before moving this target onto the sales board.");
+      }
+      const currentTarget = await tx.select({ id: opportunities.id }).from(opportunities).where(and(
+        eq(opportunities.organisationId, member.organisationId),
+        eq(opportunities.pipelineId, opportunity.pipelineId),
+        eq(opportunities.stageId, toStageId),
+      ));
+      const expected = currentTarget.map((item) => item.id).filter((id) => id !== opportunityId);
+      const supplied = orderedOpportunityIds.filter((id) => id !== opportunityId);
+      if (expected.length !== supplied.length || expected.some((id) => !supplied.includes(id))) {
+        throw new Error("The board changed while you were dragging. Refresh and try again.");
+      }
+      for (const [index, id] of orderedOpportunityIds.entries()) {
+        await tx.update(opportunities).set({
+          stageId: toStageId,
+          position: (index + 1) * 1000,
+          updatedAt: new Date(),
+        }).where(and(eq(opportunities.id, id), eq(opportunities.organisationId, member.organisationId)));
+      }
+      if (opportunity.stageId !== toStageId) {
+        await tx.insert(stageHistory).values({ opportunityId, fromStageId: opportunity.stageId, toStageId, movedById: member.id });
+      }
+      await tx.insert(auditEvents).values({
+        organisationId: member.organisationId,
+        actorId: member.id,
+        action: "opportunity.reordered",
+        entityType: "opportunity",
+        entityId: opportunityId,
+        before: { stageId: opportunity.stageId, position: opportunity.position },
+        after: { stageId: toStageId, position: orderedOpportunityIds.indexOf(opportunityId) },
+      });
+    });
+    revalidatePath("/pipeline");
+    revalidatePath("/my-work");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Opportunity order could not be saved.") };
   }
 }
 

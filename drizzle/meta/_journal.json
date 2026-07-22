@@ -29,6 +29,20 @@
       "when": 1784537277454,
       "tag": "0003_black_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784721600000,
+      "tag": "0004_ordered_opportunities",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784725200000,
+      "tag": "0005_research_themes",
+      "breakpoints": true
     }
   ]
 }

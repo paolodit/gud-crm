@@ -1,9 +1,10 @@
 "use client";
 
 import { Building2, Check, LoaderCircle, X } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 import { saveCompanyAction } from "@/app/actions/crm";
+import { applySpokenDraft, VoiceFillButton } from "@/components/voice-fill";
 import type { CompanySummary, OfferSummary } from "@/lib/domain/types";
 
 export function CompanyEditorDialog({
@@ -19,6 +20,7 @@ export function CompanyEditorDialog({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,9 +52,9 @@ export function CompanyEditorDialog({
       <section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="company-dialog-title">
         <header className="dialog-header">
           <div><span className="eyebrow">Company record</span><h2 id="company-dialog-title">{company ? `Edit ${company.name}` : "Add a company"}</h2><p>{company ? "Keep the fit and research context useful for the next person." : "Creates the company and a research card so it cannot disappear between lists."}</p></div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close company editor"><X size={17} /></button>
+          <div className="dialog-header-actions"><VoiceFillButton kind="company" onDraft={(draft) => applySpokenDraft(formRef.current, { name: draft.companyName, sector: draft.sector, websiteUrl: draft.websiteUrl, linkedinUrl: draft.companyLinkedinUrl, fitScore: draft.fitScore, scaleNote: draft.scaleNote, researchNote: draft.researchNote })} /><button className="icon-button" type="button" onClick={onClose} aria-label="Close company editor"><X size={17} /></button></div>
         </header>
-        <form className="dialog-form" onSubmit={submit}>
+        <form ref={formRef} className="dialog-form" onSubmit={submit}>
           <fieldset><legend>Company details</legend><div className="form-grid">
             {!company && offers.filter((offer) => offer.active).length > 1 ? <label className="field-label form-span-2">Likely offer<select className="field-select" name="offerId" defaultValue=""><option value="">Decide after research</option>{offers.filter((offer) => offer.active).map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
             <label className="field-label">Company name<input className="field" name="name" defaultValue={company?.name ?? ""} required minLength={2} autoFocus /></label>

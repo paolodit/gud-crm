@@ -16,9 +16,9 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 
 | Workspace | What you can do |
 | --- | --- |
-| Research | Keep possible targets off the sales board, review evidence and contact routes, hand structured packs to Codex or Cowork without a CRM API, merge returned JSON safely, and promote only after human review. |
+| Research | Research target accounts or market themes before they become opportunities, hand structured briefs to Codex or Cowork, merge returned account evidence safely, and promote only after human review. |
 | Offers | Define the products or services you pitch once. A second active offer quietly unlocks contextual filters, labels, reporting, playbook assets and AI grounding across the CRM. |
-| Pipeline | Drag or keyboard-move opportunities, filter by owner/attention, switch between comfortable and compact cards, and understand every stage from its inline guide. |
+| Pipeline | Drag or keyboard-move opportunities between stages or into a deliberate order, filter by owner/attention, switch between comfortable and compact cards, and understand every stage from its inline guide. |
 | Opportunity | Work in a wide, expandable relationship workspace with editable company fit/scale, contact details, tasks, outreach rhythm, timeline, logging, and AI together. |
 | Activity | Log each attempt, channel and outcome in seconds; optionally create the follow-up in the same move. |
 | AI coach | Ask for the best next move, an outreach draft, creative routes, or cold-lead recovery. |
@@ -27,7 +27,7 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 | Search | Find companies, people, notes, outcomes, roles, and opportunity context. |
 | Reports | See pipeline health, stage distribution, workload, channel mix, and attention gaps. |
 | Playbook | Navigate a visual outreach loop, multi-channel cadence, guardrails and adaptable patterns; track the readiness, link and owner of six essential sales assets. |
-| Settings | Manage the team, roles and offer library; rename the pipeline; download a consistent SQLite backup; edit activity types; understand stage semantics; control AI; and configure the server-side OpenAI key. |
+| Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI and FreeMax. |
 | Import | Preview the research tracker, validate all expected columns, detect duplicates, then import it idempotently from Settings or the CLI. |
 
 The design principle is simple: important work should be obvious, updates should be quick, and the system should help a human make a better decision without pretending to be the human.
@@ -173,6 +173,10 @@ Restart the app after changing provider settings. Workspace admins can enable or
 
 The Research Hub keeps target finding out of the live opportunity board. A target can be added manually or imported from the tracker, researched in GUD CRM, or handed to Codex/Cowork through a copy-ready brief and versioned JSON pack. Returned JSON is matched by IDs, domain, then normalised name; existing notes, source URLs and contacts are merged rather than replaced. Importing never promotes a target.
 
+Research has two deliberately small shapes. **Accounts** asks whether a particular organisation is worth pursuing. **Themes** asks whether an audience problem or market change is real enough to support an existing or emerging service. Service Sales opens on Themes; Focused Sales opens on Accounts. A theme remains outside the pipeline until it produces a credible account target.
+
+Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
+
 Named contact enrichment is deliberately one-at-a-time. **FreeMax** uses free resources in the order that preserves the most future value: Hunter's recurring monthly allowance first, then Voila Norbert's one-off starter pool only when Hunter misses or is unavailable. Add either or both server keys, restart the app, then use **Find work email** beside an already-identified contact:
 
 ```dotenv
@@ -232,6 +236,7 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | `SQLITE_PATH` | `data/gud-crm.db` | Local database location. |
 | `GUD_DEFAULT_MODEL` | `focused` | `focused` or `service`; selects the public fixture in demo mode and seeds the model for a new persistent workspace. Existing workspaces keep their saved model. |
 | `GUD_INSTANCE_NAME` | `Local sales workspace` | Private deployment label shown in the navigation. |
+| `GUD_VERSION` | `0.1.0` | Release or commit label shown in safe-update readiness. |
 | `GUD_BOOTSTRAP` | `off` | Production startup bootstrap: `off` or `if-empty`; use only for a new PostgreSQL database. |
 | `LOCAL_TRACKER_PATH` | `data/imports/outreach-tracker.xlsx` | Optional local workbook shown in Settings; keep it outside Git. |
 | `DATABASE_URL` | none | PostgreSQL connection string; required with `DATA_BACKEND=postgres`. |
@@ -252,6 +257,8 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | `GOOGLE_MAPS_API_KEY` | none | Reserved server-only key for location checks with quota controls. |
 | `AI_TIMEOUT_MS` | `30000` | Provider timeout, 5-120 seconds. |
 | `AI_RATE_LIMIT` | `6` | Suggestions per user per 15-minute window. |
+| `GUD_BACKUP_WEBHOOK_URL` | none | Private pre-update backup hook; must report success before deployment is requested. |
+| `GUD_DEPLOY_WEBHOOK_URL` | none | Private, narrowly scoped release/deployment hook used by an admin after backup succeeds. |
 
 `GET /api/health` reports the active mode and database availability without exposing credentials or the SQLite path.
 
