@@ -19,8 +19,8 @@ import {
 } from "../src/db/schema";
 import { createInitialSnapshot } from "../src/lib/editions/bootstrap";
 import { getEdition, normaliseEditionKey } from "../src/lib/editions";
+import { normaliseName } from "../src/lib/domain/normalise";
 import { env } from "../src/lib/env";
-import { normaliseName } from "../src/lib/import/tracker";
 import { auth } from "../src/lib/auth";
 
 const organisationId = "00000000-0000-4000-8000-000000000001";
@@ -30,9 +30,25 @@ async function main() {
     throw new Error("DATABASE_URL is required for seeding. Demo mode does not need a seed.");
   }
 
+  const email = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
   const [existingOrganisation] = await db.select({ name: organisations.name, settings: organisations.settings }).from(organisations).where(eq(organisations.id, organisationId)).limit(1);
   if (existingOrganisation && process.env.SEED_ALLOW_EXISTING !== "true") {
-    throw new Error("Refusing to seed an existing organisation. Set SEED_ALLOW_EXISTING=true only for an intentional fixture refresh.");
+    if (process.env.SEED_IF_EMPTY === "true") {
+      const [[existingAdmin], [existingPipeline], [existingStage], [existingActivityType], [existingOffer]] = await Promise.all([
+        db.select({ id: users.id, organisationId: users.organisationId }).from(users).where(eq(users.email, email)).limit(1),
+        db.select({ id: pipelines.id }).from(pipelines).where(and(eq(pipelines.organisationId, organisationId), eq(pipelines.active, true))).limit(1),
+        db.select({ id: stages.id }).from(stages).limit(1),
+        db.select({ id: activityTypes.id }).from(activityTypes).where(and(eq(activityTypes.organisationId, organisationId), eq(activityTypes.active, true))).limit(1),
+        db.select({ id: offers.id }).from(offers).where(and(eq(offers.organisationId, organisationId), eq(offers.active, true))).limit(1),
+      ]);
+      if (existingAdmin?.organisationId === organisationId && existingPipeline && existingStage && existingActivityType && existingOffer) {
+        console.log(`PostgreSQL workspace is already bootstrapped for ${email}; no seed changes were applied.`);
+        return;
+      }
+      console.log("An incomplete bootstrap was detected; repairing the existing workspace.");
+    } else {
+      throw new Error("Refusing to seed an existing organisation. Set SEED_ALLOW_EXISTING=true only for an intentional fixture refresh.");
+    }
   }
   const editionKey = existingOrganisation ? normaliseEditionKey(existingOrganisation.settings.edition) : env.defaultEdition;
   const seedBoard = createInitialSnapshot(editionKey, "postgres");
@@ -44,7 +60,6 @@ async function main() {
     .values({ id: organisationId, name: organisationName, settings: { edition: edition.key } })
     .onConflictDoUpdate({ target: organisations.id, set: { updatedAt: new Date() } });
 
-  const email = process.env.SEED_ADMIN_EMAIL ?? "admin@example.com";
   const adminName = process.env.SEED_ADMIN_NAME ?? "Workspace Admin";
   const password = process.env.SEED_ADMIN_PASSWORD;
   if (!password || password.length < 12) {

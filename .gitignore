@@ -6,6 +6,7 @@
 # Next.js
 /.next/
 /.next-e2e/
+/.next-demo-*/
 /out/
 
 # production
@@ -20,6 +21,7 @@
 /business dev/
 /data/
 /config/instances.local.json
+/config/caprover.local.*
 
 # tests and tooling
 /coverage

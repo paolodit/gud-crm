@@ -5,9 +5,12 @@ import type {
   BoardSnapshot,
   ContactSummary,
   OpportunitySummary,
+  OfferSummary,
   PersonSummary,
   StageSummary,
 } from "@/lib/domain/types";
+import type { EditionKey } from "@/lib/editions";
+import { serviceEdition } from "@/lib/editions/service";
 
 const stages: StageSummary[] = [
   ["10000000-0000-4000-8000-000000000001", "Researching", "#0086A8", "open"],
@@ -87,7 +90,7 @@ const contacts = {
   morgan: contact("41000000-0000-4000-8000-000000000006", "Morgan Reed", "Managing Director"),
 };
 
-const opportunityRecords: Array<Omit<OpportunitySummary, "offer">> = [
+const opportunityRecords: Array<Omit<OpportunitySummary, "offer" | "position">> = [
   {
     id: "51000000-0000-4000-8000-000000000001", isExample: true, stageId: stages[4].id, company: companies.northstar,
     title: "Operations platform rollout", priority: "high", temperature: "warm", expectedValue: 24000, probability: 60, expectedCloseDate: "2026-09-30T00:00:00.000Z", owner: users[0],
@@ -128,7 +131,7 @@ const opportunityRecords: Array<Omit<OpportunitySummary, "offer">> = [
   },
 ];
 
-const opportunities: OpportunitySummary[] = opportunityRecords.map((opportunity) => ({ ...opportunity, offer: coreOffer }));
+const opportunities: OpportunitySummary[] = opportunityRecords.map((opportunity, index) => ({ ...opportunity, position: (index + 1) * 1000, offer: coreOffer }));
 
 export const demoBoard: BoardSnapshot = {
   edition: "focused",
@@ -136,9 +139,133 @@ export const demoBoard: BoardSnapshot = {
   offers: [coreOffer],
   stages,
   opportunities,
+  researchThemes: [],
   activityTypes,
   users,
   generatedAt: "2026-07-17T09:00:00.000Z",
   demoMode: true,
   storageMode: "demo",
 };
+
+const serviceOffers: OfferSummary[] = [
+  {
+    id: "92000000-0000-4000-8000-000000000001",
+    name: "Website project",
+    colour: "#6554C0",
+    description: "A strategy-led website or digital platform project.",
+    idealCustomer: "An organisation with a clear audience, an important change to make and an owner for the project.",
+    positioning: "A useful digital platform shaped around the organisation's real goals and users.",
+    isDefault: true,
+    active: true,
+    position: 0,
+  },
+  {
+    id: "92000000-0000-4000-8000-000000000002",
+    name: "Growth retainer",
+    colour: "#0073EA",
+    description: "Ongoing optimisation, content and visibility support.",
+    idealCustomer: "A team with an established offer and a recurring need to improve reach or conversion.",
+    positioning: "A steady improvement programme with clear priorities, evidence and ownership.",
+    isDefault: false,
+    active: true,
+    position: 1,
+  },
+  {
+    id: "92000000-0000-4000-8000-000000000003",
+    name: "Visitor experience",
+    colour: "#D98200",
+    description: "Interpretation, exhibition or interactive experience design.",
+    idealCustomer: "A cultural or public-facing organisation planning a meaningful visitor experience.",
+    positioning: "A memorable experience that makes complex stories clear, inviting and useful.",
+    isDefault: false,
+    active: true,
+    position: 2,
+  },
+];
+
+const serviceDemoProfiles = [
+  {
+    company: { name: "DEMO · Alder & Stone", sector: "Professional services", scaleNote: "Fictional consultancy with a dated website" },
+    title: "Website repositioning project",
+    offer: serviceOffers[0],
+    value: 18000,
+    probability: 60,
+    angle: "Use the visible mismatch between the current site and the consultancy's stronger market position.",
+  },
+  {
+    company: { name: "DEMO · Northbank Foods", sector: "Food and hospitality", scaleNote: "Fictional regional food brand" },
+    title: "Ongoing growth programme",
+    offer: serviceOffers[1],
+    value: 24000,
+    probability: 35,
+    angle: "Lead with a small, measurable visibility opportunity before discussing a retainer.",
+  },
+  {
+    company: { name: "DEMO · Harbour Museum", sector: "Culture and heritage", scaleNote: "Fictional independent museum planning a new gallery" },
+    title: "Interactive gallery experience",
+    offer: serviceOffers[2],
+    value: 72000,
+    probability: 20,
+    angle: "Show an understanding of the visitor story and propose a short discovery conversation.",
+  },
+  {
+    company: { name: "DEMO · Fieldwork Partners", sector: "Business services", scaleNote: "Fictional distributed advisory team" },
+    title: "Website discovery sprint",
+    offer: serviceOffers[0],
+    value: 6500,
+    probability: 15,
+    angle: "Validate the commercial owner and the reason for change before shaping a larger project.",
+  },
+  {
+    company: { name: "DEMO · Cedar Foundation", sector: "Charity", scaleNote: "Fictional foundation awaiting a funding decision" },
+    title: "Search visibility support",
+    offer: serviceOffers[1],
+    value: 12000,
+    probability: 10,
+    angle: "Keep the opportunity quiet until funding and an internal owner are confirmed.",
+  },
+  {
+    company: { name: "DEMO · Lantern Arts", sector: "Arts and culture", scaleNote: "Fictional arts organisation used to demonstrate a genuine loss" },
+    title: "DEMO · Closed interpretation project",
+    offer: serviceOffers[2],
+    value: 42000,
+    probability: 0,
+    angle: "This fictional record shows that Lost follows a real commercial decision, not desk research.",
+  },
+] as const;
+
+export const serviceDemoBoard: BoardSnapshot = (() => {
+  const snapshot = structuredClone(demoBoard);
+  snapshot.edition = "service";
+  snapshot.pipeline.name = serviceEdition.pipelineName;
+  snapshot.offers = structuredClone(serviceOffers);
+  snapshot.researchThemes = [
+    { id: "81000000-0000-4000-8000-000000000001", title: "DEMO · Better follow-up for specialist firms", audience: "Small professional-service teams", problem: "Good conversations are being lost between inboxes and informal notes.", signal: "Teams are adopting narrower workflow tools instead of heavyweight CRMs.", angle: "Offer a short sales-workflow review tied to one measurable handoff problem.", status: "evidence", offerId: serviceOffers[2]?.id ?? null, sourceUrls: ["https://example.com/fictional-research"], updatedAt: "2026-07-17T09:00:00.000Z" },
+  ];
+  snapshot.stages = snapshot.stages.map((stage, index) => ({
+    ...stage,
+    name: serviceEdition.stageNames[index] ?? stage.name,
+  }));
+  snapshot.opportunities = snapshot.opportunities.map((opportunity, index) => {
+    const profile = serviceDemoProfiles[index];
+    return {
+      ...opportunity,
+      title: profile.title,
+      offer: structuredClone(profile.offer),
+      expectedValue: profile.value,
+      probability: profile.probability,
+      outreachAngle: profile.angle,
+      company: {
+        ...opportunity.company,
+        ...profile.company,
+        websiteUrl: `https://service-demo-${index + 1}.example`,
+      },
+      aiSuggestions: [],
+    };
+  });
+  return snapshot;
+})();
+
+export function demoBoardForEdition(edition: EditionKey): BoardSnapshot {
+  return structuredClone(edition === "service" ? serviceDemoBoard : demoBoard);
+}

@@ -13,12 +13,13 @@ import {
   organisations,
   offers,
   pipelines,
+  researchThemes,
   stages,
   tasks,
   users,
 } from "@/db/schema";
 import { aiCoachModeSchema, aiCoachOutputSchema, aiFeedbackRatingSchema } from "@/lib/ai/schema";
-import { demoBoard } from "@/lib/demo-data";
+import { demoBoardForEdition } from "@/lib/demo-data";
 import { getLocalBoardSnapshot } from "@/lib/data/local-store";
 import type {
   ActivitySummary,
@@ -33,7 +34,7 @@ import { getEdition, normaliseEditionKey } from "@/lib/editions";
 const iso = (value: Date | null) => value?.toISOString() ?? null;
 
 export async function getBoardSnapshot(organisationId: string): Promise<BoardSnapshot> {
-  if (env.demoMode) return structuredClone(demoBoard);
+  if (env.demoMode) return demoBoardForEdition(env.defaultEdition);
   if (env.sqliteMode) return getLocalBoardSnapshot();
 
   const [[organisation], [pipeline]] = await Promise.all([db
@@ -51,7 +52,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
     throw new Error("No active pipeline is configured for this organisation.");
   }
 
-  const [stageRows, offerRows, opportunityRows, activityTypeRows, userRows] = await Promise.all([
+  const [stageRows, offerRows, opportunityRows, activityTypeRows, userRows, researchThemeRows] = await Promise.all([
     db
       .select()
       .from(stages)
@@ -82,7 +83,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
           eq(opportunities.pipelineId, pipeline.id),
         ),
       )
-      .orderBy(desc(opportunities.updatedAt)),
+      .orderBy(asc(opportunities.position), desc(opportunities.updatedAt)),
     db
       .select()
       .from(activityTypes)
@@ -93,6 +94,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
       .from(users)
       .where(and(eq(users.organisationId, organisationId), eq(users.active, true)))
       .orderBy(asc(users.name)),
+    db.select().from(researchThemes).where(eq(researchThemes.organisationId, organisationId)).orderBy(desc(researchThemes.updatedAt)),
   ]);
 
   const opportunityIds = opportunityRows.map((row) => row.opportunity.id);
@@ -216,6 +218,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
       id: row.opportunity.id,
       isExample: row.opportunity.importMetadata?.demoExample === true,
       stageId: row.opportunity.stageId,
+      position: row.opportunity.position,
       offer: row.offer ? {
         id: row.offer.id,
         name: row.offer.name,
@@ -309,6 +312,18 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
       terminalType: stage.terminalType,
     })),
     opportunities: mappedOpportunities,
+    researchThemes: researchThemeRows.map((theme) => ({
+      id: theme.id,
+      title: theme.title,
+      audience: theme.audience,
+      problem: theme.problem,
+      signal: theme.signal,
+      angle: theme.angle,
+      status: theme.status === "ready" ? "ready" : theme.status === "evidence" ? "evidence" : "idea",
+      offerId: theme.offerId,
+      sourceUrls: theme.sourceUrls,
+      updatedAt: theme.updatedAt.toISOString(),
+    })),
     activityTypes: activityTypeRows.map((type) => ({
       id: type.id,
       name: type.name,

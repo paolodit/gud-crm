@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { organisations } from "@/db/schema";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getLocalAiEnabled } from "@/lib/data/local-store";
+import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import { env } from "@/lib/env";
 import { previewTrackerImport } from "@/lib/import/tracker";
 import { getCurrentMember } from "@/lib/session";
@@ -16,7 +17,7 @@ export default async function SettingsPage() {
   const member = await getCurrentMember();
   if (!member) return null;
   const snapshot = await getBoardSnapshot(member.organisationId);
-  const importStatus = await localImportStatus();
+  const [importStatus, freeMaxStatus] = await Promise.all([localImportStatus(), getFreeMaxStatus(member.organisationId, member.storageMode)]);
   const workspaceAiEnabled = member.storageMode === "sqlite"
     ? getLocalAiEnabled()
     : member.demoMode
@@ -36,6 +37,10 @@ export default async function SettingsPage() {
         workspaceAiEnabled,
         passwordAuthActive: member.storageMode === "postgres",
         passwordResetConfigured: member.storageMode === "postgres" && env.authEmailConfigured,
+        freeMaxStatus,
+        version: env.GUD_VERSION,
+        backupAutomationConfigured: Boolean(env.GUD_BACKUP_WEBHOOK_URL),
+        safeUpdateConfigured: Boolean(env.GUD_BACKUP_WEBHOOK_URL && env.GUD_DEPLOY_WEBHOOK_URL),
       }}
       importStatus={importStatus}
       currentMemberId={member.id}

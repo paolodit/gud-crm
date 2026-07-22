@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "next dev",
     "dev:instance": "node scripts/run-instance.mjs",
+    "demo:focused": "node scripts/run-demo.mjs focused",
+    "demo:service": "node scripts/run-demo.mjs service",
     "build": "next build",
+    "build:runtime-tools": "node scripts/build-runtime-tools.mjs",
     "start": "node .next/standalone/server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -22,8 +25,11 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx scripts/seed.ts",
     "db:local:status": "tsx scripts/local-db.ts status",
+    "db:local:backup": "tsx scripts/local-db.ts backup",
     "db:local:reset": "tsx scripts/local-db.ts reset",
     "db:local:export": "tsx scripts/local-db.ts export",
+    "db:promote:sql": "tsx scripts/export-postgres-promotion.ts",
+    "db:postgres:backup": "node scripts/backup-postgres.mjs",
     "import:tracker": "tsx scripts/import-tracker.ts"
   },
   "dependencies": {
@@ -66,7 +72,8 @@
   },
   "overrides": {
     "next": {
-      "postcss": "8.5.19"
+      "postcss": "8.5.19",
+      "sharp": "0.35.3"
     }
   }
 }

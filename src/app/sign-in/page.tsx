@@ -4,6 +4,11 @@ import { SignInForm } from "@/components/sign-in-form";
 import { BrandLogo } from "@/components/brand-logo";
 import { env } from "@/lib/env";
 
+// The storage/auth mode is runtime configuration. CapRover builds one image
+// that is reused by differently configured instances, so this page must not
+// capture the build machine's SQLite defaults during static generation.
+export const dynamic = "force-dynamic";
+
 export default function SignInPage() {
   return (
     <main className="auth-page">

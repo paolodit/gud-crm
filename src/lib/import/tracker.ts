@@ -253,6 +253,7 @@ export function commitTrackerImportToLocal(preview: ImportPreview, createdById =
         opportunity = {
           id: crypto.randomUUID(),
           stageId: stage.id,
+          position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === stage.id).map((item) => item.position)) + 1000,
           offer: importOffer,
           company: {
             id: companyId,

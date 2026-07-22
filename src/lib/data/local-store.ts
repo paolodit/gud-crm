@@ -15,7 +15,7 @@ import { createInitialSnapshot } from "@/lib/editions/bootstrap";
 import { isEditionKey, normaliseEditionKey } from "@/lib/editions";
 
 const workspaceId = "default";
-const snapshotVersion = 11;
+const snapshotVersion = 13;
 const globalForSqlite = globalThis as unknown as { gudLocalDb?: Database.Database };
 
 function database() {
@@ -164,6 +164,15 @@ function migrateLocalSnapshot(db: Database.Database) {
   if (currentVersion < 11) {
     snapshot.edition = normaliseEditionKey((snapshot as unknown as { edition?: unknown }).edition);
   }
+  if (currentVersion < 12) {
+    const nextByStage = new Map<string, number>();
+    for (const opportunity of snapshot.opportunities) {
+      const next = (nextByStage.get(opportunity.stageId) ?? 0) + 1000;
+      opportunity.position = next;
+      nextByStage.set(opportunity.stageId, next);
+    }
+  }
+  if (currentVersion < 13) snapshot.researchThemes = [];
   const now = new Date().toISOString();
   db.prepare("UPDATE local_workspaces SET snapshot_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(snapshot), now, workspaceId);
   db.prepare("INSERT INTO local_settings (key, value, updated_at) VALUES ('snapshot_version', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(String(snapshotVersion), now);
@@ -181,6 +190,7 @@ export function getLocalBoardSnapshot(): BoardSnapshot {
   snapshot.demoMode = false;
   snapshot.storageMode = "sqlite";
   snapshot.generatedAt = new Date().toISOString();
+  snapshot.researchThemes ??= [];
   return snapshot;
 }
 

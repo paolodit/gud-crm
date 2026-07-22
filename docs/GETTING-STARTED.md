@@ -12,6 +12,8 @@ GUD CRM is designed to become useful before it becomes configurable. Start with 
 
 Never expose the SQLite or demo runtime to the public internet. They deliberately skip individual authentication.
 
+Use `npm run demo:focused` for the fictional single-product journey or `npm run demo:service` for the fictional multi-service journey. Use `npm run dev` or `npm run dev:instance -- <name>` for a clean persistent workspace.
+
 ## Choose a sales model
 
 - Use **Focused Sales** when most opportunities sell one product, SaaS offer or tightly connected product family.

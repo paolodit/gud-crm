@@ -14,6 +14,7 @@ import {
   opportunityContacts,
   offers,
   pipelines,
+  researchThemes,
   stages,
 } from "@/db/schema";
 import { getLocalBoardSnapshot, recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
@@ -21,7 +22,7 @@ import { findWorkEmailFreeMax, providerLabel } from "@/lib/enrichment/freemax";
 import { getFreeMaxStatus, recordLocalFreeMaxSuccess } from "@/lib/enrichment/usage";
 import { env } from "@/lib/env";
 import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
-import type { CompanySummary, ContactSummary, OfferSummary } from "@/lib/domain/types";
+import type { CompanySummary, ContactSummary, OfferSummary, ResearchThemeSummary } from "@/lib/domain/types";
 import { getCurrentMember } from "@/lib/session";
 
 const httpUrl = z.url().refine(isSafeHttpUrl, "Only HTTP and HTTPS source links are allowed.");
@@ -82,6 +83,55 @@ const enrichContactSchema = z.object({
   opportunityId: z.uuid(),
   contactId: z.uuid(),
 });
+
+const researchThemeSchema = z.object({
+  themeId: z.uuid().nullable().optional(),
+  title: z.string().trim().min(2).max(220),
+  audience: z.string().trim().max(2_000).default(""),
+  problem: z.string().trim().max(10_000).default(""),
+  signal: z.string().trim().max(10_000).default(""),
+  angle: z.string().trim().max(10_000).default(""),
+  status: z.enum(["idea", "evidence", "ready"]).default("idea"),
+  offerId: z.uuid().nullable().default(null),
+  sourceUrls: z.array(httpUrl).max(50).default([]),
+});
+type SaveResearchThemeResult = { ok: true; theme: ResearchThemeSummary } | { ok: false; error: string };
+
+export async function saveResearchThemeAction(input: unknown): Promise<SaveResearchThemeResult> {
+  const parsed = researchThemeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "That research theme is invalid." };
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "You must be signed in." };
+  if (member.demoMode) return { ok: false, error: "Research themes cannot be saved in the reset-on-refresh demo." };
+  const data = parsed.data;
+  const id = data.themeId ?? crypto.randomUUID();
+  const updatedAt = new Date();
+  try {
+    if (member.storageMode === "sqlite") {
+      let saved: ResearchThemeSummary | null = null;
+      updateLocalBoardSnapshot((snapshot) => {
+        snapshot.researchThemes ??= [];
+        const existing = snapshot.researchThemes.find((theme) => theme.id === id);
+        saved = { id, title: data.title, audience: data.audience || null, problem: data.problem || null, signal: data.signal || null, angle: data.angle || null, status: data.status, offerId: data.offerId, sourceUrls: data.sourceUrls, updatedAt: updatedAt.toISOString() };
+        if (existing) Object.assign(existing, saved);
+        else snapshot.researchThemes.unshift(saved);
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "research_theme.saved", entityType: "research_theme", entityId: id, detail: { status: data.status, offerId: data.offerId } });
+      revalidatePath("/research");
+      return { ok: true, theme: saved! };
+    }
+    const values = { title: data.title, audience: data.audience || null, problem: data.problem || null, signal: data.signal || null, angle: data.angle || null, status: data.status, offerId: data.offerId, sourceUrls: data.sourceUrls, ownerId: member.id, updatedAt };
+    const [row] = data.themeId
+      ? await db.update(researchThemes).set(values).where(and(eq(researchThemes.id, id), eq(researchThemes.organisationId, member.organisationId))).returning()
+      : await db.insert(researchThemes).values({ id, organisationId: member.organisationId, ...values }).returning();
+    if (!row) return { ok: false, error: "Research theme not found." };
+    await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "research_theme.saved", entityType: "research_theme", entityId: row.id, after: { status: row.status, offerId: row.offerId } });
+    revalidatePath("/research");
+    return { ok: true, theme: { id: row.id, title: row.title, audience: row.audience, problem: row.problem, signal: row.signal, angle: row.angle, status: row.status === "ready" ? "ready" : row.status === "evidence" ? "evidence" : "idea", offerId: row.offerId, sourceUrls: row.sourceUrls, updatedAt: row.updatedAt.toISOString() } };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Research theme could not be saved.") };
+  }
+}
 
 export async function enrichResearchContactAction(input: unknown): Promise<EnrichContactResult> {
   const parsed = enrichContactSchema.safeParse(input);
@@ -230,6 +280,7 @@ function importIntoLocalSnapshot(targets: ResearchTargetInput[], actorId: string
         opportunity = {
           id: crypto.randomUUID(),
           stageId: researchStage.id,
+          position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === researchStage.id).map((item) => item.position)) + 1000,
           offer: resolvedOffer,
           company,
           title: `${company.name} research`,

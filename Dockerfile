@@ -11,6 +11,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
+RUN npm run build:runtime-tools
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -24,4 +25,5 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 CMD ["node", "container-healthcheck.mjs"]
+CMD ["node", "production-entrypoint.mjs"]
