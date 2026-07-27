@@ -11,7 +11,7 @@ export default async function PipelinePage() {
   const snapshot = getSalesBoardSnapshot(await getBoardSnapshot(member.organisationId));
   return (
     <Suspense fallback={<div className="empty-state">Loading pipeline…</div>}>
-      <PipelineBoard initialSnapshot={snapshot} />
+      <PipelineBoard initialSnapshot={snapshot} currentUserId={member.id} />
     </Suspense>
   );
 }

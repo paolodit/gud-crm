@@ -18,7 +18,15 @@ type Recognition = {
 };
 type RecognitionConstructor = new () => Recognition;
 
-export function VoiceFillButton({ kind, onDraft }: { kind: "company" | "opportunity"; onDraft: (draft: SpokenCrmDraft) => number }) {
+export function VoiceFillButton({
+  kind,
+  onDraft,
+  prominent = false,
+}: {
+  kind: "company" | "opportunity";
+  onDraft: (draft: SpokenCrmDraft) => number;
+  prominent?: boolean;
+}) {
   const recognition = useRef<Recognition | null>(null);
   const [supported, setSupported] = useState(false);
   const [state, setState] = useState<"idle" | "listening" | "thinking">("idle");
@@ -57,18 +65,19 @@ export function VoiceFillButton({ kind, onDraft }: { kind: "company" | "opportun
       const count = onDraft(result.draft);
       setMessage(count ? `${count} ${count === 1 ? "field" : "fields"} filled. Review before saving.` : "I heard you, but found no new fields to add.");
     };
-    setMessage("Listening… your browser transcribes; nothing is saved yet.");
+    setMessage("Listening… speak naturally; nothing is saved until you review the form.");
     setState("listening");
     next.start();
   }
 
   return (
-    <div className="voice-fill">
+    <div className="voice-fill" data-prominent={prominent} data-state={state}>
       <button className="btn btn-voice" type="button" onClick={start} disabled={!supported || state === "thinking"} title={supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
         {state === "thinking" ? <LoaderCircle className="spin" size={16} /> : state === "listening" ? <Square size={15} /> : <Mic size={16} />}
-        {state === "listening" ? "Stop" : state === "thinking" ? "Working…" : "Just talk"}
+        {state === "listening" ? "Stop listening" : state === "thinking" ? "Structuring…" : prominent ? "Talk it through" : "Just talk"}
       </button>
-      {message ? <span className="voice-fill-status" data-listening={state === "listening"}><Sparkles size={13} />{message}</span> : null}
+      {state === "listening" ? <span className="voice-levels" aria-hidden="true">{[0, 1, 2, 3, 4].map((bar) => <i key={bar} />)}</span> : null}
+      {message ? <span className="voice-fill-status" role="status" aria-live="polite" data-listening={state === "listening"}><Sparkles size={13} />{message}</span> : null}
     </div>
   );
 }
@@ -79,6 +88,15 @@ export function applySpokenDraft(form: HTMLFormElement | null, values: Record<st
   for (const [name, rawValue] of Object.entries(values)) {
     if (rawValue === null || rawValue === undefined || rawValue === "") continue;
     const field = form.elements.namedItem(name);
+    if (field instanceof RadioNodeList) {
+      const radio = Array.from(field).find((item) => item instanceof HTMLInputElement && item.value === String(rawValue));
+      if (!(radio instanceof HTMLInputElement)) continue;
+      radio.checked = true;
+      radio.dataset.voiceFilled = "true";
+      window.setTimeout(() => delete radio.dataset.voiceFilled, 2400);
+      filled += 1;
+      continue;
+    }
     if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) continue;
     if (!(field instanceof HTMLSelectElement) && field.value.trim()) continue;
     let value = String(rawValue);

@@ -15,6 +15,7 @@ import { normaliseName } from "@/lib/domain/normalise";
 import type { OfferSummary, PersonSummary, SalesAssetSummary } from "@/lib/domain/types";
 import { getCurrentMember } from "@/lib/session";
 import { isSafeHttpUrl } from "@/lib/domain/normalise";
+import { saveFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 
 type Result = { ok: true } | { ok: false; error: string };
 type TeamResult = { ok: true; member: PersonSummary } | { ok: false; error: string };
@@ -48,6 +49,13 @@ const saveOfferSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 const deactivateOfferSchema = z.object({ offerId: z.uuid() });
+const saveFreeMaxSchema = z.object({
+  hunterKey: z.string().trim().max(1_000).default(""),
+  norbertKey: z.string().trim().max(1_000).default(""),
+  disconnectHunter: z.boolean().default(false),
+  disconnectNorbert: z.boolean().default(false),
+  primary: z.enum(["hunter", "norbert"]).default("hunter"),
+});
 
 async function requireAdmin() {
   const member = await getCurrentMember();
@@ -97,6 +105,39 @@ export async function saveWorkspaceEditionAction(input: unknown): Promise<Result
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Workspace sales model could not be saved.") };
+  }
+}
+
+export async function saveFreeMaxConfigurationAction(input: unknown): Promise<Result> {
+  const parsed = saveFreeMaxSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Check the provider settings." };
+  try {
+    const member = await requireAdmin();
+    if (member.demoMode) return { ok: false, error: "Provider settings reset in demo mode." };
+    await saveFreeMaxRuntimeConfiguration(member.organisationId, member.storageMode, parsed.data);
+    if (member.storageMode === "sqlite") {
+      recordLocalAuditEvent({
+        actorId: member.id,
+        action: "freemax.configuration_updated",
+        entityType: "workspace",
+        entityId: member.organisationId,
+        detail: { primary: parsed.data.primary, hunterConnected: !parsed.data.disconnectHunter, norbertConnected: !parsed.data.disconnectNorbert },
+      });
+    } else {
+      await db.insert(auditEvents).values({
+        organisationId: member.organisationId,
+        actorId: member.id,
+        action: "freemax.configuration_updated",
+        entityType: "workspace",
+        entityId: member.organisationId,
+        after: { primary: parsed.data.primary, hunterDisconnected: parsed.data.disconnectHunter, norbertDisconnected: parsed.data.disconnectNorbert },
+      });
+    }
+    revalidatePath("/settings");
+    revalidatePath("/research");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "FreeMax configuration could not be saved.") };
   }
 }
 

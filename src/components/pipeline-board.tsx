@@ -84,7 +84,7 @@ import type {
 
 type DueState = "overdue" | "soon" | "future" | "missing";
 
-export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnapshot }) {
+export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnapshot: BoardSnapshot; currentUserId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [opportunities, setOpportunities] = useState(initialSnapshot.opportunities);
@@ -141,26 +141,6 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
 
   function updateOpportunity(next: OpportunitySummary) {
     setOpportunities((items) => items.map((item) => (item.id === next.id ? next : item)));
-  }
-
-  function moveOpportunity(opportunityId: string, stageId: string) {
-    const previous = opportunities.find((item) => item.id === opportunityId);
-    if (!previous || previous.stageId === stageId) return;
-    const previousItems = opportunities;
-    const target = opportunities.filter((item) => item.stageId === stageId && item.id !== opportunityId).sort((a, b) => a.position - b.position);
-    target.push({ ...previous, stageId, position: (target.length + 1) * 1000 });
-    const positions = new Map(target.map((item, index) => [item.id, (index + 1) * 1000]));
-    setOpportunities((items) => items.map((item) => positions.has(item.id) ? { ...item, stageId, position: positions.get(item.id) ?? item.position } : item));
-    startTransition(async () => {
-      const result = await reorderOpportunityAction({ opportunityId, toStageId: stageId, orderedOpportunityIds: target.map((item) => item.id) });
-      if (!result.ok) {
-        setOpportunities(previousItems);
-        showToast(result.error);
-      } else {
-        const stage = initialSnapshot.stages.find((item) => item.id === stageId);
-        showToast(`Moved to ${stage?.name ?? "new stage"}`);
-      }
-    });
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -292,11 +272,9 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
                 <BoardColumn
                   key={stage.id}
                   stage={stage}
-                  stages={initialSnapshot.stages}
                   opportunities={filtered.filter((item) => item.stageId === stage.id).sort((a, b) => a.position - b.position)}
                   now={now}
                   onOpen={openOpportunity}
-                  onMove={moveOpportunity}
                   compact={compact}
                   showOffer={availableOffers.length > 1 && offerFilter === "all"}
                 />
@@ -320,6 +298,7 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
       {creating ? (
         <CreateOpportunityDialog
           snapshot={{ ...initialSnapshot, opportunities }}
+          currentUserId={currentUserId}
           onClose={() => setCreating(false)}
           onCreated={opportunityCreated}
         />
@@ -331,20 +310,16 @@ export function PipelineBoard({ initialSnapshot }: { initialSnapshot: BoardSnaps
 
 function BoardColumn({
   stage,
-  stages,
   opportunities,
   now,
   onOpen,
-  onMove,
   compact,
   showOffer,
 }: {
   stage: StageSummary;
-  stages: StageSummary[];
   opportunities: OpportunitySummary[];
   now: string;
   onOpen: (id: string) => void;
-  onMove: (id: string, stageId: string) => void;
   compact: boolean;
   showOffer: boolean;
 }) {
@@ -362,11 +337,9 @@ function BoardColumn({
           <OpportunityCard
             key={opportunity.id}
             opportunity={opportunity}
-            stages={stages}
             stageColour={stage.colour}
             now={now}
             onOpen={onOpen}
-            onMove={onMove}
             compact={compact}
             showOffer={showOffer}
           />
@@ -380,20 +353,16 @@ function BoardColumn({
 
 function OpportunityCard({
   opportunity,
-  stages,
   stageColour,
   now,
   onOpen,
-  onMove,
   compact,
   showOffer,
 }: {
   opportunity: OpportunitySummary;
-  stages: StageSummary[];
   stageColour: string;
   now: string;
   onOpen: (id: string) => void;
-  onMove: (id: string, stageId: string) => void;
   compact: boolean;
   showOffer: boolean;
 }) {
@@ -454,15 +423,6 @@ function OpportunityCard({
           </div>
         </div></>}
       </button>
-      {!compact ? <select
-        className="stage-select"
-        aria-label={`Move ${opportunity.company.name} to another stage`}
-        value={opportunity.stageId}
-        onPointerDown={(event) => event.stopPropagation()}
-        onChange={(event) => onMove(opportunity.id, event.target.value)}
-      >
-        {stages.map((stage) => <option key={stage.id} value={stage.id}>Move to {stage.name}</option>)}
-      </select> : null}
     </article>
   );
 }
@@ -541,22 +501,27 @@ function OpportunityPanel({
         <div className="panel-body">
           <div className="panel-grid">
             <div className="panel-stack">
-              <section className="surface">
-                <header className="surface-header"><h3>Opportunity summary</h3></header>
-                <div className="surface-content">
-                  <div className="summary-grid">
+              <section className="surface relationship-overview">
+                <div className="relationship-overview-main">
+                  <span className="eyebrow">The opportunity</span>
+                  <h3>{opportunity.title}</h3>
+                  <p className="relationship-angle">{opportunity.outreachAngle || "Add the need, timing and most credible reason to start a conversation."}</p>
+                  <div className="relationship-signals">
+                  <div className="relationship-signal-grid">
                     {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 ? <div className="summary-item"><span>Offer</span><strong>{opportunity.offer?.name ?? "Choose before outreach"}</strong></div> : null}
                     <div className="summary-item"><span>Owner</span><strong>{opportunity.owner?.name ?? "Unassigned"}</strong></div>
                     <div className="summary-item"><span>Priority</span><strong className={`badge badge-${opportunity.priority}`}>{opportunity.priority}</strong></div>
                     <div className="summary-item"><span>Temperature</span><strong className={`badge badge-${opportunity.temperature}`}>{opportunity.temperature.replace("_", " ")}</strong></div>
                     <button className="summary-item summary-item-edit" type="button" onClick={() => setCompanyEditor(true)} title="Edit company fit and qualification"><span>Fit <FilePenLine size={12} /></span><strong>{opportunity.company.fitScore ? `${opportunity.company.fitScore}/5` : "Not scored"} · {opportunity.company.scaleNote || "Add qualification note"}</strong></button>
                   </div>
+                </div>
+                </div>
+                <div className="relationship-overview-foot">
                   {opportunity.expectedValue || opportunity.probability !== null && opportunity.probability !== undefined || opportunity.expectedCloseDate ? <div className="commercial-summary" aria-label="Commercial outlook">
                     {opportunity.expectedValue ? <span><small>Potential</small><strong>{formatMoney(opportunity.expectedValue)}</strong></span> : null}
                     {opportunity.probability !== null && opportunity.probability !== undefined ? <span><small>Probability</small><strong>{opportunity.probability}%</strong></span> : null}
                     {opportunity.expectedCloseDate ? <span><small>Expected close</small><strong>{format(new Date(opportunity.expectedCloseDate), "d MMM yyyy")}</strong></span> : null}
                   </div> : null}
-                  {opportunity.outreachAngle ? <p className="angle">{opportunity.outreachAngle}</p> : null}
                   <OutreachRhythm opportunity={opportunity} />
                 </div>
               </section>
@@ -810,6 +775,7 @@ function AiCoach({ opportunity, onUpdate, onToast }: {
   const [taskPending, setTaskPending] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resultOpen, setResultOpen] = useState(false);
 
   async function generate() {
     setPending(true);
@@ -821,6 +787,7 @@ function AiCoach({ opportunity, onUpdate, onToast }: {
       return;
     }
     setSuggestion(result.suggestion);
+    setResultOpen(true);
     onUpdate({ ...opportunity, aiSuggestions: [result.suggestion, ...(opportunity.aiSuggestions ?? [])] });
     onToast("Fresh coaching generated");
   }
@@ -872,11 +839,15 @@ function AiCoach({ opportunity, onUpdate, onToast }: {
         <div className="ai-coach-controls">
           <div className="ai-mode-grid" role="radiogroup" aria-label="Coaching mode">{coachModes.map((item) => <button type="button" role="radio" aria-checked={mode === item.value} key={item.value} onClick={() => setMode(item.value)}><small>{item.hint}</small><strong>{item.label}</strong></button>)}</div>
           <button className="btn btn-primary" type="button" disabled={pending} onClick={generate}>{pending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{pending ? "Thinking..." : suggestion ? "Generate fresh" : "Coach me"}</button>
+          {suggestion ? <button className="btn btn-quiet" type="button" onClick={() => setResultOpen(true)}><Maximize2 size={14} />View latest advice</button> : null}
         </div>
         {error ? <div className="ai-error" role="alert"><AlertCircle size={15} />{error}</div> : null}
 
-        {suggestion ? (
-          <div className="ai-result" aria-live="polite">
+        {suggestion && resultOpen ? (
+          <div className="ai-advice-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setResultOpen(false); }}>
+            <section className="ai-advice-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-advice-title">
+              <header><div><span className="eyebrow">AI coach</span><h3 id="ai-advice-title">{coachModes.find((item) => item.value === suggestion.suggestionType)?.label ?? "Sales advice"}</h3><p>Grounded in this relationship. You choose what to use.</p></div><button className="icon-button" type="button" onClick={() => setResultOpen(false)} aria-label="Close AI advice"><X size={18} /></button></header>
+              <div className="ai-result" aria-live="polite">
             <div className="ai-summary"><span>Read on the relationship</span><p>{suggestion.output.summary}</p></div>
             {suggestion.output.warnings.length ? <div className="ai-warnings">{suggestion.output.warnings.map((warning) => <p key={warning}><AlertCircle size={14} />{warning}</p>)}</div> : null}
 
@@ -894,8 +865,10 @@ function AiCoach({ opportunity, onUpdate, onToast }: {
                 <button type="button" data-selected={suggestion.feedbackRating === "already_tried"} onClick={() => rate("already_tried")}><Check size={13} /> Tried</button>
               </div>
             </footer>
+              </div>
+            </section>
           </div>
-        ) : <p className="ai-empty">Choose what you need. The coach will use the company, contacts, stage, recent activity, tasks, outreach angle, and the approved playbook.</p>}
+        ) : <p className="ai-empty">{suggestion ? "Your latest advice is ready. Open it when you want to focus." : "Choose what you need. The coach will use the company, contacts, stage, recent activity, tasks, outreach angle, and the approved playbook."}</p>}
       </div>
     </section>
   );
@@ -922,12 +895,14 @@ function QuickActivityComposer({
   const [nextActionTitle, setNextActionTitle] = useState("");
   const [nextActionAt, setNextActionAt] = useState(toDateTimeLocal(addDays(snapshot.generatedAt, 3)));
   const [pending, setPending] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const type = snapshot.activityTypes.find((item) => item.id === typeId);
     if (!type) return;
     setPending(true);
+    setSaveError(null);
 
     const input = {
       opportunityId: opportunity.id,
@@ -942,6 +917,7 @@ function QuickActivityComposer({
     const result = await logActivityAction(input);
     setPending(false);
     if (!result.ok) {
+      setSaveError(result.error);
       onToast(result.error);
       return;
     }
@@ -1003,20 +979,17 @@ function QuickActivityComposer({
               {opportunity.contacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
             </select>
           </label>
-          <label className="field-label">Outcome
-            <select className="field-select" value={outcome} onChange={(event) => setOutcome(event.target.value)}>
-              <option value="">Not set</option>
-              <option>No response</option>
-              <option>Connected</option>
-              <option>Positive reply</option>
-              <option>Negative reply</option>
-              <option>Referred internally</option>
-              <option>Wrong person</option>
-              <option>Asked to follow up</option>
-              <option>Meeting booked</option>
-            </select>
-          </label>
         </div>
+        <fieldset className="outcome-picker">
+          <legend>Outcome <span>Optional</span></legend>
+          {["No reply", "Connected", "Positive", "Not now", "Referred", "Meeting booked"].map((item) => (
+            <label key={item} data-selected={outcome === item}>
+              <input type="radio" name="outcome" value={item} checked={outcome === item} onChange={() => setOutcome(item)} />
+              <span>{item}</span>
+            </label>
+          ))}
+          {outcome ? <button type="button" onClick={() => setOutcome("")}>Clear</button> : null}
+        </fieldset>
         <div className="composer-fields-inner">
           <div className="two-fields">
             <label className="field-label">When it happened
@@ -1040,6 +1013,7 @@ function QuickActivityComposer({
               </label>
             </div>
           ) : null}
+          {saveError ? <p className="form-error activity-save-error" role="alert"><AlertCircle size={14} />{saveError}</p> : null}
           <div className="button-row" style={{ justifyContent: "flex-end" }}>
             <button className="btn btn-primary" type="submit" disabled={pending || !typeId}>
               {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}

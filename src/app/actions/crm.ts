@@ -22,6 +22,7 @@ import {
   users,
 } from "@/db/schema";
 import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
+import { isActivityTimeAllowed } from "@/lib/domain/activity";
 import { activeOffers } from "@/lib/domain/offers";
 import { recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
 import { getCurrentMember } from "@/lib/session";
@@ -60,7 +61,7 @@ const logActivitySchema = z.object({
   contactId: z.uuid().nullable().optional(),
   outcome: z.string().trim().max(220).nullable().optional(),
   notes: z.string().trim().max(10_000).nullable().optional(),
-  occurredAt: z.coerce.date().max(new Date(Date.now() + 5 * 60 * 1000)),
+  occurredAt: z.coerce.date().refine(isActivityTimeAllowed, "Activity time cannot be in the future."),
   nextActionTitle: z.string().trim().min(2).max(240).optional(),
   nextActionAt: z.coerce.date().optional(),
 });
