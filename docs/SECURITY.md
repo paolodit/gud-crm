@@ -34,6 +34,7 @@ This document records the implemented controls and known limits. It is an engine
 ## Data and outbound services
 
 - Database, auth, OpenAI, Hunter, Norbert and email credentials remain server-side.
+- Workspace-specific FreeMax keys are encrypted at rest with AES-256-GCM using a deployment-secret-derived key and organisation-bound authenticated data. They are write-only in the UI and deployment environment keys remain optional fallbacks.
 - Research enrichment is one named contact at a time, honours do-not-contact state and records provenance.
 - AI context is bounded, outputs are schema-validated and nothing is automatically sent or scheduled.
 - Voice-assisted forms use the browser's speech-recognition service, then send only its transcript to the configured AI provider for structuring. GUD does not persist raw audio or the transcript unless the user reviews and saves the populated form; the browser or operating-system speech provider may process audio under its own privacy terms.
@@ -48,9 +49,11 @@ Run:
 npm run security:audit
 ```
 
-The July 2026 review removed the deployable PostCSS XSS advisory by overriding Next.js's transitive PostCSS to `8.5.19`. There are no known high or critical advisories and no remaining known runtime advisory.
+The July 2026 review removed the deployable PostCSS XSS advisory by overriding Next.js's transitive PostCSS to `8.5.19`, and the runtime is pinned to the patched Next.js `16.2.11`. There are no known high or critical advisories in the production dependency set and no remaining known runtime advisory.
 
 One moderate development-only advisory is explicitly accepted: Drizzle Kit includes `@esbuild-kit/esm-loader`, which carries esbuild `0.18.20`. The advisory concerns exposing esbuild's development server to a hostile website. GUD does not invoke that server, Drizzle Kit is a development dependency, and the production image copies only the built standalone runtime. The audit script fails on any advisory outside this exact chain. Revisit the exception when Drizzle Kit removes the deprecated loader.
+
+One high-severity denial-of-service advisory is also accepted only in the ESLint development toolchain: current ESLint dependencies still resolve older `brace-expansion` majors for their local file-pattern matcher. GUD never accepts user-controlled lint patterns, ESLint and its matcher are absent from the standalone production image, and the audit separately verifies that this exact advisory is absent from `npm audit --omit=dev`. Revisit the exception when ESLint's dependency line moves to the patched matcher.
 
 ## Verification
 

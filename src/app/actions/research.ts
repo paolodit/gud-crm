@@ -20,7 +20,7 @@ import {
 import { getLocalBoardSnapshot, recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
 import { findWorkEmailFreeMax, providerLabel } from "@/lib/enrichment/freemax";
 import { getFreeMaxStatus, recordLocalFreeMaxSuccess } from "@/lib/enrichment/usage";
-import { env } from "@/lib/env";
+import { getFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
 import type { CompanySummary, ContactSummary, OfferSummary, ResearchThemeSummary } from "@/lib/domain/types";
 import { getCurrentMember } from "@/lib/session";
@@ -142,6 +142,7 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
 
   try {
     const freeMaxStatus = await getFreeMaxStatus(member.organisationId, member.storageMode);
+    const freeMaxConfiguration = await getFreeMaxRuntimeConfiguration(member.organisationId, member.storageMode);
     if (member.storageMode === "sqlite") {
       const snapshot = getLocalBoardSnapshot();
       const opportunity = snapshot.opportunities.find((item) => item.id === parsed.data.opportunityId);
@@ -154,7 +155,7 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
       const result = await findWorkEmailFreeMax(
         { domain, fullName: contact.name },
         freeMaxStatus,
-        { hunter: env.HUNTER_API_KEY, norbert: env.VOILA_NORBERT_API_KEY },
+        freeMaxConfiguration.keys,
       );
       if (!result.found) return { ok: false, error: result.message };
       updateLocalBoardSnapshot((current) => {
@@ -197,7 +198,7 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
     const result = await findWorkEmailFreeMax(
       { domain, fullName: record.contact.name },
       freeMaxStatus,
-      { hunter: env.HUNTER_API_KEY, norbert: env.VOILA_NORBERT_API_KEY },
+      freeMaxConfiguration.keys,
     );
     if (!result.found) return { ok: false, error: result.message };
 

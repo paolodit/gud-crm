@@ -177,7 +177,9 @@ Research has two deliberately small shapes. **Accounts** asks whether a particul
 
 Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
 
-Named contact enrichment is deliberately one-at-a-time. **FreeMax** uses free resources in the order that preserves the most future value: Hunter's recurring monthly allowance first, then Voila Norbert's one-off starter pool only when Hunter misses or is unavailable. Add either or both server keys, restart the app, then use **Find work email** beside an already-identified contact:
+Named contact enrichment is deliberately one-at-a-time. **FreeMax** uses free resources in the order the workspace chooses: Hunter's recurring monthly allowance is the sensible default, while Voila Norbert's one-off starter pool can be first or fallback. An admin can connect, disconnect or reorder either provider in **Settings → FreeMax enrichment** and continue immediately—no restart is required. Stored keys are encrypted using the deployment auth secret, never returned to the browser, and never included in Git.
+
+Environment variables remain a useful deployment-level fallback:
 
 ```dotenv
 HUNTER_API_KEY=your-hunter-key
@@ -186,7 +188,7 @@ HUNTER_FREE_MONTHLY_LIMIT=50
 NORBERT_FREE_LIFETIME_LIMIT=50
 ```
 
-The action requires a confirmed company website and contact name, refuses do-not-contact records, and records provider provenance in the audit log. It never calls Norbert after a Hunter success, never verifies again automatically, and stops at GUD CRM's configured free-first safety caps. Failed finds use no finder credit with either provider. The small allowance readout is GUD CRM's tracked usage; the provider dashboard remains authoritative if the same account is used elsewhere or is on a paid plan. Keys are never exposed to browser code.
+The action requires a confirmed company website and contact name, refuses do-not-contact records, and records provider provenance in the audit log. It stops after the first successful provider, never verifies again automatically, and stops at GUD CRM's configured free-first safety caps. Failed finds use no finder credit with either provider. The small allowance readout is GUD CRM's tracked usage; the provider dashboard remains authoritative if the same account is used elsewhere or is on a paid plan.
 
 Hunter currently provides 50 free credits each month with API access. Norbert provides the first 50 successful leads free; this is a starter pool, not a monthly refill. Provider terms can change, so the limits are environment-controlled instead of hard-coded into the workflow.
 
@@ -249,8 +251,8 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | `AI_PROVIDER` | `local` | `local` or `openai`. |
 | `AI_MODEL` | `gpt-5.6-luna` | OpenAI model used by the provider adapter. |
 | `OPENAI_API_KEY` | none | Server-only API credential for the OpenAI provider. |
-| `HUNTER_API_KEY` | none | Server-only Hunter key; FreeMax tries this recurring allowance first. |
-| `VOILA_NORBERT_API_KEY` | none | Server-only Norbert key; used only after a Hunter miss or skip. |
+| `HUNTER_API_KEY` | none | Optional deployment fallback for Hunter. A workspace admin can override or disconnect it in Settings without a restart. |
+| `VOILA_NORBERT_API_KEY` | none | Optional deployment fallback for Voila Norbert. A workspace admin can override or disconnect it in Settings without a restart. |
 | `HUNTER_FREE_MONTHLY_LIMIT` | `50` | Local monthly safety cap for successful Hunter finds initiated by GUD CRM. |
 | `NORBERT_FREE_LIFETIME_LIMIT` | `50` | Local lifetime safety cap for successful Norbert starter finds initiated by GUD CRM. |
 | `COMPANIES_HOUSE_API_KEY` | none | Reserved server-only key for UK company validation. |

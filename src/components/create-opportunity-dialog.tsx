@@ -1,8 +1,19 @@
 "use client";
 
-import { LoaderCircle, Plus, X } from "lucide-react";
+import {
+  Banknote,
+  Building2,
+  Check,
+  ChevronDown,
+  ContactRound,
+  LoaderCircle,
+  Plus,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
 
+import { parseSpokenCrmDraftAction, type SpokenCrmDraft } from "@/app/actions/ai";
 import { createOpportunityAction } from "@/app/actions/crm";
 import { applySpokenDraft, VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, defaultOffer } from "@/lib/domain/offers";
@@ -11,10 +22,12 @@ import { getEdition } from "@/lib/editions";
 
 export function CreateOpportunityDialog({
   snapshot,
+  currentUserId,
   onClose,
   onCreated,
 }: {
   snapshot: BoardSnapshot;
+  currentUserId: string;
   onClose: () => void;
   onCreated: (opportunity: OpportunitySummary) => void;
 }) {
@@ -22,9 +35,32 @@ export function CreateOpportunityDialog({
   const availableOffers = activeOffers(snapshot.offers);
   const initialOffer = defaultOffer(snapshot.offers);
   const edition = getEdition(snapshot.edition);
+  const ownerId = snapshot.users.some((user) => user.id === currentUserId) ? currentUserId : snapshot.users[0]?.id ?? "";
   const [pending, setPending] = useState(false);
+  const [notePending, setNotePending] = useState(false);
+  const [note, setNote] = useState("");
+  const [assistantMessage, setAssistantMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  function fillDraft(draft: SpokenCrmDraft) {
+    return applySpokenDraft(formRef.current, {
+      ...draft,
+      offerId: draft.offerName,
+      ownerId: draft.ownerName,
+    });
+  }
+
+  async function structureNote() {
+    if (note.trim().length < 2) return setAssistantMessage("Add a sentence or two first.");
+    setNotePending(true);
+    setAssistantMessage(null);
+    const result = await parseSpokenCrmDraftAction({ kind: "opportunity", transcript: note });
+    setNotePending(false);
+    if (!result.ok) return setAssistantMessage(result.error);
+    const count = fillDraft(result.draft);
+    setAssistantMessage(count ? `${count} fields filled. Check them, then create the opportunity.` : "I could not find any new details to add.");
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +70,7 @@ export function CreateOpportunityDialog({
     const value = (name: string) => String(form.get(name) ?? "").trim();
     const nextActionTitle = value("nextActionTitle");
     const nextActionAt = nextActionTitle && value("nextActionAt") ? value("nextActionAt") : "";
-    const ownerId = value("ownerId") || null;
+    const chosenOwnerId = value("ownerId") || null;
     const fitScoreValue = value("fitScore");
     const expectedValue = value("expectedValue");
     const probability = value("probability");
@@ -48,7 +84,7 @@ export function CreateOpportunityDialog({
       title: value("title"),
       offerId: value("offerId") || initialOffer?.id || null,
       stageId: value("stageId"),
-      ownerId,
+      ownerId: chosenOwnerId,
       priority: value("priority") as Priority,
       temperature: value("temperature") as Temperature,
       expectedValue: expectedValue ? Number(expectedValue) : null,
@@ -66,15 +102,12 @@ export function CreateOpportunityDialog({
 
     const result = await createOpportunityAction(input);
     setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
+    if (!result.ok) return setError(result.error);
 
-    const owner = snapshot.users.find((user) => user.id === ownerId) ?? null;
+    const owner = snapshot.users.find((user) => user.id === chosenOwnerId) ?? null;
     const offer = availableOffers.find((item) => item.id === input.offerId) ?? initialOffer;
     const contactId = input.contactName ? crypto.randomUUID() : null;
-    const created: OpportunitySummary = {
+    onCreated({
       id: result.opportunityId,
       stageId: input.stageId,
       position: Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === input.stageId).map((item) => item.position)) + 1000,
@@ -100,94 +133,133 @@ export function CreateOpportunityDialog({
       lastActivityAt: null,
       nextActionAt: input.nextActionAt?.toISOString() ?? null,
       noNextActionReason: null,
-      contacts: contactId
-        ? [{
-            id: contactId,
-            name: input.contactName,
-            title: input.contactTitle || null,
-            email: input.contactEmail || null,
-            phone: input.contactPhone || null,
-            linkedinUrl: input.contactLinkedinUrl || null,
-            primary: true,
-            preferredChannel: null,
-            doNotContact: false,
-          }]
-        : [],
+      contacts: contactId ? [{
+        id: contactId,
+        name: input.contactName,
+        title: input.contactTitle || null,
+        email: input.contactEmail || null,
+        phone: input.contactPhone || null,
+        linkedinUrl: input.contactLinkedinUrl || null,
+        primary: true,
+        preferredChannel: null,
+        doNotContact: false,
+      }] : [],
       activities: [],
-      tasks: input.nextActionTitle && input.nextActionAt
-        ? [{
-            id: crypto.randomUUID(),
-            title: input.nextActionTitle,
-            dueAt: input.nextActionAt.toISOString(),
-            status: "open",
-            owner,
-            contactId,
-          }]
-        : [],
+      tasks: input.nextActionTitle && input.nextActionAt ? [{
+        id: crypto.randomUUID(),
+        title: input.nextActionTitle,
+        dueAt: input.nextActionAt.toISOString(),
+        status: "open",
+        owner,
+        contactId,
+      }] : [],
       recentChannels: [],
-    };
-    onCreated(created);
+    });
   }
 
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.currentTarget === event.target) onClose();
     }}>
-      <section className="dialog-card dialog-card-wide" role="dialog" aria-modal="true" aria-labelledby="create-title">
+      <section className="dialog-card dialog-card-wide opportunity-create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-title">
         <header className="dialog-header">
           <div>
             <span className="eyebrow">New opportunity</span>
-            <h2 id="create-title">Start with enough context to act</h2>
-            <p>Company and opportunity are required. Everything else can grow with the relationship.</p>
+            <h2 id="create-title">What could happen here?</h2>
+            <p>Start with the opportunity. GUD can organise the supporting detail.</p>
           </div>
-          <div className="dialog-header-actions"><VoiceFillButton kind="opportunity" onDraft={(draft) => applySpokenDraft(formRef.current, { ...draft, offerId: draft.offerName, ownerId: draft.ownerName })} /><button className="icon-button" type="button" onClick={onClose} aria-label="Close new opportunity form"><X size={18} /></button></div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close new opportunity form"><X size={18} /></button>
         </header>
 
-        <form ref={formRef} className="dialog-form" onSubmit={submit}>
-          <fieldset>
-            <legend>{sentenceCase(edition.language.company)}</legend>
-            <div className="form-grid">
-              <label className="field-label">{sentenceCase(edition.language.company)} name<input name="companyName" aria-label="Company name" required minLength={2} autoFocus placeholder={edition.key === "service" ? "Bright Harbour Studio" : "Northstar Operations"} /></label>
-              <label className="field-label">Sector<input name="sector" placeholder="Software, consultancy, hospitality…" /></label>
-              <label className="field-label">Website<input name="websiteUrl" type="url" placeholder="https://example.com" /></label>
-              <label className="field-label">Company LinkedIn<input name="companyLinkedinUrl" type="url" placeholder="https://linkedin.com/company/…" /></label>
-              <label className="field-label">Fit score<select name="fitScore" defaultValue=""><option value="">Not scored</option>{[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score} / 5</option>)}</select></label>
+        <form ref={formRef} className="dialog-form opportunity-create-form" onSubmit={submit}>
+          <section className="opportunity-capture">
+            <div className="capture-copy">
+              <span className="capture-icon"><Sparkles size={19} /></span>
+              <div>
+                <h3>Talk or write it naturally</h3>
+                <p>Mention whatever you know. Useful clues include:</p>
+                <ul>
+                  <li>the opportunity and what you might offer</li>
+                  <li>the organisation, sector and why now</li>
+                  <li>the contact and a sensible next move</li>
+                </ul>
+              </div>
             </div>
-          </fieldset>
+            <VoiceFillButton kind="opportunity" prominent onDraft={fillDraft} />
+            <div className="capture-note">
+              <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="For example: Ross wants a coffee e-shop. It feels warm. I should call him next week to understand the range and timing…" aria-label="Describe the opportunity in your own words" />
+              <button className="btn btn-quiet" type="button" onClick={structureNote} disabled={notePending}>
+                {notePending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+                {notePending ? "Working…" : "Fill the details"}
+              </button>
+            </div>
+            {assistantMessage ? <p className="capture-message" role="status"><Check size={14} />{assistantMessage}</p> : null}
+          </section>
 
-          <fieldset>
-            <legend>Opportunity</legend>
+          <section className="opportunity-core">
             <div className="form-grid">
-              <label className="field-label form-span-2">Opportunity title<input name="title" required minLength={2} placeholder="Team workflow rollout" /></label>
-              {availableOffers.length > 1 ? <label className="field-label form-span-2">What are you pitching?<select name="offerId" defaultValue={initialOffer?.id ?? ""} required>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
-              <label className="field-label">Stage<select name="stageId" defaultValue={firstOpenStage?.id}>{snapshot.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select></label>
-              <label className="field-label">Owner<select name="ownerId" defaultValue={snapshot.users[0]?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
-              <label className="field-label">Priority<select name="priority" defaultValue="medium"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
-              <label className="field-label">Temperature<select name="temperature" defaultValue="cold"><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option><option value="at_risk">At risk</option><option value="unresponsive">Unresponsive</option></select></label>
-              <label className="field-label form-span-2">Outreach angle<textarea name="outreachAngle" rows={3} placeholder="Why this account, why now, and the most credible opening…" /></label>
+              <label className="field-label form-span-2 field-primary">Opportunity
+                <input name="title" aria-label="Opportunity title" required minLength={2} autoFocus placeholder="What could you help them achieve?" />
+              </label>
+              <label className="field-label">{sentenceCase(edition.language.company)}
+                <input name="companyName" aria-label="Company name" required minLength={2} placeholder={edition.key === "service" ? "Organisation or client" : "Target organisation"} />
+              </label>
+              {availableOffers.length > 1 ? <label className="field-label">Offer
+                <select name="offerId" defaultValue={initialOffer?.id ?? ""} required>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select>
+              </label> : <input type="hidden" name="offerId" value={initialOffer?.id ?? ""} />}
+              <label className="field-label form-span-2">Why this could be worth a conversation
+                <textarea name="outreachAngle" rows={3} placeholder="The need, timing and most credible opening…" />
+              </label>
             </div>
-            <details className="commercial-details">
-              <summary>Commercial outlook <span>Optional</span></summary>
+
+            <div className="signal-row">
+              <fieldset className="choice-chips">
+                <legend>Temperature</legend>
+                {(["cold", "warm", "hot"] as Temperature[]).map((value) => <label key={value} data-temperature={value}><input type="radio" name="temperature" value={value} defaultChecked={value === "cold"} /><span>{sentenceCase(value)}</span></label>)}
+              </fieldset>
+              <fieldset className="choice-chips">
+                <legend>Priority</legend>
+                {(["low", "medium", "high"] as Priority[]).map((value) => <label key={value}><input type="radio" name="priority" value={value} defaultChecked={value === "medium"} /><span>{sentenceCase(value)}</span></label>)}
+              </fieldset>
+              <span className="owner-default">Owned by <strong>{snapshot.users.find((user) => user.id === ownerId)?.name ?? "you"}</strong></span>
+            </div>
+          </section>
+
+          <div className="opportunity-details">
+            <details>
+              <summary><span><Building2 size={17} /><strong>Organisation details</strong><small>Sector, website, LinkedIn and fit</small></span><ChevronDown size={17} /></summary>
+              <div className="form-grid">
+                <label className="field-label">Sector<input name="sector" placeholder="Consultancy, hospitality, retail…" /></label>
+                <label className="field-label">Fit score<select name="fitScore" defaultValue=""><option value="">Not scored</option>{[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score} / 5</option>)}</select></label>
+                <label className="field-label">Website<input name="websiteUrl" type="url" placeholder="https://example.com" /></label>
+                <label className="field-label">Company LinkedIn<input name="companyLinkedinUrl" type="url" placeholder="https://linkedin.com/company/…" /></label>
+              </div>
+            </details>
+
+            <details>
+              <summary><span><ContactRound size={17} /><strong>Contact and ownership</strong><small>Add a person or hand it to a teammate</small></span><ChevronDown size={17} /></summary>
+              <div className="form-grid">
+                <label className="field-label">Owner<select name="ownerId" defaultValue={ownerId}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+                <label className="field-label">Contact name<input name="contactName" placeholder="Optional" /></label>
+                <label className="field-label">Contact role<input name="contactTitle" placeholder="Head of Operations" /></label>
+                <label className="field-label">Contact email<input name="contactEmail" type="email" placeholder="name@example.com" /></label>
+                <label className="field-label">Contact phone<input name="contactPhone" type="tel" placeholder="+44…" /></label>
+                <label className="field-label">Contact LinkedIn<input name="contactLinkedinUrl" type="url" placeholder="https://linkedin.com/in/…" /></label>
+              </div>
+            </details>
+
+            <details>
+              <summary><span><Banknote size={17} /><strong>Commercial outlook and next move</strong><small>Value, timing and a first action</small></span><ChevronDown size={17} /></summary>
               <div className="form-grid">
                 <label className="field-label">Potential value (£)<input name="expectedValue" type="number" min="0" step="100" inputMode="decimal" placeholder="12000" /></label>
                 <label className="field-label">Probability<select name="probability" defaultValue=""><option value="">Not estimated</option>{[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => <option value={value} key={value}>{value}%</option>)}</select></label>
                 <label className="field-label">Expected close<input name="expectedCloseDate" type="date" /></label>
+                <label className="field-label">Stage<select name="stageId" defaultValue={firstOpenStage?.id}>{snapshot.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select></label>
+                <label className="field-label">Next action<input name="nextActionTitle" placeholder="Call to understand the brief" /></label>
+                <label className="field-label">Due<input name="nextActionAt" type="datetime-local" defaultValue={defaultDue(snapshot.generatedAt)} /></label>
               </div>
             </details>
-          </fieldset>
-
-          <fieldset>
-            <legend>First contact and next action</legend>
-            <div className="form-grid">
-              <label className="field-label">Contact name<input name="contactName" placeholder="Optional" /></label>
-              <label className="field-label">Contact role<input name="contactTitle" placeholder="Head of Operations" /></label>
-              <label className="field-label">Contact email<input name="contactEmail" type="email" placeholder="name@example.com" /></label>
-              <label className="field-label">Contact phone<input name="contactPhone" type="tel" placeholder="+44 20 7946 0000" /></label>
-              <label className="field-label form-span-2">Contact LinkedIn<input name="contactLinkedinUrl" type="url" placeholder="https://linkedin.com/in/…" /></label>
-              <label className="field-label">Next action<input name="nextActionTitle" placeholder="Send a concise introduction" /></label>
-              <label className="field-label">Due<input name="nextActionAt" type="datetime-local" defaultValue={defaultDue(snapshot.generatedAt)} /></label>
-            </div>
-          </fieldset>
+          </div>
 
           {error ? <div className="form-error" role="alert">{error}</div> : null}
           <footer className="dialog-actions">
@@ -212,5 +284,5 @@ function defaultDue(now: string) {
 }
 
 function sentenceCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return value.charAt(0).toUpperCase() + value.slice(1).replace("_", " ");
 }

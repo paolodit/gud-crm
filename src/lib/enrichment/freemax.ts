@@ -13,6 +13,7 @@ export type FreeMaxProviderStatus = {
 export type FreeMaxStatus = {
   hunter: FreeMaxProviderStatus;
   norbert: FreeMaxProviderStatus;
+  order: FreeMaxProvider[];
 };
 
 export type FreeMaxAttempt = {
@@ -47,20 +48,21 @@ export async function findWorkEmailFreeMax(
     return { found: false, attempts, message: "Add a Hunter or Voila Norbert API key to the server environment to enable FreeMax email finding." };
   }
 
-  const providers: Array<{ id: FreeMaxProvider; key?: string; available: boolean; lookup: ProviderAdapter }> = [
-    {
+  const providersById: Record<FreeMaxProvider, { id: FreeMaxProvider; key?: string; available: boolean; lookup: ProviderAdapter }> = {
+    hunter: {
       id: "hunter",
       key: keys.hunter,
       available: status.hunter.configured && status.hunter.used < status.hunter.limit,
       lookup: adapters.hunter ?? findEmailWithHunter,
     },
-    {
+    norbert: {
       id: "norbert",
       key: keys.norbert,
       available: status.norbert.configured && status.norbert.used < status.norbert.limit,
       lookup: adapters.norbert ?? findEmailWithNorbert,
     },
-  ];
+  };
+  const providers = status.order.map((provider) => providersById[provider]);
 
   for (const provider of providers) {
     if (!provider.available || !provider.key) continue;

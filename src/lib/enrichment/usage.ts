@@ -5,6 +5,7 @@ import { auditEvents } from "@/db/schema";
 import { getLocalSetting, setLocalSetting } from "@/lib/data/local-store";
 import type { StorageMode } from "@/lib/domain/types";
 import type { FreeMaxProvider, FreeMaxStatus } from "@/lib/enrichment/freemax";
+import { getFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 import { env } from "@/lib/env";
 
 const settingKey = "freemax_enrichment_usage";
@@ -16,6 +17,7 @@ type LocalFreeMaxUsage = {
 };
 
 export async function getFreeMaxStatus(organisationId: string, storageMode: StorageMode): Promise<FreeMaxStatus> {
+  const configuration = await getFreeMaxRuntimeConfiguration(organisationId, storageMode);
   const month = currentMonth();
   let hunterUsed = 0;
   let norbertUsed = 0;
@@ -34,17 +36,18 @@ export async function getFreeMaxStatus(organisationId: string, storageMode: Stor
 
   return {
     hunter: {
-      configured: env.hunterConfigured,
+      configured: Boolean(configuration.keys.hunter),
       used: hunterUsed,
       limit: env.HUNTER_FREE_MONTHLY_LIMIT,
       cadence: "monthly",
     },
     norbert: {
-      configured: env.norbertConfigured,
+      configured: Boolean(configuration.keys.norbert),
       used: norbertUsed,
       limit: env.NORBERT_FREE_LIFETIME_LIMIT,
       cadence: "starter",
     },
+    order: configuration.order,
   };
 }
 

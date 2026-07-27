@@ -30,8 +30,9 @@ import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
 import { saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
-import { enrichResearchContactAction, importResearchResultsAction, saveResearchThemeAction } from "@/app/actions/research";
+import { enrichResearchContactAction, importResearchResultsAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
+import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
 import { getResearchTargets, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
@@ -212,6 +213,16 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
         {researchView === "themes" ? <><ResearchMetric label="Themes" value={themes.length} icon={<Sparkles />} /><ResearchMetric label="Ready to shortlist" value={themes.filter((theme) => theme.status === "ready").length} icon={<Check />} tone="green" /><ResearchMetric label="Gathering evidence" value={themes.filter((theme) => theme.status === "evidence").length} icon={<Search />} tone="blue" /><ResearchMetric label="Account targets" value={targets.length} icon={<Target />} tone="slate" /></> : <><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></>}
       </section>
 
+      <section className="research-assistant-path" aria-label="Research workflow">
+        <div className="research-assistant-intro"><span><Bot size={18} /></span><div><strong>Use Codex, Cowork or your preferred assistant as the research desk</strong><p>GUD holds the question and evidence. Your research tool handles browsing; no extra CRM API is required.</p></div></div>
+        <ol>
+          <li><b>1</b><span><strong>Prepare</strong><small>Choose a theme or account. LinkedIn is useful for identifying likely roles and named people—not for guessing private data.</small></span></li>
+          <li><b>2</b><span><strong>Research outside GUD</strong><small>Copy a guarded brief into a tool with browser access and ask it to return dated sources and contact candidates.</small></span></li>
+          <li><b>3</b><span><strong>Bring back evidence</strong><small>Import the JSON or record the findings, then use FreeMax only for a named contact and company domain.</small></span></li>
+        </ol>
+        <div className="research-assistant-actions"><button className="btn btn-primary" type="button" onClick={() => setShowHandoff(true)}><Clipboard size={15} />Prepare handoff</button><Link className="btn btn-quiet" href="/settings#enrichment"><KeyRound size={15} />FreeMax setup</Link></div>
+      </section>
+
       {notice ? <div className="research-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X size={15} /></button></div> : null}
 
       <section className="research-view-switch" aria-label="Research shape">
@@ -269,6 +280,7 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
                 {selected.company.scaleNote ? <div className="research-scale"><Building2 size={16} /><span>{selected.company.scaleNote}</span></div> : null}
                 <div className="research-links">
                   {selectedWebsiteUrl ? <a href={selectedWebsiteUrl} target="_blank" rel="noopener noreferrer"><Globe2 size={15} />Website<ExternalLink size={13} /></a> : null}
+                  <a href={safeExternalUrl(selected.company.linkedinPeopleSearchUrl) ?? `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Users size={14} />LinkedIn people search<ExternalLink size={13} /></a>
                   <a href={`https://find-and-update.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Building2 size={14} />Companies House<ExternalLink size={13} /></a>
                   <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Globe2 size={14} />Maps search<ExternalLink size={13} /></a>
                   {selectedSourceUrls.slice(0, 4).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}
@@ -320,7 +332,7 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
       {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} /> : null}
       {editingContact && selected ? <ResearchContactDialog opportunity={selected} contact={editingContact === "new" ? null : editingContact} onClose={() => setEditingContact(null)} onSaved={() => { setEditingContact(null); router.refresh(); }} /> : null}
-      {themeEditor ? <ResearchThemeDialog theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} /> : null}
+      {themeEditor ? <ResearchThemeDialogV2 theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} /> : null}
     </div>
   );
 }
@@ -350,23 +362,6 @@ function ThemeWorkspace({ themes, selected, offers, onSelect, onEdit, onAddTarge
       {selected ? <><header className="research-inspector-head"><div className="research-company-icon"><Sparkles size={19} /></div><div><ThemeStatus status={selected.status} /><h2>{selected.title}</h2><p>{selected.audience || "Audience not defined"}</p></div><button className="icon-button" type="button" onClick={() => onEdit(selected)} aria-label={`Edit ${selected.title}`}><Pencil size={16} /></button></header><div className="research-fit-strip"><span><small>Offer angle</small><strong>{offer?.name ?? "Open"}</strong></span><span><small>Sources</small><strong>{selected.sourceUrls.length}</strong></span><span><small>State</small><strong>{themeStatusLabel(selected.status)}</strong></span></div><section className="research-section theme-question"><span className="eyebrow">The question</span><h3>Is this a problem worth pursuing?</h3><dl><div><dt>Problem or change</dt><dd>{selected.problem || "Not recorded yet"}</dd></div><div><dt>Evidence signal</dt><dd>{selected.signal || "Add the strongest fact, trend or repeated observation."}</dd></div><div><dt>Angle to test</dt><dd>{selected.angle || "Describe one useful way your service might respond."}</dd></div></dl>{selected.sourceUrls.length ? <div className="research-links">{selected.sourceUrls.slice(0, 6).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}</div> : null}</section><footer className="research-decision"><div><span className="eyebrow">Next move</span><strong>Research externally, then turn credible matches into account targets.</strong></div><div><button className="btn btn-quiet" type="button" onClick={copyTheme}><Clipboard size={15} />Copy brief</button><button className="btn btn-primary" type="button" onClick={onAddTarget}><ArrowRight size={15} />Add target</button></div></footer></> : <div className="research-empty research-empty-panel"><Sparkles size={28} /><strong>Select a theme</strong><span>The research question and offer angle will appear here.</span></div>}
     </aside>
   </div>;
-}
-
-function ResearchThemeDialog({ theme, offers, onClose, onSaved }: { theme: ResearchThemeSummary | null; offers: BoardSnapshot["offers"]; onClose: () => void; onSaved: (theme: ResearchThemeSummary) => void }) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setError(null);
-    const form = new FormData(event.currentTarget);
-    const sourceUrls = String(form.get("sourceUrls") ?? "").split(/\s+/).map((item) => item.trim()).filter(Boolean);
-    const result = await saveResearchThemeAction({ themeId: theme?.id ?? null, title: form.get("title"), audience: form.get("audience"), problem: form.get("problem"), signal: form.get("signal"), angle: form.get("angle"), status: form.get("status"), offerId: String(form.get("offerId") ?? "") || null, sourceUrls });
-    setPending(false);
-    if (!result.ok) return setError(result.error);
-    onSaved(result.theme);
-  }
-  return <div className="dialog-backdrop" role="presentation"><section className="dialog-card dialog-card-wide" role="dialog" aria-modal="true" aria-labelledby="theme-dialog-title"><header className="dialog-header"><div><span className="eyebrow">Market research</span><h2 id="theme-dialog-title">{theme ? "Shape the research theme" : "Start with a useful question"}</h2><p>A theme connects evidence to an audience and a possible service angle. It is not yet an opportunity.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close research theme editor"><X size={17} /></button></header><form className="dialog-form" onSubmit={submit}><div className="form-grid"><label className="field-label form-span-2">Theme title<input className="field" name="title" defaultValue={theme?.title ?? ""} required minLength={2} autoFocus placeholder="A costly change or unmet need worth investigating" /></label><label className="field-label">Audience<input className="field" name="audience" defaultValue={theme?.audience ?? ""} placeholder="Who appears to experience it?" /></label><label className="field-label">Research state<select className="field-select" name="status" defaultValue={theme?.status ?? "idea"}><option value="idea">Idea</option><option value="evidence">Gathering evidence</option><option value="ready">Ready to shortlist</option></select></label>{offers.length > 1 ? <label className="field-label form-span-2">Possible service<select className="field-select" name="offerId" defaultValue={theme?.offerId ?? ""}><option value="">Emerging / not chosen</option>{offers.map((offer) => <option value={offer.id} key={offer.id}>{offer.name}</option>)}</select></label> : null}<label className="field-label form-span-2">Problem or change<textarea className="field textarea" name="problem" rows={3} defaultValue={theme?.problem ?? ""} placeholder="What seems to be changing, breaking or becoming newly valuable?" /></label><label className="field-label form-span-2">Strongest signal<textarea className="field textarea" name="signal" rows={3} defaultValue={theme?.signal ?? ""} placeholder="What evidence would make this more than a hunch?" /></label><label className="field-label form-span-2">Offer angle to test<textarea className="field textarea" name="angle" rows={3} defaultValue={theme?.angle ?? ""} placeholder="How might one existing or emerging service help?" /></label><label className="field-label form-span-2">Source links<textarea className="field textarea" name="sourceUrls" rows={3} defaultValue={theme?.sourceUrls.join("\n") ?? ""} placeholder="One HTTPS link per line" /></label></div>{error ? <p className="form-error">{error}</p> : null}<footer className="dialog-actions"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}{pending ? "Saving…" : "Save theme"}</button></footer></form></section></div>;
 }
 
 function ThemeStatus({ status }: { status: ResearchThemeSummary["status"] }) {
