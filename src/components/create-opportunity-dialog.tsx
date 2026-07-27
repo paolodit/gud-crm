@@ -199,7 +199,7 @@ export function CreateOpportunityDialog({
           <section className="opportunity-core">
             <div className="form-grid">
               <label className="field-label form-span-2 field-primary">Opportunity
-                <input name="title" required minLength={2} autoFocus placeholder="What could you help them achieve?" />
+                <input name="title" aria-label="Opportunity title" required minLength={2} autoFocus placeholder="What could you help them achieve?" />
               </label>
               <label className="field-label">{sentenceCase(edition.language.company)}
                 <input name="companyName" aria-label="Company name" required minLength={2} placeholder={edition.key === "service" ? "Organisation or client" : "Target organisation"} />
