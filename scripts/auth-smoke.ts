@@ -34,8 +34,8 @@ async function main() {
   const workspace = await fetch(`${baseUrl}/pipeline`, { headers: { Cookie: cookie }, redirect: "manual" });
   if (!workspace.ok) throw new Error(`Authenticated workspace request failed with HTTP ${workspace.status}.`);
   const workspaceHtml = await workspace.text();
-  if (!workspaceHtml.includes("Your next moves") && !workspaceHtml.includes("Your owned queue is clear")) {
-    throw new Error("The authenticated landing page did not render the command centre.");
+  if (!workspaceHtml.includes('aria-label="Pipeline filters"')) {
+    throw new Error("The authenticated landing page did not render the sales pipeline.");
   }
 
   const signOut = await fetch(`${baseUrl}/api/auth/sign-out`, {
