@@ -34,6 +34,23 @@ Give each deployment its own:
 - upload volume and provider/API keys;
 - encrypted backup schedule and tested restore path.
 
+### Optional MCP connector
+
+Remote AI-tool access is off by default. After the PostgreSQL migration has completed and the canonical HTTPS URL is working, set:
+
+```dotenv
+MCP_ENABLED=true
+```
+
+Each instance then exposes its own Streamable HTTP endpoint:
+
+```text
+https://focused-sales.example.com/mcp
+https://service-sales.example.com/mcp
+```
+
+Users connect and consent separately to each instance. OAuth clients, access tokens, refresh tokens and grants are stored in that instance's database; they are not shared through the Docker image or Git. Keep `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` on the same canonical HTTPS origin, and do not expose the MCP endpoint from SQLite or demo deployments.
+
 Real organisation names and records belong only in private deployment settings and databases. The public image contains generic models and fictional fixtures.
 
 For the complete CapRover configuration, automatic migration/bootstrap behaviour, health checks and launch checklist, see [Deploying GUD CRM on CapRover](CAPROVER.md).

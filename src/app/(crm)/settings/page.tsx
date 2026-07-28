@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { SettingsDashboard, type ImportStatus } from "@/components/crm-views";
 import { db } from "@/db";
-import { organisations } from "@/db/schema";
+import { oauthApplications, oauthConsents, organisations } from "@/db/schema";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getLocalAiEnabled } from "@/lib/data/local-store";
 import { getFreeMaxStatus } from "@/lib/enrichment/usage";
@@ -23,6 +23,17 @@ export default async function SettingsPage() {
     : member.demoMode
       ? true
       : (await db.select({ enabled: organisations.aiEnabled }).from(organisations).where(eq(organisations.id, member.organisationId)).limit(1))[0]?.enabled ?? false;
+  const mcpConnections = member.storageMode === "postgres" && env.mcpEnabled
+    ? await db.select({
+      clientId: oauthApplications.clientId,
+      name: oauthApplications.name,
+      scopes: oauthConsents.scopes,
+      createdAt: oauthConsents.createdAt,
+    }).from(oauthConsents)
+      .innerJoin(oauthApplications, eq(oauthConsents.clientId, oauthApplications.clientId))
+      .where(and(eq(oauthConsents.userId, member.id), eq(oauthConsents.consentGiven, true)))
+      .orderBy(desc(oauthConsents.createdAt))
+    : [];
   return (
     <SettingsDashboard
       snapshot={snapshot}
@@ -37,6 +48,11 @@ export default async function SettingsPage() {
         workspaceAiEnabled,
         passwordAuthActive: member.storageMode === "postgres",
         passwordResetConfigured: member.storageMode === "postgres" && env.authEmailConfigured,
+        mcpEnabled: env.mcpEnabled && member.storageMode === "postgres",
+        mcpEndpoint: `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/mcp`,
+        mcpConnections: mcpConnections
+          .filter((connection, index, rows) => rows.findIndex((item) => item.clientId === connection.clientId) === index)
+          .map((connection) => ({ ...connection, createdAt: connection.createdAt.toISOString() })),
         freeMaxStatus,
         version: env.GUD_VERSION,
         backupAutomationConfigured: Boolean(env.GUD_BACKUP_WEBHOOK_URL),

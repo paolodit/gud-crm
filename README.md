@@ -194,6 +194,46 @@ The action requires a confirmed company website and contact name, refuses do-not
 
 Hunter currently provides 50 free credits each month with API access. Norbert provides the first 50 successful leads free; this is a starter pool, not a monthly refill. Provider terms can change, so the limits are environment-controlled instead of hard-coded into the workflow.
 
+## Connect Codex, ChatGPT or another MCP coworker
+
+On a PostgreSQL deployment, GUD can expose a small remote [Model Context Protocol](https://modelcontextprotocol.io/) endpoint. This lets a user connect their preferred AI workspace once, sign into GUD through OAuth, then ask it to review the pipeline, prepare cited research, add an opportunity, update a next action or log a confirmed activity.
+
+```text
+https://crm.example.com/mcp
+```
+
+Connect it once:
+
+- **Codex desktop or IDE:** open **Settings → MCP servers → Add server**, choose **Streamable HTTP**, paste the URL, save/restart, then select **Authenticate**.
+- **ChatGPT Work:** enable developer mode, create a custom app in **Settings → Apps**, provide the URL, scan the tools, and complete GUD's OAuth screen. Workspace plan and admin controls determine whether write tools are available.
+- **Separate GUD instances:** add each hostname as a separate connection. Credentials, grants and data never cross between them.
+
+See the current [Codex MCP connection guide](https://developers.openai.com/codex/mcp/) and [ChatGPT custom MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta) for the latest client-side menu wording.
+
+Enable it deliberately:
+
+```dotenv
+MCP_ENABLED=true
+```
+
+The connector uses the same GUD account, organisation and role boundary as the browser application. OAuth 2.1 uses PKCE, short-lived access tokens and refresh tokens; connection grants are stored in the instance's PostgreSQL database and can be revoked. Read-only is the safe default, and GUD activates write tools only after the user explicitly approves read/write access on its connection screen. SQLite and demo workspaces never expose remote MCP access.
+
+The first release keeps the tool surface purposeful:
+
+| Tool | Purpose |
+| --- | --- |
+| `describe_workspace` | Learn the edition, offers, stages, activity types and guardrails before acting. |
+| `list_opportunities` / `get_opportunity` | Review the book of work and one relationship in context. |
+| `search_companies` | Avoid creating a duplicate organisation. |
+| `submit_research_results` | Merge cited public evidence and contact candidates into Researching for human review. |
+| `create_opportunity` / `update_opportunity` | Create or apply a bounded patch; Won/Lost moves require explicit confirmation. |
+| `set_next_action` / `log_activity` | Record an owned follow-up or a sales touch the user confirms really happened. |
+| `find_work_email` | Use the workspace's configured FreeMax provider order and visible allowances. |
+
+The MCP server does not scrape LinkedIn, store browser cookies, send outreach, delete records or provide raw database access. External pages are untrusted evidence. Research submissions require public HTTP(S) source URLs, writes are schema-bounded, every mutation is organisation-scoped and audit logged, and clients can connect with `gud:read` only or `gud:read gud:write`.
+
+For the two-instance pattern, connect each hostname separately. An HSM-style focused workspace and an agency/service workspace therefore retain separate accounts, grants and databases even when both run the same image.
+
 ## Choose the VPS database deliberately
 
 SQLite can comfortably handle the expected data volume on one small VPS. Database size is not the reason PostgreSQL is currently the supported live path. The reason is authentication: GUD's SQLite runtime intentionally acts as one trusted admin session, while PostgreSQL mode activates separate users, passwords, revocable sessions and organisation scoping.
@@ -249,6 +289,7 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Browser-facing application URL. |
 | `RESEND_API_KEY` | none | Server-only Resend credential; enables password-reset email with `AUTH_FROM_EMAIL`. |
 | `AUTH_FROM_EMAIL` | none | Verified sender used for account recovery. |
+| `MCP_ENABLED` | `false` | Enables the authenticated remote `/mcp` connector on a PostgreSQL deployment. |
 | `AI_ENABLED` | `true` | Deployment-level AI kill switch. |
 | `AI_PROVIDER` | `local` | `local` or `openai`. |
 | `AI_MODEL` | `gpt-5.6-luna` | OpenAI model used by the provider adapter. |
@@ -301,7 +342,11 @@ When exactly one offer is active, tracker and research imports assign it automat
 ```mermaid
 flowchart LR
   U["Browser"] --> N["Next.js 16 / React 19"]
+  A["Codex / ChatGPT / MCP client"] --> M["OAuth 2.1 + /mcp"]
+  M --> N
   N --> S["Validated server actions"]
+  M --> T["Bounded MCP tools"]
+  T --> R
   S --> R["CRM repository"]
   R --> Q[("SQLite - local")]
   R --> P[("PostgreSQL - VPS")]
@@ -333,6 +378,7 @@ src/db/schema.ts          PostgreSQL organisation-scoped model
 src/lib/ai/               context, schemas, and provider adapters
 src/lib/data/             SQLite store and shared read repository
 src/lib/import/           XLSX preview and transactional import
+src/lib/mcp/              authenticated MCP tools and CRM service boundary
 drizzle/                  committed PostgreSQL migrations
 scripts/                  seed, import, and local database utilities
 business dev/             product plan and non-runtime working material

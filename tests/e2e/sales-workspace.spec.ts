@@ -49,4 +49,25 @@ test.describe.serial("Service Sales workspace", () => {
     await spread.click();
     await expect(page.getByRole("button", { name: "Return Ready to contact to one lane" })).toHaveAttribute("aria-pressed", "true");
   });
+
+  test("pulls the pipeline sideways from empty board space", async ({ page }) => {
+    await page.goto("/pipeline");
+    const viewport = page.locator(".board-viewport");
+    const emptyColumn = page.locator(".empty-column").first();
+    await expect(viewport).toBeVisible();
+    await expect(emptyColumn).toBeVisible();
+    expect(await viewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+    const box = await emptyColumn.boundingBox();
+    expect(box).not.toBeNull();
+    const before = await viewport.evaluate((element) => element.scrollLeft);
+    const startX = box!.x + box!.width / 2;
+    const startY = box!.y + box!.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX - 220, startY, { steps: 5 });
+    await page.mouse.up();
+
+    await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before);
+  });
 });

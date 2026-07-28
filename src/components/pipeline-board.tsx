@@ -52,7 +52,15 @@ import {
 } from "lucide-react";
 import { format, formatDistanceStrict } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, startTransition, useMemo, useState } from "react";
+import {
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  startTransition,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   completeTaskAction,
@@ -103,6 +111,13 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const boardPan = useRef<{
+    pointerId: number;
+    startX: number;
+    scrollLeft: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressBoardClick = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -208,6 +223,49 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
     openOpportunity(opportunity.id);
   }
 
+  function beginBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, [role='button'], .opportunity-card")) return;
+    const viewport = event.currentTarget;
+    boardPan.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: viewport.scrollLeft,
+      moved: false,
+    };
+    viewport.setPointerCapture(event.pointerId);
+    viewport.dataset.panning = "true";
+  }
+
+  function moveBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPan.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const delta = event.clientX - pan.startX;
+    if (!pan.moved && Math.abs(delta) < 4) return;
+    pan.moved = true;
+    event.preventDefault();
+    event.currentTarget.scrollLeft = pan.scrollLeft - delta;
+  }
+
+  function endBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPan.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    suppressBoardClick.current = pan.moved;
+    boardPan.current = null;
+    delete event.currentTarget.dataset.panning;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function blockClickAfterPan(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!suppressBoardClick.current) return;
+    suppressBoardClick.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   return (
     <>
       <header className="page-header pipeline-page-header">
@@ -274,7 +332,16 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
 
       <DndContext id="gud-crm-pipeline" sensors={sensors} onDragEnd={onDragEnd}>
         <div className="board-shell">
-          <div className="board-viewport" data-density={compact ? "compact" : "comfortable"}>
+          <div
+            className="board-viewport"
+            data-density={compact ? "compact" : "comfortable"}
+            aria-label="Sales pipeline. Drag empty space sideways or use the horizontal scrollbar to see later stages."
+            onPointerDown={beginBoardPan}
+            onPointerMove={moveBoardPan}
+            onPointerUp={endBoardPan}
+            onPointerCancel={endBoardPan}
+            onClickCapture={blockClickAfterPan}
+          >
             <div className="board">
               {initialSnapshot.stages.map((stage) => (
                 <BoardColumn
@@ -291,7 +358,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
               ))}
             </div>
           </div>
-          <span className="board-scroll-cue">Scroll for later stages <ChevronRight size={13} /></span>
+          <span className="board-scroll-cue">Drag or scroll for later stages <ChevronRight size={13} /></span>
         </div>
       </DndContext>
 

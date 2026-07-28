@@ -124,6 +124,73 @@ export const verifications = pgTable(
   (table) => [index("verifications_identifier_idx").on(table.identifier)],
 );
 
+// OAuth 2.1 records used by the Better Auth MCP provider. They intentionally
+// live beside the core auth tables so each deployed GUD instance keeps its
+// connector grants inside the same isolated PostgreSQL database.
+export const oauthApplications = pgTable(
+  "oauth_applications",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    icon: text("icon"),
+    metadata: text("metadata"),
+    clientId: text("client_id").notNull(),
+    clientSecret: text("client_secret"),
+    redirectUrls: text("redirect_urls").notNull(),
+    type: text("type").notNull(),
+    disabled: boolean("disabled").default(false).notNull(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("oauth_applications_client_id_unique").on(table.clientId),
+    index("oauth_applications_user_idx").on(table.userId),
+  ],
+);
+
+export const oauthAccessTokens = pgTable(
+  "oauth_access_tokens",
+  {
+    id: text("id").primaryKey(),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }).notNull(),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }).notNull(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    scopes: text("scopes").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("oauth_access_tokens_access_unique").on(table.accessToken),
+    uniqueIndex("oauth_access_tokens_refresh_unique").on(table.refreshToken),
+    index("oauth_access_tokens_client_idx").on(table.clientId),
+    index("oauth_access_tokens_user_idx").on(table.userId),
+  ],
+);
+
+export const oauthConsents = pgTable(
+  "oauth_consents",
+  {
+    id: text("id").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthApplications.clientId, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    scopes: text("scopes").notNull(),
+    consentGiven: boolean("consent_given").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("oauth_consents_client_idx").on(table.clientId),
+    index("oauth_consents_user_idx").on(table.userId),
+  ],
+);
+
 export const companies = pgTable(
   "companies",
   {
@@ -579,4 +646,12 @@ export const importRows = pgTable(
   (table) => [uniqueIndex("import_rows_source_unique").on(table.importId, table.sourceRow)],
 );
 
-export const authSchema = { users, sessions, accounts, verifications };
+export const authSchema = {
+  users,
+  sessions,
+  accounts,
+  verifications,
+  oauthApplications,
+  oauthAccessTokens,
+  oauthConsents,
+};
