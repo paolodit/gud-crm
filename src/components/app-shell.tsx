@@ -22,8 +22,8 @@ import type { CurrentMember } from "@/lib/session";
 import { BrandLogo } from "@/components/brand-logo";
 
 const navItems = [
-  { href: "/my-work", label: "Today", icon: ListChecks },
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
+  { href: "/my-work", label: "Today", icon: ListChecks },
   { href: "/research", label: "Research", icon: Telescope },
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/search", label: "Search", icon: Search },

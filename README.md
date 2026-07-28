@@ -18,11 +18,11 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 | --- | --- |
 | Research | Research target accounts or market themes before they become opportunities, hand structured briefs to Codex or Cowork, merge returned account evidence safely, and promote only after human review. |
 | Offers | Define the products or services you pitch once. A second active offer quietly unlocks contextual filters, labels, reporting, playbook assets and AI grounding across the CRM. |
-| Pipeline | Drag or keyboard-move opportunities between stages or into a deliberate order, filter by owner/attention, switch between comfortable and compact cards, and understand every stage from its inline guide. |
-| Opportunity | Work in a wide, expandable relationship workspace with editable company fit/scale, contact details, tasks, outreach rhythm, timeline, logging, and AI together. |
+| Pipeline | Start with the whole sales picture, drag or keyboard-move opportunities into a deliberate order, spread a busy stage across two lanes, filter by owner/attention, and switch between comfortable and compact cards. |
+| Opportunity | Talk or type a new opportunity naturally, then work in a wide relationship workspace with editable company fit/scale, contacts, tasks, outreach rhythm, timeline, logging, and AI together. |
 | Activity | Log each attempt, channel and outcome in seconds; optionally create the follow-up in the same move. |
 | AI coach | Ask for the best next move, an outreach draft, creative routes, or cold-lead recovery. |
-| Today | Land on five ranked next moves, a compact pipeline pulse and only the relationships that need a decision; expand the full schedule when needed. |
+| Today | Focus on five ranked next moves, a compact pipeline pulse and only the relationships that need a decision; expand the full schedule when needed. |
 | Companies | Add a company manually, sort by fit/name/contact coverage/pipeline order, then jump into live work. Every manually added company gets a research card so it cannot vanish between lists. |
 | Search | Find companies, people, notes, outcomes, roles, and opportunity context. |
 | Reports | See pipeline health, stage distribution, workload, channel mix, and attention gaps. |
@@ -32,15 +32,17 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 
 The design principle is simple: important work should be obvious, updates should be quick, and the system should help a human make a better decision without pretending to be the human.
 
-## Start every session on Today
+## See the whole book first
 
-After sign-in, GUD opens **Today**, not the full board. It answers three questions without turning into another dashboard:
+After sign-in, GUD opens **Pipeline**. The first screen answers the broad question—*where does everything stand?*—without forcing the user through a summary layer first. A crowded stage can expand into two lanes while remaining one stage and one colour, so a live book of work stays readable without vertical scrolling. Comfortable and compact card views handle the rest of the density range.
+
+**Today** remains one click away as a deliberate focus layer. It answers three narrower questions:
 
 1. **What should I do next?** Five owned actions are ranked by overdue state, priority, temperature, pipeline progress and date.
 2. **Where is the pipeline?** A small pulse shows how many opportunities are ready, in outreach, in a live conversation or in nurture.
 3. **What needs a decision?** Records without an owned next step, marked at risk, unresponsive or overdue are surfaced separately.
 
-The complete schedule is one collapsed section below this command centre. The Pipeline remains the place to understand and move the whole book of work; Today is the place to begin working.
+The complete schedule is one collapsed section below Today. Pipeline is the place to understand and move the whole book of work; Today is the place to choose the next few actions when it is time to focus.
 
 Research is deliberately outside the sales journey. A possible target remains in the Research Hub until a person promotes it. The active pipeline is intentionally outcome-led:
 
@@ -76,7 +78,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Choose **Open local workspace** and GUD lands on Today.
+Open [http://localhost:3000](http://localhost:3000). Choose **Open local workspace** and GUD lands on the Pipeline.
 
 With no environment file, GUD CRM uses SQLite at `data/gud-crm.db`, creates a clean Focused Sales workspace, and keeps changes across refreshes and restarts. Local mode deliberately has no login ceremony; it is intended for trusted development and single-user evaluation.
 

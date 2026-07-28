@@ -62,7 +62,7 @@ GitHub Actions runs dependency audit, strict TypeScript, ESLint, unit/contract t
 1. an unauthenticated workspace request is redirected;
 2. email/password sign-in issues a session;
 3. the session resolves to the expected user;
-4. the authenticated Today page renders; and
+4. the authenticated Pipeline page renders; and
 5. sign-out removes access.
 
 Run the same flow against a running PostgreSQL deployment with:

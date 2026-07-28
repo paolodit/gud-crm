@@ -39,7 +39,7 @@ export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demo
       return;
     }
 
-    router.push("/my-work");
+    router.push("/pipeline");
     router.refresh();
   }
 
@@ -49,7 +49,7 @@ export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demo
         <BrandLogo size={68} priority />
         <h2>Explore the working CRM</h2>
         <p>The workspace is currently running in demo mode with representative tracker data.</p>
-        <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.push("/my-work")}>
+        <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.push("/pipeline")}>
           Open demo workspace <ArrowRight size={16} />
         </button>
         <p style={{ marginTop: 16 }}>
@@ -65,7 +65,7 @@ export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demo
         <BrandLogo size={68} priority />
         <h2>Local development workspace</h2>
         <p>SQLite runs as one trusted admin session for fast development. Team roles are stored, but separate passwords and resets intentionally begin when the app moves to PostgreSQL.</p>
-        <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.push("/my-work")}>Open local workspace <ArrowRight size={16} /></button>
+        <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => router.push("/pipeline")}>Open local workspace <ArrowRight size={16} /></button>
       </div>
     );
   }
@@ -74,7 +74,7 @@ export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demo
     <form className="auth-form" onSubmit={submit}>
       <BrandLogo size={68} priority />
       <h2>{resetMode ? "Reset your password" : "Welcome back"}</h2>
-      <p>{resetMode ? "We’ll email a secure, time-limited reset link." : "Sign in to see what needs attention and where the pipeline stands."}</p>
+      <p>{resetMode ? "We’ll email a secure, time-limited reset link." : "Sign in to see the whole pipeline, then focus on what needs attention."}</p>
       <div className="form-stack">
         <label className="field-label">
           Work email

@@ -25,7 +25,7 @@ This is workspace configuration, not a separate application version. A real orga
 
 1. Install dependencies and run `npm run dev`.
 2. Open `http://localhost:3000` and choose **Open local workspace**.
-3. Begin on **Today**. This shows the next moves and overall momentum; the full pipeline is one click away.
+3. Begin on **Pipeline**. Scan the whole book of work, spread any crowded stage into two lanes, then use **Today** when you want a ranked focus list.
 4. In **Settings**, choose the sales model and rename the pipeline.
 5. Review **Offers**. Keep one offer for the cleanest experience. Add a second only when the team is actively pitching another kind of work.
 6. Review the team and roles: admin, manager and sales support. Local changes prepare the roster; separate passwords start with PostgreSQL.
