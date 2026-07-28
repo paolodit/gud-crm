@@ -36,6 +36,7 @@ CREATE TABLE "oauth_consents" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX "oauth_applications_client_id_unique" ON "oauth_applications" USING btree ("client_id");--> statement-breakpoint
 ALTER TABLE "oauth_access_tokens" ADD CONSTRAINT "oauth_access_tokens_client_id_oauth_applications_client_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."oauth_applications"("client_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "oauth_access_tokens" ADD CONSTRAINT "oauth_access_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "oauth_applications" ADD CONSTRAINT "oauth_applications_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -45,7 +46,6 @@ CREATE UNIQUE INDEX "oauth_access_tokens_access_unique" ON "oauth_access_tokens"
 CREATE UNIQUE INDEX "oauth_access_tokens_refresh_unique" ON "oauth_access_tokens" USING btree ("refresh_token");--> statement-breakpoint
 CREATE INDEX "oauth_access_tokens_client_idx" ON "oauth_access_tokens" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_access_tokens_user_idx" ON "oauth_access_tokens" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "oauth_applications_client_id_unique" ON "oauth_applications" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_applications_user_idx" ON "oauth_applications" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "oauth_consents_client_idx" ON "oauth_consents" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "oauth_consents_user_idx" ON "oauth_consents" USING btree ("user_id");
