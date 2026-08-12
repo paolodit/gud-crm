@@ -9,7 +9,7 @@ async function main() {
     throw new Error("AUTH_SMOKE_EMAIL and AUTH_SMOKE_PASSWORD are required.");
   }
 
-  const unauthenticated = await fetch(`${baseUrl}/my-work`, { redirect: "manual" });
+  const unauthenticated = await fetch(`${baseUrl}/pipeline`, { redirect: "manual" });
   assertRedirectToSignIn(unauthenticated, "Unauthenticated workspace request");
 
   const signIn = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
@@ -31,11 +31,11 @@ async function main() {
     throw new Error("The authenticated session did not resolve to the expected user.");
   }
 
-  const workspace = await fetch(`${baseUrl}/my-work`, { headers: { Cookie: cookie }, redirect: "manual" });
+  const workspace = await fetch(`${baseUrl}/pipeline`, { headers: { Cookie: cookie }, redirect: "manual" });
   if (!workspace.ok) throw new Error(`Authenticated workspace request failed with HTTP ${workspace.status}.`);
   const workspaceHtml = await workspace.text();
-  if (!workspaceHtml.includes("Your next moves") && !workspaceHtml.includes("Your owned queue is clear")) {
-    throw new Error("The authenticated landing page did not render the command centre.");
+  if (!workspaceHtml.includes('aria-label="Pipeline filters"')) {
+    throw new Error("The authenticated landing page did not render the sales pipeline.");
   }
 
   const signOut = await fetch(`${baseUrl}/api/auth/sign-out`, {
@@ -46,7 +46,7 @@ async function main() {
   if (!signOut.ok) throw new Error(`Sign-out failed with HTTP ${signOut.status}.`);
 
   const revokedCookies = signOut.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
-  const afterSignOut = await fetch(`${baseUrl}/my-work`, {
+  const afterSignOut = await fetch(`${baseUrl}/pipeline`, {
     headers: { Cookie: revokedCookies || cookie },
     redirect: "manual",
   });

@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 test.describe.serial("Service Sales workspace", () => {
+  test("opens the whole pipeline as the workspace home", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(page).toHaveURL(/\/pipeline$/);
+    await expect(page.getByRole("heading", { name: "Service Sales" })).toBeVisible();
+  });
+
   test("starts with the Service Sales model", async ({ page }) => {
     await page.goto("/settings");
 
@@ -9,6 +16,35 @@ test.describe.serial("Service Sales workspace", () => {
     const edition = page.locator(".edition-current");
     await expect(edition.getByText("Service Sales", { exact: true })).toBeVisible();
     await expect(edition.getByText("Consultancies, agencies and independent specialists", { exact: true })).toBeVisible();
+  });
+
+  test("keeps market ideas and named targets in separate workspaces", async ({ page }) => {
+    await page.goto("/research");
+    await expect(page.getByRole("heading", { name: "Ideas", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Targets", exact: true })).toBeVisible();
+
+    await page.getByRole("link", { name: "Targets", exact: true }).click();
+    await expect(page).toHaveURL(/\/targets$/);
+    await expect(page.getByRole("heading", { name: "Targets", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Find a work email" })).toBeVisible();
+  });
+
+  test("explains required opportunity fields and accepts a bare optional website", async ({ page }) => {
+    await page.goto("/pipeline");
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+    await expect(page.locator(".opportunity-create-form .form-error")).toContainText("Add the opportunity");
+    await page.getByLabel("Opportunity title").fill("Bare-domain website project");
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+    await expect(page.locator(".opportunity-create-form .form-error")).toContainText("Add the organisation");
+
+    await page.getByLabel("Company name").fill("DEMO · Optional Website Studio");
+    await page.getByText("Organisation details", { exact: false }).click();
+    await page.getByLabel("Website").fill("optional-website.example");
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+
+    await expect(page.getByRole("heading", { name: "DEMO · Optional Website Studio" })).toBeVisible();
   });
 
   test("creates an opportunity with optional commercial context", async ({ page }) => {
@@ -27,5 +63,40 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.getByText("£18,000", { exact: true })).toBeVisible();
     await expect(page.getByText("40%", { exact: true })).toBeVisible();
     await expect(page.getByText("30 Sep 2026", { exact: true })).toBeVisible();
+  });
+
+  test("spreads a busy stage across two lanes", async ({ page }) => {
+    await page.goto("/pipeline");
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+    await page.getByLabel("Company name").fill("DEMO · Second Studio");
+    await page.getByLabel("Opportunity title").fill("Second website opportunity");
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+    await page.goto("/pipeline");
+
+    const spread = page.getByRole("button", { name: "Spread Ready to contact across two lanes" });
+    await expect(spread).toBeVisible();
+    await spread.click();
+    await expect(page.getByRole("button", { name: "Return Ready to contact to one lane" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("pulls the pipeline sideways from empty board space", async ({ page }) => {
+    await page.goto("/pipeline");
+    const viewport = page.locator(".board-viewport");
+    const emptyColumn = page.locator(".empty-column").first();
+    await expect(viewport).toBeVisible();
+    await expect(emptyColumn).toBeVisible();
+    expect(await viewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+
+    const box = await emptyColumn.boundingBox();
+    expect(box).not.toBeNull();
+    const before = await viewport.evaluate((element) => element.scrollLeft);
+    const startX = box!.x + box!.width / 2;
+    const startY = box!.y + box!.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX - 220, startY, { steps: 5 });
+    await page.mouse.up();
+
+    await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(before);
   });
 });

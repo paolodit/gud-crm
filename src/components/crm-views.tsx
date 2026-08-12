@@ -6,6 +6,7 @@ import {
   ArrowDownWideNarrow,
   ArrowRight,
   BookOpen,
+  Bot,
   Check,
   ChevronDown,
   CircleUserRound,
@@ -52,9 +53,8 @@ import { setWorkspaceAiEnabledAction } from "@/app/actions/ai";
 import { saveActivityTypeAction } from "@/app/actions/crm";
 import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
-import { deactivateOfferAction, deactivateTeamMemberAction, saveOfferAction, savePipelineNameAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
+import { deactivateOfferAction, deactivateTeamMemberAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
 import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary } from "@/lib/domain/types";
@@ -126,13 +126,13 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
                 {contacts.slice(0, 2).map((contact) => <span key={contact.id}><CircleUserRound size={15} /><span><strong>{contact.name}</strong><small>{contact.title || "Role not set"}</small></span></span>)}
                 {!contacts.length ? <span className="muted-row"><CircleUserRound size={15} /> No decision-maker found yet</span> : null}
               </div>
-              <Link className="card-link" href={inResearch ? `/research?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`}>{inResearch ? "Open research" : "Open relationship"} <ArrowRight size={15} /></Link>
+              <Link className="card-link" href={inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`}>{inResearch ? "Open target" : "Open relationship"} <ArrowRight size={15} /></Link>
             </article>
           );
         })}
       </section>
       {!sorted.length ? <EmptyResult title="No companies match" detail="Try a broader name or clear the sector filter." /> : null}
-      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/research?target=${opportunityId}`); else router.refresh(); }} /> : null}
+      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
     </WorkspaceFrame>
   );
 }
@@ -145,7 +145,7 @@ export function GlobalSearch({ snapshot }: { snapshot: BoardSnapshot }) {
     return snapshot.opportunities.flatMap((opportunity) => {
       const output: SearchResult[] = [];
       const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
-      const href = isResearchStage(stage) ? `/research?target=${opportunity.id}` : `/pipeline?opportunity=${opportunity.id}`;
+      const href = isResearchStage(stage) ? `/targets?target=${opportunity.id}` : `/pipeline?opportunity=${opportunity.id}`;
       if (`${opportunity.company.name} ${opportunity.company.sector ?? ""} ${opportunity.company.researchNote ?? ""} ${opportunity.company.idealBuyerRoles ?? ""} ${opportunity.title} ${opportunity.offer?.name ?? ""} ${opportunity.offer?.description ?? ""} ${opportunity.outreachAngle ?? ""}`.toLowerCase().includes(normalised)) {
         output.push({ id: `opp-${opportunity.id}`, kind: isResearchStage(stage) ? "Research" : "Opportunity", title: opportunity.company.name, detail: `${snapshot.offers.filter((offer) => offer.active).length > 1 && opportunity.offer ? `${opportunity.offer.name} · ` : ""}${opportunity.title}`, href });
       }
@@ -334,6 +334,9 @@ export type RuntimeStatus = {
   workspaceAiEnabled: boolean;
   passwordAuthActive: boolean;
   passwordResetConfigured: boolean;
+  mcpEnabled: boolean;
+  mcpEndpoint: string;
+  mcpConnections: Array<{ clientId: string; name: string; scopes: string; createdAt: string }>;
   freeMaxStatus: FreeMaxStatus;
   version: string;
   backupAutomationConfigured: boolean;
@@ -348,6 +351,10 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [aiSetupOpen, setAiSetupOpen] = useState(false);
   const [aiConfigCopied, setAiConfigCopied] = useState(false);
+  const [mcpEndpointCopied, setMcpEndpointCopied] = useState(false);
+  const [mcpConnections, setMcpConnections] = useState(runtime.mcpConnections);
+  const [mcpRevokePending, setMcpRevokePending] = useState<string | null>(null);
+  const [mcpMessage, setMcpMessage] = useState<string | null>(null);
   const [updatePending, setUpdatePending] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string | null>(null);
   const [activityTypes, setActivityTypes] = useState(snapshot.activityTypes);
@@ -441,6 +448,23 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
     window.setTimeout(() => setAiConfigCopied(false), 1_800);
   }
 
+  async function copyMcpEndpoint() {
+    await navigator.clipboard.writeText(runtime.mcpEndpoint);
+    setMcpEndpointCopied(true);
+    window.setTimeout(() => setMcpEndpointCopied(false), 1_800);
+  }
+
+  async function revokeMcpConnection(clientId: string) {
+    if (!window.confirm("Disconnect this AI coworker? Its current access and refresh tokens will stop working.")) return;
+    setMcpRevokePending(clientId);
+    setMcpMessage(null);
+    const result = await revokeMcpConnectionAction({ clientId });
+    setMcpRevokePending(null);
+    if (!result.ok) return setMcpMessage(result.error);
+    setMcpConnections((connections) => connections.filter((connection) => connection.clientId !== clientId));
+    setMcpMessage("Connection revoked.");
+  }
+
   async function requestUpdate() {
     if (!window.confirm("Create and verify a fresh database backup, then deploy the approved release? The app may be unavailable briefly while CapRover completes its health check.")) return;
     setUpdatePending(true);
@@ -485,8 +509,35 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
 
         <article className="surface settings-card"><div className="settings-icon"><Database /></div><div><h2>Runtime</h2><p>Capabilities active for this process</p></div><div className="status-list"><StatusRow label="Data" value={runtime.storageMode === "sqlite" ? "Local SQLite" : runtime.storageMode === "postgres" ? "PostgreSQL" : "Demo snapshot"} good={runtime.storageMode !== "demo"} /><StatusRow label="VPS database" value={runtime.databaseConfigured ? "Configured" : "Not needed locally"} good={runtime.storageMode === "sqlite" || runtime.databaseConfigured} /><StatusRow label="AI available" value={runtime.aiEnabled ? "Available" : "Disabled by server"} good={runtime.aiEnabled} /></div></article>
 
+        <article className="surface settings-card coworker-settings-card">
+          <div className="settings-icon settings-icon-coworker"><Bot /></div>
+          <div><h2>AI coworker connection</h2><p>Let Codex, ChatGPT or another MCP client work with this pipeline</p></div>
+          <div className="status-list">
+            <StatusRow label="Remote connector" value={runtime.mcpEnabled ? "Ready" : "Disabled by server"} good={runtime.mcpEnabled} />
+            <StatusRow label="Access" value="Your GUD login + consent" good={runtime.mcpEnabled} />
+            <StatusRow label="Research writes" value="Held for human review" good />
+          </div>
+          <div className="coworker-endpoint">
+            <code>{runtime.mcpEndpoint}</code>
+            <button className="btn btn-quiet" type="button" disabled={!runtime.mcpEnabled} onClick={copyMcpEndpoint}>{mcpEndpointCopied ? <Check size={14} /> : <Copy size={14} />}{mcpEndpointCopied ? "Copied" : "Copy endpoint"}</button>
+          </div>
+          <details className="coworker-setup-guide">
+            <summary>How to connect Codex or ChatGPT <ChevronDown size={15} /></summary>
+            <div>
+              <section><b>1</b><span><strong>Codex desktop or IDE</strong><small>Open Settings → MCP servers → Add server. Choose Streamable HTTP, paste the endpoint, save and restart. Select Authenticate and approve the GUD connection.</small></span></section>
+              <section><b>2</b><span><strong>ChatGPT Work</strong><small>Enable developer mode, then use Settings → Apps → Create. Paste the endpoint, scan the tools and complete GUD’s sign-in and permission screen. Availability depends on your ChatGPT plan and workspace controls.</small></span></section>
+              <section><b>3</b><span><strong>Start with a safe request</strong><small>Try “Review my pipeline and show what needs attention.” For research, ask it to cite public sources and submit findings to Researching for human review.</small></span></section>
+              <p><ShieldCheck size={14} />Connect each GUD instance separately. Read-only is the default; approve read/write only when you want the coworker to update this workspace.</p>
+            </div>
+          </details>
+          {mcpConnections.length ? <div className="coworker-connections">
+            {mcpConnections.map((connection) => <span key={connection.clientId}><Bot size={16} /><span><strong>{connection.name}</strong><small>{connection.scopes.includes("gud:write") ? "Read & write" : "Read-only"} · connected {new Date(connection.createdAt).toLocaleDateString("en-GB")}</small></span><button className="btn btn-quiet btn-compact" type="button" disabled={mcpRevokePending !== null} onClick={() => revokeMcpConnection(connection.clientId)}>{mcpRevokePending === connection.clientId ? <LoaderCircle className="spin" size={13} /> : <X size={13} />}Disconnect</button></span>)}
+          </div> : null}
+          {mcpMessage ? <small className="settings-hint">{mcpMessage}</small> : null}
+          <p className="settings-hint">{runtime.mcpEnabled ? "Add this endpoint to your AI workspace once, sign in here, then grant read-only or read/write access. GUD never gives the client raw database access." : runtime.storageMode === "postgres" ? "Set MCP_ENABLED=true in the private server environment, redeploy, then return here to copy the endpoint." : "Remote MCP stays off in local SQLite and demo workspaces. Use a PostgreSQL deployment for separate logins and revocable connections."}</p>
+        </article>
+
         <article className="surface settings-card ai-settings-card"><div className="settings-icon settings-icon-ai"><KeyRound /></div><div><h2>AI coach</h2><p>Provider, server-side key and workspace access</p></div><div className="status-list"><StatusRow label="Provider" value={runtime.aiProvider === "openai" ? "OpenAI Responses API" : "Local deterministic coach"} good={runtime.aiEnabled} /><StatusRow label="OpenAI key" value={runtime.aiKeyConfigured ? "Configured on server" : "Not configured"} good={runtime.aiKeyConfigured || runtime.aiProvider === "local"} /><StatusRow label="Model" value={runtime.aiProvider === "openai" ? runtime.aiModel : "No API model used"} good /><StatusRow label="Workspace AI" value={workspaceAiEnabled && runtime.aiEnabled ? "Enabled" : "Disabled"} good={workspaceAiEnabled && runtime.aiEnabled} /></div><div className="settings-ai-control"><button className="btn btn-quiet" type="button" disabled={aiPending || !runtime.aiEnabled || currentRole !== "admin"} onClick={toggleAi}><Sparkles size={14} />{aiPending ? "Saving..." : workspaceAiEnabled ? "Disable AI coach" : "Enable AI coach"}</button><button className="btn btn-primary" type="button" disabled={currentRole !== "admin"} onClick={() => setAiSetupOpen((value) => !value)}><KeyRound size={14} />{aiSetupOpen ? "Close setup" : "Configure OpenAI"}</button>{currentRole !== "admin" ? <small>Admin access is required to change AI settings.</small> : aiMessage ? <small>{aiMessage}</small> : null}</div>{aiSetupOpen && currentRole === "admin" ? <div className="ai-setup-panel"><div className="ai-setup-step"><b>1</b><span><strong>Create a project API key</strong><small>Use a dedicated project key with its own spend controls.</small></span><a className="btn btn-quiet" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Open API keys <ExternalLink size={13} /></a></div><div className="ai-setup-step"><b>2</b><span><strong>Add it to the server environment</strong><small>Use <code>.env.local</code> locally, or your VPS/CapRover secret variables in production.</small></span></div><code className="ai-env-block">AI_PROVIDER=openai{"\n"}AI_MODEL={runtime.aiModel}{"\n"}OPENAI_API_KEY=sk-proj-your-server-side-key</code><div className="ai-setup-actions"><button className="btn btn-quiet" type="button" onClick={copyAiConfiguration}>{aiConfigCopied ? <Check size={14} /> : <Copy size={14} />}{aiConfigCopied ? "Copied" : "Copy configuration"}</button><span><ShieldCheck size={14} />Never paste a live key into a browser form or commit it to Git. Restart the app after changing server variables.</span></div></div> : null}</article>
-        <FreeMaxSettingsCard status={runtime.freeMaxStatus} canManage={currentRole === "admin"} />
         <article className="surface settings-card settings-card-wide" id="import">
           <div className="settings-icon"><FileSpreadsheet /></div>
           <div><h2>Tracker import</h2><p>Review the local research file, then import it safely into this workspace</p></div>

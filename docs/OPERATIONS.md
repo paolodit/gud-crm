@@ -2,12 +2,12 @@
 
 ## Daily rhythm
 
-1. Open **Today**.
-2. Work the five suggested next moves. They are ranked, not automated; judgement still wins.
-3. Log every meaningful attempt and outcome from the opportunity workspace.
-4. Create the next owned, dated action while logging the touch.
-5. Use **Needs a decision** to fix records that are overdue, at risk, unresponsive or missing a next step.
-6. Open the full queue only when planning the rest of the week.
+1. Open **Pipeline** and scan where the whole book of work stands.
+2. Spread a crowded stage into two lanes or use Compact view when density is hiding the picture.
+3. Open **Today** when you want the five ranked next moves. They are ranked, not automated; judgement still wins.
+4. Log every meaningful attempt and outcome from the opportunity workspace.
+5. Create the next owned, dated action while logging the touch.
+6. Use **Needs a decision** to fix records that are overdue, at risk, unresponsive or missing a next step.
 
 ## Pipeline discipline
 

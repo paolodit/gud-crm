@@ -76,7 +76,10 @@ if (unaccepted.length || !acceptedChainIsExpected) {
 }
 
 if (vulnerabilities.length) {
-  console.log("Dependency audit passed with two exact development-tool exceptions: Drizzle Kit's dormant esbuild development-server advisory and ESLint's brace-expansion denial-of-service advisory. Neither toolchain is present in the standalone production image, and the audit separately confirmed no high or critical production dependency finding.");
+  const exceptions = [];
+  if (esbuildAdvisory?.source === 1102341) exceptions.push("Drizzle Kit's dormant esbuild development-server advisory");
+  if (lintFindingPresent) exceptions.push("ESLint's brace-expansion denial-of-service advisory");
+  console.log(`Dependency audit passed with ${exceptions.join(" and ")}. The affected development toolchain is not present in the standalone production image, and the audit separately confirmed no high or critical production dependency finding.`);
 } else {
   console.log("Dependency audit passed with no known advisories.");
 }

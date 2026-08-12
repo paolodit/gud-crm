@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { auditEvents, offers, opportunities, organisations, pipelines, sessions, stages, users } from "@/db/schema";
+import { auditEvents, oauthAccessTokens, oauthConsents, offers, opportunities, organisations, pipelines, sessions, stages, users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { publicActionError } from "@/lib/action-error";
 import { getLocalBoardSnapshot, getLocalSetting, recordLocalAuditEvent, setLocalSetting, updateLocalBoardSnapshot } from "@/lib/data/local-store";
@@ -49,6 +49,7 @@ const saveOfferSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 const deactivateOfferSchema = z.object({ offerId: z.uuid() });
+const revokeMcpConnectionSchema = z.object({ clientId: z.string().trim().min(1).max(200) });
 const saveFreeMaxSchema = z.object({
   hunterKey: z.string().trim().max(1_000).default(""),
   norbertKey: z.string().trim().max(1_000).default(""),
@@ -86,6 +87,36 @@ export async function savePipelineNameAction(input: unknown): Promise<Result> {
   }
 }
 
+export async function revokeMcpConnectionAction(input: unknown): Promise<Result> {
+  const parsed = revokeMcpConnectionSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid connection." };
+  try {
+    const member = await getCurrentMember();
+    if (!member || member.storageMode !== "postgres") throw new Error("A protected GUD login is required.");
+    await db.transaction(async (tx) => {
+      await tx.delete(oauthAccessTokens).where(and(
+        eq(oauthAccessTokens.clientId, parsed.data.clientId),
+        eq(oauthAccessTokens.userId, member.id),
+      ));
+      await tx.delete(oauthConsents).where(and(
+        eq(oauthConsents.clientId, parsed.data.clientId),
+        eq(oauthConsents.userId, member.id),
+      ));
+      await tx.insert(auditEvents).values({
+        organisationId: member.organisationId,
+        actorId: member.id,
+        action: "mcp.connection.revoked",
+        entityType: "oauth_client",
+        entityId: parsed.data.clientId,
+      });
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "The AI coworker connection could not be revoked.") };
+  }
+}
+
 export async function saveWorkspaceEditionAction(input: unknown): Promise<Result> {
   const parsed = saveEditionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Choose a supported sales model." };
@@ -101,7 +132,7 @@ export async function saveWorkspaceEditionAction(input: unknown): Promise<Result
       await db.update(organisations).set({ settings: { ...row.settings, edition: parsed.data.edition }, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
       await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "workspace.edition_changed", entityType: "workspace", entityId: member.organisationId, after: { edition: parsed.data.edition } });
     }
-    for (const path of ["/settings", "/my-work", "/pipeline", "/research", "/companies", "/reports", "/playbook"]) revalidatePath(path);
+    for (const path of ["/settings", "/my-work", "/pipeline", "/research", "/targets", "/companies", "/reports", "/playbook"]) revalidatePath(path);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Workspace sales model could not be saved.") };
@@ -135,6 +166,7 @@ export async function saveFreeMaxConfigurationAction(input: unknown): Promise<Re
     }
     revalidatePath("/settings");
     revalidatePath("/research");
+    revalidatePath("/targets");
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "FreeMax configuration could not be saved.") };
@@ -255,7 +287,7 @@ export async function deactivateOfferAction(input: unknown): Promise<Result> {
 }
 
 function revalidateOfferPaths() {
-  for (const path of ["/settings", "/pipeline", "/research", "/companies", "/search", "/reports", "/my-work", "/playbook"]) revalidatePath(path);
+  for (const path of ["/settings", "/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) revalidatePath(path);
 }
 
 export async function saveSalesAssetAction(input: unknown): Promise<Result> {
@@ -349,6 +381,8 @@ export async function deactivateTeamMemberAction(input: unknown): Promise<Result
         const [user] = await tx.update(users).set({ active: false, updatedAt: new Date() }).where(and(eq(users.id, parsed.data.userId), eq(users.organisationId, member.organisationId))).returning({ id: users.id });
         if (!user) throw new Error("That team member is not available.");
         await tx.delete(sessions).where(eq(sessions.userId, user.id));
+        await tx.delete(oauthAccessTokens).where(eq(oauthAccessTokens.userId, user.id));
+        await tx.delete(oauthConsents).where(eq(oauthConsents.userId, user.id));
         await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "team_member.deactivated", entityType: "user", entityId: user.id });
       });
     }

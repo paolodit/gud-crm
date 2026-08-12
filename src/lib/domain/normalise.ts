@@ -16,6 +16,13 @@ export function isSafeHttpUrl(value: string) {
   return protocol === "http:" || protocol === "https:";
 }
 
+export function normaliseHttpUrlInput(value: string) {
+  const candidate = value.trim();
+  if (!candidate) return "";
+  if (/^[a-z][a-z0-9+.-]*:/i.test(candidate)) return candidate;
+  return `https://${candidate.replace(/^\/+/, "")}`;
+}
+
 export function safeExternalUrl(value: string | null | undefined) {
   const candidate = value?.trim() ?? "";
   return isSafeHttpUrl(candidate) ? candidate : null;

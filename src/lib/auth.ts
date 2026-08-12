@@ -1,7 +1,7 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth/minimal";
 import { nextCookies } from "better-auth/next-js";
-import { admin } from "better-auth/plugins";
+import { admin, mcp } from "better-auth/plugins";
 
 import { db } from "@/db";
 import { authSchema } from "@/db/schema";
@@ -67,7 +67,35 @@ export const auth = betterAuth({
       secure: env.authUsesHttps && env.postgresMode,
     },
   },
-  plugins: [admin({ defaultRole: "member", adminRoles: ["admin"] }), nextCookies()],
+  plugins: [
+    admin({ defaultRole: "member", adminRoles: ["admin"] }),
+    mcp({
+      loginPage: "/sign-in",
+      resource: `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/mcp`,
+      oidcConfig: {
+        loginPage: "/sign-in",
+        consentPage: "/connect/consent",
+        allowDynamicClientRegistration: env.mcpEnabled,
+        requirePKCE: true,
+        allowPlainCodeChallengeMethod: false,
+        accessTokenExpiresIn: 60 * 60,
+        refreshTokenExpiresIn: 60 * 60 * 24 * 30,
+        defaultScope: "openid profile email offline_access gud:read",
+        scopes: ["gud:read", "gud:write"],
+        metadata: {
+          scopes_supported: [
+            "openid",
+            "profile",
+            "email",
+            "offline_access",
+            "gud:read",
+            "gud:write",
+          ],
+        },
+      },
+    }),
+    nextCookies(),
+  ],
 });
 
 async function sendPasswordResetEmail(email: string, name: string, url: string) {

@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   Check,
+  ChevronDown,
   ChevronRight,
   CirclePause,
   Clipboard,
@@ -32,11 +33,12 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
+import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
 import { getResearchTargets, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
-import type { BoardSnapshot, ContactSummary, OpportunitySummary, ResearchThemeSummary } from "@/lib/domain/types";
+import type { BoardSnapshot, ContactSummary, OpportunitySummary, Priority, ResearchThemeSummary, Temperature } from "@/lib/domain/types";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
 
 const statusCopy: Record<ResearchReadiness, { label: string; detail: string }> = {
@@ -46,13 +48,22 @@ const statusCopy: Record<ResearchReadiness, { label: string; detail: string }> =
   held: { label: "On hold", detail: "Preserved outside the active sales board" },
 };
 
-export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapshot; freeMaxStatus: FreeMaxStatus }) {
+export function ResearchHub({
+  snapshot,
+  freeMaxStatus,
+  view: researchView,
+  canManage,
+}: {
+  snapshot: BoardSnapshot;
+  freeMaxStatus: FreeMaxStatus;
+  view: "accounts" | "themes";
+  canManage: boolean;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fileInput = useRef<HTMLInputElement>(null);
   const targets = useMemo(() => getResearchTargets(snapshot), [snapshot]);
   const [query, setQuery] = useState("");
-  const [researchView, setResearchView] = useState<"accounts" | "themes">(snapshot.edition === "service" ? "themes" : "accounts");
   const [themes, setThemes] = useState(snapshot.researchThemes);
   const [selectedThemeId, setSelectedThemeId] = useState(snapshot.researchThemes[0]?.id ?? null);
   const [themeEditor, setThemeEditor] = useState<ResearchThemeSummary | "new" | null>(null);
@@ -63,6 +74,7 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
   const [editingContact, setEditingContact] = useState<ContactSummary | "new" | null>(null);
+  const [editingOpportunity, setEditingOpportunity] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -105,7 +117,7 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
   function selectTarget(id: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("target", id);
-    router.replace(`/research?${params.toString()}`, { scroll: false });
+    router.replace(`/targets?${params.toString()}`, { scroll: false });
   }
 
   async function moveSelected(stageId: string | undefined, action: string) {
@@ -115,7 +127,7 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
     setPendingAction(null);
     if (!result.ok) return setNotice(result.error);
     setNotice(action === "promote" ? `${selected.company.name} is now ready to contact.` : `${selected.company.name} has been updated.`);
-    router.replace("/research", { scroll: false });
+    router.replace("/targets", { scroll: false });
     router.refresh();
   }
 
@@ -199,38 +211,35 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
     <div className="research-page">
       <header className="research-hero">
         <div>
-          <span className="eyebrow">Pre-pipeline intelligence</span>
-          <h1>Research</h1>
-          <p>{researchView === "themes" ? "Turn an emerging need into evidence, an offer angle and a shortlist." : "Qualify the right organisations before they become sales opportunities."}</p>
+          <span className="eyebrow">{researchView === "themes" ? "Market intelligence" : "Before the first touch"}</span>
+          <h1>{researchView === "themes" ? "Ideas" : "Targets"}</h1>
+          <p>{researchView === "themes" ? "Explore a need, test the evidence, then carry only credible prospects into Targets." : "Build the account and contact picture before outreach enters the pipeline."}</p>
         </div>
         <div className="research-hero-actions">
           <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowHandoff(true)}><Bot size={17} />Research handoff</button>
-          <button className="btn btn-primary" type="button" onClick={() => researchView === "themes" ? setThemeEditor("new") : setAddingCompany(true)}><Plus size={17} />{researchView === "themes" ? "Add theme" : "Add target"}</button>
+          <button className="btn btn-primary" type="button" onClick={() => researchView === "themes" ? setThemeEditor("new") : setAddingCompany(true)}><Plus size={17} />{researchView === "themes" ? "Add idea" : "Add target"}</button>
         </div>
       </header>
 
       <section className="research-overview" aria-label="Research overview">
-        {researchView === "themes" ? <><ResearchMetric label="Themes" value={themes.length} icon={<Sparkles />} /><ResearchMetric label="Ready to shortlist" value={themes.filter((theme) => theme.status === "ready").length} icon={<Check />} tone="green" /><ResearchMetric label="Gathering evidence" value={themes.filter((theme) => theme.status === "evidence").length} icon={<Search />} tone="blue" /><ResearchMetric label="Account targets" value={targets.length} icon={<Target />} tone="slate" /></> : <><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></>}
+        {researchView === "themes" ? <><ResearchMetric label="Ideas" value={themes.length} icon={<Sparkles />} /><ResearchMetric label="Ready to shortlist" value={themes.filter((theme) => theme.status === "ready").length} icon={<Check />} tone="green" /><ResearchMetric label="Gathering evidence" value={themes.filter((theme) => theme.status === "evidence").length} icon={<Search />} tone="blue" /><ResearchMetric label="Account targets" value={targets.length} icon={<Target />} tone="slate" /></> : <><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></>}
       </section>
 
-      <section className="research-assistant-path" aria-label="Research workflow">
-        <div className="research-assistant-intro"><span><Bot size={18} /></span><div><strong>Use Codex, Cowork or your preferred assistant as the research desk</strong><p>GUD holds the question and evidence. Your research tool handles browsing; no extra CRM API is required.</p></div></div>
+      <details className="research-assistant-path" aria-label="Research workflow">
+        <summary><span className="research-assistant-intro"><span><Bot size={18} /></span><span><strong>Research with Codex, Cowork or your preferred assistant</strong><small>Open the handoff guide for browser research or contact discovery.</small></span></span><ChevronDown size={18} /></summary>
+        <div className="research-assistant-detail">
         <ol>
-          <li><b>1</b><span><strong>Prepare</strong><small>Choose a theme or account. LinkedIn is useful for identifying likely roles and named people—not for guessing private data.</small></span></li>
-          <li><b>2</b><span><strong>Research outside GUD</strong><small>Copy a guarded brief into a tool with browser access and ask it to return dated sources and contact candidates.</small></span></li>
-          <li><b>3</b><span><strong>Bring back evidence</strong><small>Import the JSON or record the findings, then use FreeMax only for a named contact and company domain.</small></span></li>
+          <li><b>1</b><span><strong>Prepare</strong><small>Choose one {researchView === "themes" ? "idea" : "target"}; GUD builds a guarded brief from what is already recorded.</small></span></li>
+          <li><b>2</b><span><strong>Research outside GUD</strong><small>Ask for dated public evidence and named contact candidates. LinkedIn helps identify roles; never guess private data.</small></span></li>
+          <li><b>3</b><span><strong>Review the return</strong><small>{researchView === "themes" ? "Sharpen the idea and create only credible targets." : "Import or record the evidence, then enrich only a named person."}</small></span></li>
         </ol>
-        <div className="research-assistant-actions"><button className="btn btn-primary" type="button" onClick={() => setShowHandoff(true)}><Clipboard size={15} />Prepare handoff</button><Link className="btn btn-quiet" href="/settings#enrichment"><KeyRound size={15} />FreeMax setup</Link></div>
-      </section>
+        <div className="research-assistant-actions"><button className="btn btn-primary" type="button" onClick={() => setShowHandoff(true)}><Clipboard size={15} />Prepare handoff</button>{researchView === "accounts" ? <a className="btn btn-quiet" href="#freemax"><KeyRound size={15} />Email enrichment</a> : <Link className="btn btn-quiet" href="/targets"><Target size={15} />Go to targets</Link>}</div>
+        </div>
+      </details>
 
       {notice ? <div className="research-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X size={15} /></button></div> : null}
 
-      <section className="research-view-switch" aria-label="Research shape">
-        <div><strong>What are you researching?</strong><span>Keep market thinking separate from live opportunities.</span></div>
-        <div className="view-toggle"><button type="button" aria-pressed={researchView === "accounts"} onClick={() => setResearchView("accounts")}><Building2 size={15} />Accounts</button><button type="button" aria-pressed={researchView === "themes"} onClick={() => setResearchView("themes")}><Sparkles size={15} />Themes</button></div>
-      </section>
-
-      {researchView === "accounts" ? <><section className="research-toolbar">
+      {researchView === "accounts" ? <><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" /><section className="research-toolbar">
         <label className="search-box search-box-grow"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search targets, sectors, contacts or evidence" /></label>
         {availableOffers.length > 1 ? <label className="field-select research-filter"><span className="sr-only">Offer</span><select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
         <label className="field-select research-filter"><span className="sr-only">Research status</span><select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label>
@@ -288,8 +297,20 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
                 </div>
               </section>
 
+              <section className="research-section target-opportunity-section">
+                <div className="research-section-head"><div><span className="eyebrow">What might be sold</span><h3>Potential opportunity</h3></div><button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingOpportunity(true)}><Pencil size={14} />Shape</button></div>
+                <strong className="target-opportunity-title">{selected.title}</strong>
+                <p className="research-summary">{selected.outreachAngle || "Capture the need, timing and most credible reason for a first conversation."}</p>
+                <div className="target-opportunity-facts">
+                  {selected.offer ? <span><small>Offer</small><strong>{selected.offer.name}</strong></span> : null}
+                  {selected.expectedValue !== null && selected.expectedValue !== undefined ? <span><small>Potential value</small><strong>{formatMoney(selected.expectedValue)}</strong></span> : null}
+                  {selected.probability !== null && selected.probability !== undefined ? <span><small>Probability</small><strong>{selected.probability}%</strong></span> : null}
+                  <span><small>Owner</small><strong>{selected.owner?.name ?? "Unassigned"}</strong></span>
+                </div>
+              </section>
+
               <section className="research-section">
-                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? freeMaxConfigured ? <button className="btn btn-quiet btn-compact" type="button" disabled={pendingAction !== null} onClick={enrichContact} title={`FreeMax tries Hunter first, then Norbert only if needed, for ${enrichableContact.name}`}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : <Link className="btn btn-quiet btn-compact" href="/settings#enrichment"><KeyRound size={14} />Connect FreeMax</Link> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
+                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? freeMaxConfigured ? <button className="btn btn-quiet btn-compact" type="button" disabled={pendingAction !== null} onClick={enrichContact} title={`FreeMax tries Hunter first, then Norbert only if needed, for ${enrichableContact.name}`}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : <a className="btn btn-quiet btn-compact" href="#freemax"><KeyRound size={14} />Connect FreeMax</a> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
                 {freeMaxConfigured ? <FreeMaxSummary status={freeMaxStatus} /> : null}
                 <div className="research-contacts">
                   {selected.contacts.map((contact) => (
@@ -307,13 +328,13 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
                 <div><span className="eyebrow">Human decision</span><strong>{statusCopy[selectedReadiness].detail}</strong></div>
                 <div>
                   {selectedStage?.name === "Research holding" ? <button className="btn btn-quiet" type="button" disabled={!activeResearchStage || pendingAction !== null} onClick={() => moveSelected(activeResearchStage?.id, "resume")}>{pendingAction === "resume" ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}Resume research</button> : <button className="btn btn-quiet" type="button" disabled={!holdStage || pendingAction !== null} onClick={() => moveSelected(holdStage?.id, "hold")}><CirclePause size={15} />Hold</button>}
-                  <button className="btn btn-primary" type="button" disabled={!readyStage || pendingAction !== null || (availableOffers.length > 1 && !selected.offer)} title={availableOffers.length > 1 && !selected.offer ? "Choose what you are pitching first" : undefined} onClick={() => moveSelected(readyStage?.id, "promote")}>{pendingAction === "promote" ? <LoaderCircle className="spin" size={15} /> : <ArrowRight size={15} />}Promote to pipeline</button>
+                  <button className="btn btn-primary" type="button" disabled={!readyStage || pendingAction !== null || selectedReadiness !== "ready" || (availableOffers.length > 1 && !selected.offer)} title={selectedReadiness !== "ready" ? statusCopy[selectedReadiness].detail : availableOffers.length > 1 && !selected.offer ? "Choose what you are pitching first" : undefined} onClick={() => moveSelected(readyStage?.id, "promote")}>{pendingAction === "promote" ? <LoaderCircle className="spin" size={15} /> : <ArrowRight size={15} />}Start outreach</button>
                 </div>
               </footer>
             </>
           ) : <div className="research-empty research-empty-panel"><Target size={28} /><strong>Select a target</strong><span>Research details, sources and contacts will appear here.</span></div>}
         </aside>
-      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onAddTarget={() => setAddingCompany(true)} onCopied={() => setNotice("Theme brief copied. Paste it into Codex or your preferred research assistant.")} />}
+      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
 
       {showHandoff ? (
         <div className="dialog-backdrop" role="presentation">
@@ -332,7 +353,8 @@ export function ResearchHub({ snapshot, freeMaxStatus }: { snapshot: BoardSnapsh
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
       {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} /> : null}
       {editingContact && selected ? <ResearchContactDialog opportunity={selected} contact={editingContact === "new" ? null : editingContact} onClose={() => setEditingContact(null)} onSaved={() => { setEditingContact(null); router.refresh(); }} /> : null}
-      {themeEditor ? <ResearchThemeDialogV2 theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} /> : null}
+      {editingOpportunity && selected ? <TargetOpportunityDialog opportunity={selected} snapshot={snapshot} onClose={() => setEditingOpportunity(false)} onSaved={() => { setEditingOpportunity(false); router.refresh(); }} /> : null}
+      {themeEditor ? <ResearchThemeDialogV2 theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} onDeleted={(id) => { const remaining = themes.filter((item) => item.id !== id); setThemes(remaining); setSelectedThemeId(remaining[0]?.id ?? null); setThemeEditor(null); setNotice("Idea deleted."); }} /> : null}
     </div>
   );
 }
@@ -354,12 +376,12 @@ function ThemeWorkspace({ themes, selected, offers, onSelect, onEdit, onAddTarge
   }
   return <div className="research-workspace theme-workspace">
     <section className="research-list" aria-label="Research themes">
-      <div className="research-list-heading"><strong>{themes.length} {themes.length === 1 ? "theme" : "themes"}</strong><span>Ideas stay here until evidence supports real targets.</span></div>
+      <div className="research-list-heading"><strong>{themes.length} {themes.length === 1 ? "idea" : "ideas"}</strong><span>Ideas stay here until evidence supports real targets.</span></div>
       {themes.map((theme) => <button className="research-row theme-row" data-active={selected?.id === theme.id} type="button" key={theme.id} onClick={() => onSelect(theme.id)}><span className="research-row-mark"><Sparkles size={16} /></span><span className="research-row-copy"><span className="research-row-title"><strong>{theme.title}</strong><ThemeStatus status={theme.status} /></span><span>{theme.audience || "Audience not defined"}</span><small>{theme.angle || theme.problem || "Add the problem and angle worth testing"}</small></span><ChevronRight size={18} /></button>)}
       {!themes.length ? <div className="research-empty"><Sparkles size={24} /><strong>Start with one useful question</strong><span>A theme is a market problem or change you may be able to help with—not a vague content topic.</span></div> : null}
     </section>
     <aside className="research-inspector theme-inspector" aria-label="Selected research theme">
-      {selected ? <><header className="research-inspector-head"><div className="research-company-icon"><Sparkles size={19} /></div><div><ThemeStatus status={selected.status} /><h2>{selected.title}</h2><p>{selected.audience || "Audience not defined"}</p></div><button className="icon-button" type="button" onClick={() => onEdit(selected)} aria-label={`Edit ${selected.title}`}><Pencil size={16} /></button></header><div className="research-fit-strip"><span><small>Offer angle</small><strong>{offer?.name ?? "Open"}</strong></span><span><small>Sources</small><strong>{selected.sourceUrls.length}</strong></span><span><small>State</small><strong>{themeStatusLabel(selected.status)}</strong></span></div><section className="research-section theme-question"><span className="eyebrow">The question</span><h3>Is this a problem worth pursuing?</h3><dl><div><dt>Problem or change</dt><dd>{selected.problem || "Not recorded yet"}</dd></div><div><dt>Evidence signal</dt><dd>{selected.signal || "Add the strongest fact, trend or repeated observation."}</dd></div><div><dt>Angle to test</dt><dd>{selected.angle || "Describe one useful way your service might respond."}</dd></div></dl>{selected.sourceUrls.length ? <div className="research-links">{selected.sourceUrls.slice(0, 6).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}</div> : null}</section><footer className="research-decision"><div><span className="eyebrow">Next move</span><strong>Research externally, then turn credible matches into account targets.</strong></div><div><button className="btn btn-quiet" type="button" onClick={copyTheme}><Clipboard size={15} />Copy brief</button><button className="btn btn-primary" type="button" onClick={onAddTarget}><ArrowRight size={15} />Add target</button></div></footer></> : <div className="research-empty research-empty-panel"><Sparkles size={28} /><strong>Select a theme</strong><span>The research question and offer angle will appear here.</span></div>}
+      {selected ? <><header className="research-inspector-head"><div className="research-company-icon"><Sparkles size={19} /></div><div><ThemeStatus status={selected.status} /><h2>{selected.title}</h2><p>{selected.audience || "Audience not defined"}</p></div><button className="icon-button" type="button" onClick={() => onEdit(selected)} aria-label={`Edit ${selected.title}`}><Pencil size={16} /></button></header><div className="research-fit-strip"><span><small>Offer angle</small><strong>{offer?.name ?? "Open"}</strong></span><span><small>Sources</small><strong>{selected.sourceUrls.length}</strong></span><span><small>State</small><strong>{themeStatusLabel(selected.status)}</strong></span></div><section className="research-section theme-question"><span className="eyebrow">The question</span><h3>Is this a problem worth pursuing?</h3><dl><div><dt>Problem or change</dt><dd>{selected.problem || "Not recorded yet"}</dd></div><div><dt>Evidence signal</dt><dd>{selected.signal || "Add the strongest fact, trend or repeated observation."}</dd></div><div><dt>Angle to test</dt><dd>{selected.angle || "Describe one useful way your service might respond."}</dd></div></dl>{selected.sourceUrls.length ? <div className="research-links">{selected.sourceUrls.slice(0, 6).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}</div> : null}</section><footer className="research-decision"><div><span className="eyebrow">Next move</span><strong>Research externally, then turn credible matches into account targets.</strong></div><div><button className="btn btn-quiet" type="button" onClick={copyTheme}><Clipboard size={15} />Copy brief</button><button className="btn btn-primary" type="button" onClick={onAddTarget}><ArrowRight size={15} />Open targets</button></div></footer></> : <div className="research-empty research-empty-panel"><Sparkles size={28} /><strong>Select an idea</strong><span>The research question and offer angle will appear here.</span></div>}
     </aside>
   </div>;
 }
@@ -394,6 +416,55 @@ function FreeMaxSummary({ status }: { status: FreeMaxStatus }) {
 
 function ContactRoutes({ contact }: { contact: ContactSummary }) {
   return <span className="contact-route-icons">{contact.email ? <Mail size={13} /> : null}{contact.phone ? <Phone size={13} /> : null}{contact.linkedinUrl ? <span>in</span> : null}{!contact.email && !contact.phone && !contact.linkedinUrl ? "No route recorded" : null}</span>;
+}
+
+function TargetOpportunityDialog({ opportunity, snapshot, onClose, onSaved }: { opportunity: OpportunitySummary; snapshot: BoardSnapshot; onClose: () => void; onSaved: () => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const offers = activeOffers(snapshot.offers);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    const textValue = (name: string) => String(form.get(name) ?? "").trim();
+    const numberValue = (name: string) => textValue(name) ? Number(textValue(name)) : null;
+    const result = await saveOpportunityDetailsAction({
+      opportunityId: opportunity.id,
+      title: textValue("title"),
+      offerId: textValue("offerId") || null,
+      ownerId: textValue("ownerId") || null,
+      priority: textValue("priority") as Priority,
+      temperature: textValue("temperature") as Temperature,
+      expectedValue: numberValue("expectedValue"),
+      probability: numberValue("probability"),
+      expectedCloseDate: textValue("expectedCloseDate") ? new Date(`${textValue("expectedCloseDate")}T12:00:00`) : null,
+      outreachAngle: textValue("outreachAngle"),
+    });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    onSaved();
+  }
+  return <div className="dialog-backdrop" role="presentation">
+    <section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="target-opportunity-title">
+      <header className="dialog-header"><div><span className="eyebrow">Pre-pipeline</span><h2 id="target-opportunity-title">Shape the opportunity</h2><p>Keep this provisional. It becomes active sales work only when you promote the target.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close opportunity editor"><X size={17} /></button></header>
+      <form className="dialog-form" onSubmit={submit}>
+        <div className="form-grid">
+          <label className="field-label form-span-2">Opportunity<input className="field" name="title" defaultValue={opportunity.title} required minLength={2} autoFocus /></label>
+          {offers.length > 1 ? <label className="field-label">Offer<select className="field-select" name="offerId" defaultValue={opportunity.offer?.id ?? ""}><option value="">Decide after research</option>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : <input type="hidden" name="offerId" value={opportunity.offer?.id ?? offers[0]?.id ?? ""} />}
+          <label className="field-label">Owner<select className="field-select" name="ownerId" defaultValue={opportunity.owner?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+          <label className="field-label">Priority<select className="field-select" name="priority" defaultValue={opportunity.priority}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
+          <label className="field-label">Temperature<select className="field-select" name="temperature" defaultValue={opportunity.temperature}><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option><option value="at_risk">At risk</option><option value="unresponsive">Unresponsive</option></select></label>
+          <label className="field-label form-span-2">Why this may be worth a conversation<textarea className="field textarea" name="outreachAngle" rows={4} defaultValue={opportunity.outreachAngle ?? ""} /></label>
+          <label className="field-label">Potential value (£)<input className="field" name="expectedValue" type="number" min="0" step="100" defaultValue={opportunity.expectedValue ?? ""} /></label>
+          <label className="field-label">Probability<select className="field-select" name="probability" defaultValue={opportunity.probability ?? ""}><option value="">Not estimated</option>{[10,20,30,40,50,60,70,80,90,100].map((value) => <option key={value} value={value}>{value}%</option>)}</select></label>
+          <label className="field-label">Expected close<input className="field" name="expectedCloseDate" type="date" defaultValue={opportunity.expectedCloseDate?.slice(0, 10) ?? ""} /></label>
+        </div>
+        {error ? <p className="form-error">{error}</p> : null}
+        <div className="dialog-actions"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}{pending ? "Saving…" : "Save opportunity"}</button></div>
+      </form>
+    </section>
+  </div>;
 }
 
 function ResearchContactDialog({ opportunity, contact, onClose, onSaved }: { opportunity: OpportunitySummary; contact: ContactSummary | null; onClose: () => void; onSaved: () => void }) {
@@ -493,4 +564,8 @@ function sourceLabel(url: string) {
 
 function slug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(value);
 }

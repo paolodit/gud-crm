@@ -16,33 +16,36 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 
 | Workspace | What you can do |
 | --- | --- |
-| Research | Research target accounts or market themes before they become opportunities, hand structured briefs to Codex or Cowork, merge returned account evidence safely, and promote only after human review. |
+| Ideas | In Service Sales, test market needs and service angles without mixing them into named prospect work. Hand a guarded brief to Codex or Cowork, keep dated evidence, and delete ideas that go nowhere. |
+| Targets | Build the organisation, qualification evidence, provisional opportunity and named contact routes before the first touch. Focused Sales starts here; Service Sales can bring targets across from Ideas. |
 | Offers | Define the products or services you pitch once. A second active offer quietly unlocks contextual filters, labels, reporting, playbook assets and AI grounding across the CRM. |
-| Pipeline | Drag or keyboard-move opportunities between stages or into a deliberate order, filter by owner/attention, switch between comfortable and compact cards, and understand every stage from its inline guide. |
-| Opportunity | Work in a wide, expandable relationship workspace with editable company fit/scale, contact details, tasks, outreach rhythm, timeline, logging, and AI together. |
+| Pipeline | Start with the whole sales picture, drag or keyboard-move opportunities into a deliberate order, spread a busy stage across two lanes, filter by owner/attention, and switch between comfortable and compact cards. |
+| Opportunity | Talk or type a new opportunity naturally, then work in a wide relationship workspace with editable company fit/scale, contacts, tasks, outreach rhythm, timeline, logging, and AI together. |
 | Activity | Log each attempt, channel and outcome in seconds; optionally create the follow-up in the same move. |
 | AI coach | Ask for the best next move, an outreach draft, creative routes, or cold-lead recovery. |
-| Today | Land on five ranked next moves, a compact pipeline pulse and only the relationships that need a decision; expand the full schedule when needed. |
+| Today | Focus on five ranked next moves, a compact pipeline pulse and only the relationships that need a decision; expand the full schedule when needed. |
 | Companies | Add a company manually, sort by fit/name/contact coverage/pipeline order, then jump into live work. Every manually added company gets a research card so it cannot vanish between lists. |
 | Search | Find companies, people, notes, outcomes, roles, and opportunity context. |
 | Reports | See pipeline health, stage distribution, workload, channel mix, and attention gaps. |
 | Playbook | Navigate a visual outreach loop, multi-channel cadence, guardrails and adaptable patterns; track the readiness, link and owner of six essential sales assets. |
-| Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI and FreeMax. |
+| Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI. |
 | Import | Preview the research tracker, validate all expected columns, detect duplicates, then import it idempotently from Settings or the CLI. |
 
 The design principle is simple: important work should be obvious, updates should be quick, and the system should help a human make a better decision without pretending to be the human.
 
-## Start every session on Today
+## See the whole book first
 
-After sign-in, GUD opens **Today**, not the full board. It answers three questions without turning into another dashboard:
+After sign-in, GUD opens **Pipeline**. The first screen answers the broad question—*where does everything stand?*—without forcing the user through a summary layer first. A crowded stage can expand into two lanes while remaining one stage and one colour, so a live book of work stays readable without vertical scrolling. Comfortable and compact card views handle the rest of the density range.
+
+**Today** remains one click away as a deliberate focus layer. It answers three narrower questions:
 
 1. **What should I do next?** Five owned actions are ranked by overdue state, priority, temperature, pipeline progress and date.
 2. **Where is the pipeline?** A small pulse shows how many opportunities are ready, in outreach, in a live conversation or in nurture.
 3. **What needs a decision?** Records without an owned next step, marked at risk, unresponsive or overdue are surfaced separately.
 
-The complete schedule is one collapsed section below this command centre. The Pipeline remains the place to understand and move the whole book of work; Today is the place to begin working.
+The complete schedule is one collapsed section below Today. Pipeline is the place to understand and move the whole book of work; Today is the place to choose the next few actions when it is time to focus.
 
-Research is deliberately outside the sales journey. A possible target remains in the Research Hub until a person promotes it. The active pipeline is intentionally outcome-led:
+Targets are deliberately outside the sales journey. A possible target remains in the Targets workspace until it has qualification evidence, a usable contact route and a human chooses to start outreach. The active pipeline is intentionally outcome-led:
 
 `Ready to contact → Outreach active → Engaged → Discovery booked → Trial proposed → Trial active → Won`
 
@@ -76,7 +79,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Choose **Open local workspace** and GUD lands on Today.
+Open [http://localhost:3000](http://localhost:3000). Choose **Open local workspace** and GUD lands on the Pipeline.
 
 With no environment file, GUD CRM uses SQLite at `data/gud-crm.db`, creates a clean Focused Sales workspace, and keeps changes across refreshes and restarts. Local mode deliberately has no login ceremony; it is intended for trusted development and single-user evaluation.
 
@@ -169,15 +172,21 @@ AI_RATE_LIMIT=6
 
 Restart the app after changing provider settings. Workspace admins can enable or disable the coach from Settings, where **Configure OpenAI** gives a copy-ready server configuration and a direct route to project API keys. The app intentionally never accepts the live secret in a browser form: keep API keys in `.env.local`, VPS/CapRover secret variables, or a managed secret store—never browser code or Git.
 
-## Research handoff and enrichment
+## Ideas, targets and enrichment
 
-The Research Hub keeps target finding out of the live opportunity board. A target can be added manually or imported from the tracker, researched in GUD CRM, or handed to Codex/Cowork through a copy-ready brief and versioned JSON pack. Returned JSON is matched by IDs, domain, then normalised name; existing notes, source URLs and contacts are merged rather than replaced. Importing never promotes a target.
+The pre-pipeline workspace keeps target finding out of the live opportunity board. A target can be added manually or imported from the tracker, researched in GUD CRM, or handed to Codex/Cowork through a copy-ready brief and versioned JSON pack. Returned JSON is matched by IDs, domain, then normalised name; existing notes, source URLs and contacts are merged rather than replaced. Importing never promotes a target.
 
-Research has two deliberately small shapes. **Accounts** asks whether a particular organisation is worth pursuing. **Themes** asks whether an audience problem or market change is real enough to support an existing or emerging service. Service Sales opens on Themes; Focused Sales opens on Accounts. A theme remains outside the pipeline until it produces a credible account target.
+The two shapes are separate destinations instead of a dense toggle:
 
-Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
+- **Ideas** exists in Service Sales. It asks whether an audience problem or market change is real enough to support an existing or emerging service. Ideas can be edited, researched externally or deleted, and remain separate from named prospects.
+- **Targets** exists in both sales models. It asks whether a particular organisation is worth pursuing, records qualification evidence and contact routes, and lets the team shape the provisional opportunity before it reaches the pipeline.
+- **Focused Sales** shows Targets only. It does not expose the market-Ideas workflow that a single-product team normally does not need.
 
-Named contact enrichment is deliberately one-at-a-time. **FreeMax** uses free resources in the order the workspace chooses: Hunter's recurring monthly allowance is the sensible default, while Voila Norbert's one-off starter pool can be first or fallback. An admin can connect, disconnect or reorder either provider in **Settings → FreeMax enrichment** and continue immediately—no restart is required. Stored keys are encrypted using the deployment auth secret, never returned to the browser, and never included in Git.
+The assistant handoff is a compact disclosure rather than a permanent instruction panel. Open it only when you want a guarded research brief, JSON round-trip or browser-capable coworker. If the workspace is connected through MCP, the coworker can submit the same cited findings directly for human review.
+
+Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. Opportunity speech always produces a reviewable opportunity title when work is described. Only Opportunity and Organisation are required; websites are optional, and a bare domain is normalised to HTTPS. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
+
+Named contact enrichment is deliberately one-at-a-time. **FreeMax** now lives where it is used, at the top of **Targets**. It uses free resources in the order the workspace chooses: Hunter's recurring monthly allowance is the sensible default, while Voila Norbert's one-off starter pool can be first or fallback. An admin can connect, disconnect or reorder either provider there and continue immediately—no restart is required. Stored keys are encrypted using the deployment auth secret, never returned to the browser, and never included in Git.
 
 Environment variables remain a useful deployment-level fallback:
 
@@ -191,6 +200,46 @@ NORBERT_FREE_LIFETIME_LIMIT=50
 The action requires a confirmed company website and contact name, refuses do-not-contact records, and records provider provenance in the audit log. It stops after the first successful provider, never verifies again automatically, and stops at GUD CRM's configured free-first safety caps. Failed finds use no finder credit with either provider. The small allowance readout is GUD CRM's tracked usage; the provider dashboard remains authoritative if the same account is used elsewhere or is on a paid plan.
 
 Hunter currently provides 50 free credits each month with API access. Norbert provides the first 50 successful leads free; this is a starter pool, not a monthly refill. Provider terms can change, so the limits are environment-controlled instead of hard-coded into the workflow.
+
+## Connect Codex, ChatGPT or another MCP coworker
+
+On a PostgreSQL deployment, GUD can expose a small remote [Model Context Protocol](https://modelcontextprotocol.io/) endpoint. This lets a user connect their preferred AI workspace once, sign into GUD through OAuth, then ask it to review the pipeline, prepare cited research, add an opportunity, update a next action or log a confirmed activity.
+
+```text
+https://crm.example.com/mcp
+```
+
+Connect it once:
+
+- **Codex desktop or IDE:** open **Settings → MCP servers → Add server**, choose **Streamable HTTP**, paste the URL, save/restart, then select **Authenticate**.
+- **ChatGPT Work:** enable developer mode, create a custom app in **Settings → Apps**, provide the URL, scan the tools, and complete GUD's OAuth screen. Workspace plan and admin controls determine whether write tools are available.
+- **Separate GUD instances:** add each hostname as a separate connection. Credentials, grants and data never cross between them.
+
+See the current [Codex MCP connection guide](https://developers.openai.com/codex/mcp/) and [ChatGPT custom MCP app guide](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta) for the latest client-side menu wording.
+
+Enable it deliberately:
+
+```dotenv
+MCP_ENABLED=true
+```
+
+The connector uses the same GUD account, organisation and role boundary as the browser application. OAuth 2.1 uses PKCE, short-lived access tokens and refresh tokens; connection grants are stored in the instance's PostgreSQL database and can be revoked. Read-only is the safe default, and GUD activates write tools only after the user explicitly approves read/write access on its connection screen. SQLite and demo workspaces never expose remote MCP access.
+
+The first release keeps the tool surface purposeful:
+
+| Tool | Purpose |
+| --- | --- |
+| `describe_workspace` | Learn the edition, offers, stages, activity types and guardrails before acting. |
+| `list_opportunities` / `get_opportunity` | Review the book of work and one relationship in context. |
+| `search_companies` | Avoid creating a duplicate organisation. |
+| `submit_research_results` | Merge cited public evidence and contact candidates into Researching for human review. |
+| `create_opportunity` / `update_opportunity` | Create or apply a bounded patch; Won/Lost moves require explicit confirmation. |
+| `set_next_action` / `log_activity` | Record an owned follow-up or a sales touch the user confirms really happened. |
+| `find_work_email` | Use the workspace's configured FreeMax provider order and visible allowances. |
+
+The MCP server does not scrape LinkedIn, store browser cookies, send outreach, delete records or provide raw database access. External pages are untrusted evidence. Research submissions require public HTTP(S) source URLs, writes are schema-bounded, every mutation is organisation-scoped and audit logged, and clients can connect with `gud:read` only or `gud:read gud:write`.
+
+For the two-instance pattern, connect each hostname separately. An HSM-style focused workspace and an agency/service workspace therefore retain separate accounts, grants and databases even when both run the same image.
 
 ## Choose the VPS database deliberately
 
@@ -247,6 +296,7 @@ Reset tokens are time-limited by Better Auth and a successful reset revokes othe
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | Browser-facing application URL. |
 | `RESEND_API_KEY` | none | Server-only Resend credential; enables password-reset email with `AUTH_FROM_EMAIL`. |
 | `AUTH_FROM_EMAIL` | none | Verified sender used for account recovery. |
+| `MCP_ENABLED` | `false` | Enables the authenticated remote `/mcp` connector on a PostgreSQL deployment. |
 | `AI_ENABLED` | `true` | Deployment-level AI kill switch. |
 | `AI_PROVIDER` | `local` | `local` or `openai`. |
 | `AI_MODEL` | `gpt-5.6-luna` | OpenAI model used by the provider adapter. |
@@ -299,7 +349,11 @@ When exactly one offer is active, tracker and research imports assign it automat
 ```mermaid
 flowchart LR
   U["Browser"] --> N["Next.js 16 / React 19"]
+  A["Codex / ChatGPT / MCP client"] --> M["OAuth 2.1 + /mcp"]
+  M --> N
   N --> S["Validated server actions"]
+  M --> T["Bounded MCP tools"]
+  T --> R
   S --> R["CRM repository"]
   R --> Q[("SQLite - local")]
   R --> P[("PostgreSQL - VPS")]
@@ -331,6 +385,7 @@ src/db/schema.ts          PostgreSQL organisation-scoped model
 src/lib/ai/               context, schemas, and provider adapters
 src/lib/data/             SQLite store and shared read repository
 src/lib/import/           XLSX preview and transactional import
+src/lib/mcp/              authenticated MCP tools and CRM service boundary
 drizzle/                  committed PostgreSQL migrations
 scripts/                  seed, import, and local database utilities
 business dev/             product plan and non-runtime working material

@@ -21,6 +21,18 @@ This document records the implemented controls and known limits. It is an engine
 - Every CRM mutation resolves the current member server-side. PostgreSQL reads and writes are scoped to the member's organisation.
 - Admin-only and manager-only actions enforce roles in the server action, not just in the interface.
 
+### Remote MCP access
+
+- Remote MCP is disabled by default and is available only when `MCP_ENABLED=true` on a PostgreSQL deployment.
+- Better Auth provides OAuth 2.1 authorization-code flow with S256 PKCE, one-hour access tokens, renewable refresh tokens and dynamic public-client registration.
+- MCP access resolves the token's user against the current active GUD user and organisation before constructing any tool.
+- `gud:read` and `gud:write` are separate scopes. Read-only is the default; write tools activate only when the user has explicitly approved a stored `gud:write` consent grant, even if a client requests a broader token.
+- Tool inputs are bounded with Zod, writes are allowlisted and every MCP mutation creates an audit event attributed to the connected GUD user.
+- The endpoint exposes no delete tool, no arbitrary SQL or generic record patch. Won/Lost moves require an explicit confirmation flag after user confirmation.
+- Research tools accept only HTTP(S) evidence URLs, never initiate outreach and leave newly discovered targets in Researching for human review.
+- The endpoint validates the canonical forwarded host, sends no-store responses and exposes only the CORS headers required by remote MCP clients.
+- OAuth application, consent and token records stay in the instance database. Database backups therefore contain connector grants and require the same encryption and access controls as CRM data.
+
 ## XSS, injection and unsafe links
 
 - React renders CRM text as text; the application does not use `dangerouslySetInnerHTML`, `innerHTML`, `eval` or dynamic code execution.
@@ -62,7 +74,7 @@ GitHub Actions runs dependency audit, strict TypeScript, ESLint, unit/contract t
 1. an unauthenticated workspace request is redirected;
 2. email/password sign-in issues a session;
 3. the session resolves to the expected user;
-4. the authenticated Today page renders; and
+4. the authenticated Pipeline page renders; and
 5. sign-out removes access.
 
 Run the same flow against a running PostgreSQL deployment with:

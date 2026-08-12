@@ -27,6 +27,7 @@ const environmentSchema = z.object({
   GOOGLE_MAPS_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   AUTH_FROM_EMAIL: z.string().min(3).optional(),
+  MCP_ENABLED: z.enum(["true", "false"]).default("false"),
   GUD_VERSION: z.string().trim().min(1).max(80).default("0.1.0"),
   GUD_BACKUP_WEBHOOK_URL: z.string().url().optional(),
   GUD_DEPLOY_WEBHOOK_URL: z.string().url().optional(),
@@ -80,6 +81,7 @@ export const env = {
     values.BETTER_AUTH_SECRET ??
     "development-only-secret-change-before-real-auth-use",
   authEmailConfigured: Boolean(values.RESEND_API_KEY && values.AUTH_FROM_EMAIL),
+  mcpEnabled: values.MCP_ENABLED === "true",
   hunterConfigured: Boolean(values.HUNTER_API_KEY),
   norbertConfigured: Boolean(values.VOILA_NORBERT_API_KEY),
   companiesHouseConfigured: Boolean(values.COMPANIES_HOUSE_API_KEY),

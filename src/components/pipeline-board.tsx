@@ -11,6 +11,7 @@ import {
 } from "@dnd-kit/core";
 import {
   arrayMove,
+  rectSortingStrategy,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -51,7 +52,15 @@ import {
 } from "lucide-react";
 import { format, formatDistanceStrict } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, startTransition, useMemo, useState } from "react";
+import {
+  FormEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  startTransition,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   completeTaskAction,
@@ -99,8 +108,16 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
     : "all");
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const boardPan = useRef<{
+    pointerId: number;
+    startX: number;
+    scrollLeft: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressBoardClick = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -193,11 +210,60 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
     window.setTimeout(() => setToast(null), 2600);
   }
 
+  function toggleStageExpansion(stageId: string) {
+    setExpandedStages((stageIds) => stageIds.includes(stageId)
+      ? stageIds.filter((id) => id !== stageId)
+      : [...stageIds, stageId]);
+  }
+
   function opportunityCreated(opportunity: OpportunitySummary) {
     setOpportunities((items) => [opportunity, ...items]);
     setCreating(false);
     showToast(`${opportunity.company.name} is ready for a good next action.`);
     openOpportunity(opportunity.id);
+  }
+
+  function beginBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, select, textarea, [role='button'], .opportunity-card")) return;
+    const viewport = event.currentTarget;
+    boardPan.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      scrollLeft: viewport.scrollLeft,
+      moved: false,
+    };
+    viewport.setPointerCapture(event.pointerId);
+    viewport.dataset.panning = "true";
+  }
+
+  function moveBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPan.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const delta = event.clientX - pan.startX;
+    if (!pan.moved && Math.abs(delta) < 4) return;
+    pan.moved = true;
+    event.preventDefault();
+    event.currentTarget.scrollLeft = pan.scrollLeft - delta;
+  }
+
+  function endBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = boardPan.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    suppressBoardClick.current = pan.moved;
+    boardPan.current = null;
+    delete event.currentTarget.dataset.panning;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function blockClickAfterPan(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!suppressBoardClick.current) return;
+    suppressBoardClick.current = false;
+    event.preventDefault();
+    event.stopPropagation();
   }
 
   return (
@@ -266,7 +332,16 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
 
       <DndContext id="gud-crm-pipeline" sensors={sensors} onDragEnd={onDragEnd}>
         <div className="board-shell">
-          <div className="board-viewport" data-density={compact ? "compact" : "comfortable"}>
+          <div
+            className="board-viewport"
+            data-density={compact ? "compact" : "comfortable"}
+            aria-label="Sales pipeline. Drag empty space sideways or use the horizontal scrollbar to see later stages."
+            onPointerDown={beginBoardPan}
+            onPointerMove={moveBoardPan}
+            onPointerUp={endBoardPan}
+            onPointerCancel={endBoardPan}
+            onClickCapture={blockClickAfterPan}
+          >
             <div className="board">
               {initialSnapshot.stages.map((stage) => (
                 <BoardColumn
@@ -277,11 +352,13 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
                   onOpen={openOpportunity}
                   compact={compact}
                   showOffer={availableOffers.length > 1 && offerFilter === "all"}
+                  expanded={expandedStages.includes(stage.id)}
+                  onToggleExpanded={() => toggleStageExpansion(stage.id)}
                 />
               ))}
             </div>
           </div>
-          <span className="board-scroll-cue">Scroll for later stages <ChevronRight size={13} /></span>
+          <span className="board-scroll-cue">Drag or scroll for later stages <ChevronRight size={13} /></span>
         </div>
       </DndContext>
 
@@ -315,6 +392,8 @@ function BoardColumn({
   onOpen,
   compact,
   showOffer,
+  expanded,
+  onToggleExpanded,
 }: {
   stage: StageSummary;
   opportunities: OpportunitySummary[];
@@ -322,17 +401,31 @@ function BoardColumn({
   onOpen: (id: string) => void;
   compact: boolean;
   showOffer: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: stage.id });
   return (
-    <section className="board-column" ref={setNodeRef} data-over={isOver} aria-label={`${stage.name}, ${opportunities.length} opportunities`}>
+    <section className="board-column" ref={setNodeRef} data-over={isOver} data-expanded={expanded} aria-label={`${stage.name}, ${opportunities.length} opportunities`}>
       <header className="column-header" style={{ backgroundColor: stage.colour }}>
         <strong>{stage.name}</strong>
         <span className="column-help" title={stageGuidance(stage.name)} aria-label={`${stage.name}: ${stageGuidance(stage.name)}`}><Info size={13} /></span>
+        {opportunities.length >= 2 ? (
+          <button
+            className="column-expand"
+            type="button"
+            aria-label={expanded ? `Return ${stage.name} to one lane` : `Spread ${stage.name} across two lanes`}
+            aria-pressed={expanded}
+            title={expanded ? "Return to one lane" : "Spread cards across two lanes"}
+            onClick={onToggleExpanded}
+          >
+            {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        ) : null}
         <span className="column-count">{opportunities.length}</span>
       </header>
       <div className="column-cards">
-        <SortableContext items={opportunities.map((opportunity) => opportunity.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={opportunities.map((opportunity) => opportunity.id)} strategy={expanded ? rectSortingStrategy : verticalListSortingStrategy}>
         {opportunities.map((opportunity) => (
           <OpportunityCard
             key={opportunity.id}

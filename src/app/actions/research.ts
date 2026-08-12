@@ -96,6 +96,7 @@ const researchThemeSchema = z.object({
   sourceUrls: z.array(httpUrl).max(50).default([]),
 });
 type SaveResearchThemeResult = { ok: true; theme: ResearchThemeSummary } | { ok: false; error: string };
+type DeleteResearchThemeResult = { ok: true } | { ok: false; error: string };
 
 export async function saveResearchThemeAction(input: unknown): Promise<SaveResearchThemeResult> {
   const parsed = researchThemeSchema.safeParse(input);
@@ -130,6 +131,37 @@ export async function saveResearchThemeAction(input: unknown): Promise<SaveResea
     return { ok: true, theme: { id: row.id, title: row.title, audience: row.audience, problem: row.problem, signal: row.signal, angle: row.angle, status: row.status === "ready" ? "ready" : row.status === "evidence" ? "evidence" : "idea", offerId: row.offerId, sourceUrls: row.sourceUrls, updatedAt: row.updatedAt.toISOString() } };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Research theme could not be saved.") };
+  }
+}
+
+export async function deleteResearchThemeAction(input: unknown): Promise<DeleteResearchThemeResult> {
+  const parsed = z.object({ themeId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid research idea." };
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "You must be signed in." };
+  if (member.demoMode) return { ok: false, error: "Research ideas cannot be deleted in the reset-on-refresh demo." };
+
+  try {
+    if (member.storageMode === "sqlite") {
+      const deleted = getLocalBoardSnapshot().researchThemes.find((theme) => theme.id === parsed.data.themeId) ?? null;
+      if (!deleted) return { ok: false, error: "Research idea not found." };
+      updateLocalBoardSnapshot((snapshot) => {
+        snapshot.researchThemes = snapshot.researchThemes.filter((theme) => theme.id !== parsed.data.themeId);
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "research_theme.deleted", entityType: "research_theme", entityId: parsed.data.themeId, detail: { title: deleted.title } });
+      revalidatePath("/research");
+      return { ok: true };
+    }
+
+    const [deleted] = await db.delete(researchThemes)
+      .where(and(eq(researchThemes.id, parsed.data.themeId), eq(researchThemes.organisationId, member.organisationId)))
+      .returning({ id: researchThemes.id, title: researchThemes.title });
+    if (!deleted) return { ok: false, error: "Research idea not found." };
+    await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "research_theme.deleted", entityType: "research_theme", entityId: deleted.id, before: { title: deleted.title } });
+    revalidatePath("/research");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Research idea could not be deleted.") };
   }
 }
 
@@ -595,7 +627,7 @@ function recordLocalAuditEventIfNeeded(storageMode: string, input: { actorId: st
 }
 
 function revalidateResearchPaths() {
-  for (const path of ["/research", "/pipeline", "/companies", "/search", "/reports"]) {
+  for (const path of ["/research", "/targets", "/pipeline", "/companies", "/search", "/reports"]) {
     revalidatePath(path);
   }
 }

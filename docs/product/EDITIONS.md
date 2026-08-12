@@ -8,6 +8,7 @@ Sales-model configuration lives in `src/lib/editions`. It supplies defaults and 
 - Default pipeline: Focused Sales.
 - Language: companies, contacts, products and customer handoff.
 - Product context stays quiet because most opportunities share the same offer.
+- Pre-pipeline navigation opens directly on **Targets**; market-idea research stays hidden.
 
 ## Service Sales
 
@@ -15,6 +16,7 @@ Sales-model configuration lives in `src/lib/editions`. It supplies defaults and 
 - Default pipeline: Service Sales.
 - Language: organisations, people, services and client handoff.
 - Several active services reveal contextual filters and labels only where they help.
+- **Ideas** holds market needs and possible service angles; **Targets** separately holds named organisations, evidence, provisional opportunities and contacts.
 
 ## What changing a sales model does
 

@@ -64,10 +64,24 @@ export function CreateOpportunityDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPending(true);
     setError(null);
     const form = new FormData(event.currentTarget);
     const value = (name: string) => String(form.get(name) ?? "").trim();
+    const required = [
+      { name: "title", label: "the opportunity" },
+      { name: "companyName", label: `the ${edition.language.company.toLowerCase()}` },
+    ];
+    const missing = required.find((item) => value(item.name).length < 2);
+    if (missing) {
+      setError(`Add ${missing.label} before creating this opportunity.`);
+      const field = event.currentTarget.elements.namedItem(missing.name);
+      if (field instanceof HTMLInputElement) {
+        field.setAttribute("aria-invalid", "true");
+        field.focus();
+      }
+      return;
+    }
+    setPending(true);
     const nextActionTitle = value("nextActionTitle");
     const nextActionAt = nextActionTitle && value("nextActionAt") ? value("nextActionAt") : "";
     const chosenOwnerId = value("ownerId") || null;
@@ -171,7 +185,7 @@ export function CreateOpportunityDialog({
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close new opportunity form"><X size={18} /></button>
         </header>
 
-        <form ref={formRef} className="dialog-form opportunity-create-form" onSubmit={submit}>
+        <form ref={formRef} className="dialog-form opportunity-create-form" onSubmit={submit} noValidate>
           <section className="opportunity-capture">
             <div className="capture-copy">
               <span className="capture-icon"><Sparkles size={19} /></span>
@@ -198,10 +212,10 @@ export function CreateOpportunityDialog({
 
           <section className="opportunity-core">
             <div className="form-grid">
-              <label className="field-label form-span-2 field-primary">Opportunity
+              <label className="field-label form-span-2 field-primary">Opportunity <span className="required-mark">Required</span>
                 <input name="title" aria-label="Opportunity title" required minLength={2} autoFocus placeholder="What could you help them achieve?" />
               </label>
-              <label className="field-label">{sentenceCase(edition.language.company)}
+              <label className="field-label">{sentenceCase(edition.language.company)} <span className="required-mark">Required</span>
                 <input name="companyName" aria-label="Company name" required minLength={2} placeholder={edition.key === "service" ? "Organisation or client" : "Target organisation"} />
               </label>
               {availableOffers.length > 1 ? <label className="field-label">Offer
@@ -231,7 +245,7 @@ export function CreateOpportunityDialog({
               <div className="form-grid">
                 <label className="field-label">Sector<input name="sector" placeholder="Consultancy, hospitality, retail…" /></label>
                 <label className="field-label">Fit score<select name="fitScore" defaultValue=""><option value="">Not scored</option>{[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{score} / 5</option>)}</select></label>
-                <label className="field-label">Website<input name="websiteUrl" type="url" placeholder="https://example.com" /></label>
+                <label className="field-label">Website<input name="websiteUrl" type="text" inputMode="url" placeholder="example.com (optional)" /></label>
                 <label className="field-label">Company LinkedIn<input name="companyLinkedinUrl" type="url" placeholder="https://linkedin.com/company/…" /></label>
               </div>
             </details>
