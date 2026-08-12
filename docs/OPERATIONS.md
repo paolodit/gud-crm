@@ -25,7 +25,7 @@ The board describes outcomes. Calls, emails, LinkedIn attempts, letters, demos a
 - Review opportunities with no next action.
 - Check Outreach active records for repeated use of one channel without new value.
 - Review Nurture triggers and dates.
-- Check the Playbook asset kit for missing or stalled material.
+- Check the Sales guide asset kit for missing or stalled material.
 - Review Reports by owner and, when relevant, by offer.
 - Download a fresh SQLite backup during development or confirm the latest PostgreSQL backup and restore-test status in production.
 

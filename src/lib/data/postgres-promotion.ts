@@ -132,10 +132,10 @@ export function buildPostgresPromotionSql(snapshot: BoardSnapshot, input: {
     }
   }
 
-  for (const theme of snapshot.researchThemes ?? []) {
-    sql.push(`INSERT INTO research_themes (id, organisation_id, offer_id, owner_id, title, audience, problem, signal, angle, status, source_urls, created_at, updated_at)
-      VALUES (${text(theme.id)}::uuid, ${text(organisationId)}::uuid, ${theme.offerId ? `${text(theme.offerId)}::uuid` : "NULL"}, ${adminId(administratorEmail)}, ${text(theme.title)}, ${nullableText(theme.audience)}, ${nullableText(theme.problem)}, ${nullableText(theme.signal)}, ${nullableText(theme.angle)}, ${text(theme.status)}, ${json(theme.sourceUrls)}, now(), ${nullableTimestamp(theme.updatedAt)})
-      ON CONFLICT (id) DO UPDATE SET offer_id = EXCLUDED.offer_id, title = EXCLUDED.title, audience = EXCLUDED.audience, problem = EXCLUDED.problem, signal = EXCLUDED.signal, angle = EXCLUDED.angle, status = EXCLUDED.status, source_urls = EXCLUDED.source_urls, updated_at = EXCLUDED.updated_at;`);
+  for (const [themeIndex, theme] of (snapshot.researchThemes ?? []).entries()) {
+    sql.push(`INSERT INTO research_themes (id, organisation_id, offer_id, owner_id, title, audience, problem, signal, angle, status, position, source_urls, created_at, updated_at)
+      VALUES (${text(theme.id)}::uuid, ${text(organisationId)}::uuid, ${theme.offerId ? `${text(theme.offerId)}::uuid` : "NULL"}, ${adminId(administratorEmail)}, ${text(theme.title)}, ${nullableText(theme.audience)}, ${nullableText(theme.problem)}, ${nullableText(theme.signal)}, ${nullableText(theme.angle)}, ${text(theme.status)}, ${integer(theme.position ?? (themeIndex + 1) * 1000)}, ${json(theme.sourceUrls)}, now(), ${nullableTimestamp(theme.updatedAt)})
+      ON CONFLICT (id) DO UPDATE SET offer_id = EXCLUDED.offer_id, title = EXCLUDED.title, audience = EXCLUDED.audience, problem = EXCLUDED.problem, signal = EXCLUDED.signal, angle = EXCLUDED.angle, status = EXCLUDED.status, position = EXCLUDED.position, source_urls = EXCLUDED.source_urls, updated_at = EXCLUDED.updated_at;`);
   }
 
   sql.push(

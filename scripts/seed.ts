@@ -13,6 +13,7 @@ import {
   opportunityContacts,
   organisations,
   pipelines,
+  researchThemes,
   stages,
   tasks,
   users,
@@ -51,7 +52,8 @@ async function main() {
     }
   }
   const editionKey = existingOrganisation ? normaliseEditionKey(existingOrganisation.settings.edition) : env.defaultEdition;
-  const seedBoard = createInitialSnapshot(editionKey, "postgres");
+  const seedBoard = loadFixture() ?? createInitialSnapshot(editionKey, "postgres");
+  if (seedBoard.edition !== editionKey) throw new Error(`The private seed fixture is for ${seedBoard.edition}, but this deployment is configured for ${editionKey}.`);
   const edition = getEdition(seedBoard.edition);
   const organisationName = existingOrganisation?.name ?? process.env.SEED_ORGANISATION_NAME ?? edition.name;
 
@@ -211,6 +213,7 @@ async function main() {
         offerId: opportunity.offer ? offerIds.get(opportunity.offer.id) ?? null : null,
         companyId: opportunity.company.id,
         stageId: opportunity.stageId,
+        position: opportunity.position,
         ownerId: ownerIds.get(opportunity.owner?.name ?? "") ?? admin.id,
         title: opportunity.title,
         priority: opportunity.priority,
@@ -228,6 +231,7 @@ async function main() {
         target: opportunities.id,
         set: {
           stageId: opportunity.stageId,
+          position: opportunity.position,
           offerId: opportunity.offer ? offerIds.get(opportunity.offer.id) ?? null : null,
           title: opportunity.title,
           priority: opportunity.priority,
@@ -284,11 +288,43 @@ async function main() {
     }
   }
 
+  for (const [index, theme] of seedBoard.researchThemes.entries()) {
+    await db
+      .insert(researchThemes)
+      .values({
+        id: theme.id,
+        organisationId,
+        offerId: theme.offerId ? offerIds.get(theme.offerId) ?? null : null,
+        ownerId: admin.id,
+        title: theme.title,
+        audience: theme.audience,
+        problem: theme.problem,
+        signal: theme.signal,
+        angle: theme.angle,
+        status: theme.status,
+        position: theme.position ?? (index + 1) * 1000,
+        sourceUrls: theme.sourceUrls,
+        updatedAt: new Date(theme.updatedAt),
+      })
+      .onConflictDoUpdate({
+        target: researchThemes.id,
+        set: { title: theme.title, audience: theme.audience, problem: theme.problem, signal: theme.signal, angle: theme.angle, status: theme.status, position: theme.position ?? (index + 1) * 1000, sourceUrls: theme.sourceUrls, updatedAt: new Date(theme.updatedAt) },
+      });
+  }
+
   const [{ opportunityCount }] = await db
     .select({ opportunityCount: count() })
     .from(opportunities)
     .where(and(eq(opportunities.organisationId, organisationId), eq(opportunities.pipelineId, seedBoard.pipeline.id)));
   console.log(`Seed complete for ${email}. ${opportunityCount} opportunities are available in PostgreSQL.`);
+}
+
+function loadFixture() {
+  const encoded = process.env.SEED_FIXTURE_BASE64?.trim();
+  if (!encoded) return null;
+  const parsed = JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as ReturnType<typeof createInitialSnapshot>;
+  if (!parsed || !Array.isArray(parsed.stages) || !Array.isArray(parsed.opportunities) || !Array.isArray(parsed.researchThemes)) throw new Error("SEED_FIXTURE_BASE64 is not a valid GUD workspace fixture.");
+  return parsed;
 }
 
 main().catch((error) => {

@@ -19,7 +19,6 @@ import { useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import type { CurrentMember } from "@/lib/session";
-import type { EditionKey } from "@/lib/editions";
 import { BrandLogo } from "@/components/brand-logo";
 
 const coreNavItems = [
@@ -27,7 +26,7 @@ const coreNavItems = [
   { href: "/my-work", label: "Today", icon: ListChecks },
 ];
 
-export function AppShell({ member, instanceName, edition, children }: { member: CurrentMember; instanceName: string; edition: EditionKey; children: React.ReactNode }) {
+export function AppShell({ member, instanceName, children }: { member: CurrentMember; instanceName: string; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -59,7 +58,7 @@ export function AppShell({ member, instanceName, edition, children }: { member: 
 
   const navItems = [
     ...coreNavItems,
-    ...(edition === "service" ? [{ href: "/research", label: "Ideas", icon: Sparkles }] : []),
+    { href: "/research", label: "Ideas", icon: Sparkles },
     { href: "/targets", label: "Targets", icon: Target },
     { href: "/companies", label: "Companies", icon: Building2 },
     { href: "/search", label: "Search", icon: Search },
@@ -96,7 +95,7 @@ export function AppShell({ member, instanceName, edition, children }: { member: 
           <span className="nav-spacer" aria-hidden="true" />
           <Link href="/playbook" aria-current={pathname === "/playbook" ? "page" : undefined}>
             <Sparkles size={18} aria-hidden="true" />
-            <span>Playbook</span>
+            <span>Sales guide</span>
           </Link>
           {member.role === "admin" ? (
             <Link href="/settings" aria-current={pathname === "/settings" ? "page" : undefined}>

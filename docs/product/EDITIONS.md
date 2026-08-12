@@ -16,7 +16,7 @@ Sales-model configuration lives in `src/lib/editions`. It supplies defaults and 
 - Default pipeline: Service Sales.
 - Language: organisations, people, services and client handoff.
 - Several active services reveal contextual filters and labels only where they help.
-- **Ideas** holds market needs and possible service angles; **Targets** separately holds named organisations, evidence, provisional opportunities and contacts.
+- **Ideas** is available in both editions for market needs, sector signals, campaigns, partnerships or service angles; **Targets** separately holds named organisations, evidence, provisional opportunities and contacts.
 
 ## What changing a sales model does
 

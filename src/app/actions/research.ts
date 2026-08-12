@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, max, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
@@ -97,6 +97,7 @@ const researchThemeSchema = z.object({
 });
 type SaveResearchThemeResult = { ok: true; theme: ResearchThemeSummary } | { ok: false; error: string };
 type DeleteResearchThemeResult = { ok: true } | { ok: false; error: string };
+type ReorderResearchThemesResult = { ok: true } | { ok: false; error: string };
 
 export async function saveResearchThemeAction(input: unknown): Promise<SaveResearchThemeResult> {
   const parsed = researchThemeSchema.safeParse(input);
@@ -113,24 +114,66 @@ export async function saveResearchThemeAction(input: unknown): Promise<SaveResea
       updateLocalBoardSnapshot((snapshot) => {
         snapshot.researchThemes ??= [];
         const existing = snapshot.researchThemes.find((theme) => theme.id === id);
-        saved = { id, title: data.title, audience: data.audience || null, problem: data.problem || null, signal: data.signal || null, angle: data.angle || null, status: data.status, offerId: data.offerId, sourceUrls: data.sourceUrls, updatedAt: updatedAt.toISOString() };
+        const position = existing?.position ?? Math.max(0, ...snapshot.researchThemes.map((theme) => theme.position)) + 1000;
+        saved = { id, position, title: data.title, audience: data.audience || null, problem: data.problem || null, signal: data.signal || null, angle: data.angle || null, status: data.status, offerId: data.offerId, sourceUrls: data.sourceUrls, updatedAt: updatedAt.toISOString() };
         if (existing) Object.assign(existing, saved);
-        else snapshot.researchThemes.unshift(saved);
+        else snapshot.researchThemes.push(saved);
       });
       recordLocalAuditEvent({ actorId: member.id, action: "research_theme.saved", entityType: "research_theme", entityId: id, detail: { status: data.status, offerId: data.offerId } });
       revalidatePath("/research");
       return { ok: true, theme: saved! };
     }
     const values = { title: data.title, audience: data.audience || null, problem: data.problem || null, signal: data.signal || null, angle: data.angle || null, status: data.status, offerId: data.offerId, sourceUrls: data.sourceUrls, ownerId: member.id, updatedAt };
-    const [row] = data.themeId
-      ? await db.update(researchThemes).set(values).where(and(eq(researchThemes.id, id), eq(researchThemes.organisationId, member.organisationId))).returning()
-      : await db.insert(researchThemes).values({ id, organisationId: member.organisationId, ...values }).returning();
+    let row;
+    if (data.themeId) {
+      [row] = await db.update(researchThemes).set(values).where(and(eq(researchThemes.id, id), eq(researchThemes.organisationId, member.organisationId))).returning();
+    } else {
+      const [{ highestPosition }] = await db.select({ highestPosition: max(researchThemes.position) }).from(researchThemes).where(eq(researchThemes.organisationId, member.organisationId));
+      [row] = await db.insert(researchThemes).values({ id, organisationId: member.organisationId, position: (highestPosition ?? 0) + 1000, ...values }).returning();
+    }
     if (!row) return { ok: false, error: "Research theme not found." };
     await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "research_theme.saved", entityType: "research_theme", entityId: row.id, after: { status: row.status, offerId: row.offerId } });
     revalidatePath("/research");
-    return { ok: true, theme: { id: row.id, title: row.title, audience: row.audience, problem: row.problem, signal: row.signal, angle: row.angle, status: row.status === "ready" ? "ready" : row.status === "evidence" ? "evidence" : "idea", offerId: row.offerId, sourceUrls: row.sourceUrls, updatedAt: row.updatedAt.toISOString() } };
+    return { ok: true, theme: { id: row.id, position: row.position, title: row.title, audience: row.audience, problem: row.problem, signal: row.signal, angle: row.angle, status: row.status === "ready" ? "ready" : row.status === "evidence" ? "evidence" : "idea", offerId: row.offerId, sourceUrls: row.sourceUrls, updatedAt: row.updatedAt.toISOString() } };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Research theme could not be saved.") };
+  }
+}
+
+export async function reorderResearchThemesAction(input: unknown): Promise<ReorderResearchThemesResult> {
+  const parsed = z.object({ themeIds: z.array(z.uuid()).min(1).max(500) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid idea order." };
+  if (new Set(parsed.data.themeIds).size !== parsed.data.themeIds.length) return { ok: false, error: "Choose a valid idea order." };
+  const member = await getCurrentMember();
+  if (!member) return { ok: false, error: "You must be signed in." };
+  if (member.demoMode) return { ok: false, error: "Idea ordering is fixed in the reset-on-refresh demo." };
+
+  try {
+    if (member.storageMode === "sqlite") {
+      const existingIds = getLocalBoardSnapshot().researchThemes.map((theme) => theme.id);
+      if (existingIds.length !== parsed.data.themeIds.length || existingIds.some((id) => !parsed.data.themeIds.includes(id))) return { ok: false, error: "The idea list changed. Refresh and try again." };
+      updateLocalBoardSnapshot((snapshot) => {
+        const positions = new Map(parsed.data.themeIds.map((id, index) => [id, (index + 1) * 1000]));
+        snapshot.researchThemes = snapshot.researchThemes
+          .map((theme) => ({ ...theme, position: positions.get(theme.id) ?? theme.position }))
+          .sort((a, b) => a.position - b.position);
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "research_theme.reordered", entityType: "research_theme", entityId: member.organisationId, detail: { count: parsed.data.themeIds.length } });
+    } else {
+      const existing = await db.select({ id: researchThemes.id }).from(researchThemes).where(eq(researchThemes.organisationId, member.organisationId));
+      const existingIds = existing.map((theme) => theme.id);
+      if (existingIds.length !== parsed.data.themeIds.length || existingIds.some((id) => !parsed.data.themeIds.includes(id))) return { ok: false, error: "The idea list changed. Refresh and try again." };
+      await db.transaction(async (tx) => {
+        for (const [index, themeId] of parsed.data.themeIds.entries()) {
+          await tx.update(researchThemes).set({ position: (index + 1) * 1000 }).where(and(eq(researchThemes.id, themeId), eq(researchThemes.organisationId, member.organisationId)));
+        }
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "research_theme.reordered", entityType: "research_theme", entityId: member.organisationId, after: { count: parsed.data.themeIds.length } });
+      });
+    }
+    revalidatePath("/research");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "The idea order could not be saved.") };
   }
 }
 
