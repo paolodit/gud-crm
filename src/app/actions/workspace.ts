@@ -132,7 +132,7 @@ export async function saveWorkspaceEditionAction(input: unknown): Promise<Result
       await db.update(organisations).set({ settings: { ...row.settings, edition: parsed.data.edition }, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
       await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "workspace.edition_changed", entityType: "workspace", entityId: member.organisationId, after: { edition: parsed.data.edition } });
     }
-    for (const path of ["/settings", "/my-work", "/pipeline", "/research", "/companies", "/reports", "/playbook"]) revalidatePath(path);
+    for (const path of ["/settings", "/my-work", "/pipeline", "/research", "/targets", "/companies", "/reports", "/playbook"]) revalidatePath(path);
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Workspace sales model could not be saved.") };
@@ -166,6 +166,7 @@ export async function saveFreeMaxConfigurationAction(input: unknown): Promise<Re
     }
     revalidatePath("/settings");
     revalidatePath("/research");
+    revalidatePath("/targets");
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "FreeMax configuration could not be saved.") };
@@ -286,7 +287,7 @@ export async function deactivateOfferAction(input: unknown): Promise<Result> {
 }
 
 function revalidateOfferPaths() {
-  for (const path of ["/settings", "/pipeline", "/research", "/companies", "/search", "/reports", "/my-work", "/playbook"]) revalidatePath(path);
+  for (const path of ["/settings", "/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) revalidatePath(path);
 }
 
 export async function saveSalesAssetAction(input: unknown): Promise<Result> {

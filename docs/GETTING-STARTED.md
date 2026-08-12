@@ -31,7 +31,7 @@ This is workspace configuration, not a separate application version. A real orga
 6. Review the team and roles: admin, manager and sales support. Local changes prepare the roster; separate passwords start with PostgreSQL.
 7. Review the activity types. Use language the team will actually log consistently.
 8. In **Playbook**, record which sales assets are ready, missing or owned by somebody.
-9. Add an organisation manually, import a validated tracker, or bring a structured research pack into **Research**.
+9. In Service Sales, keep market questions in **Ideas**. Add named organisations manually, import a validated tracker, or bring a structured research pack into **Targets**. Focused Sales begins directly in Targets.
 10. Download a SQLite backup after the first meaningful setup session.
 
 ## The minimum useful record

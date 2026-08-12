@@ -11,7 +11,7 @@ import {
   Search,
   Settings,
   Sparkles,
-  Telescope,
+  Target,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,18 +19,15 @@ import { useEffect, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import type { CurrentMember } from "@/lib/session";
+import type { EditionKey } from "@/lib/editions";
 import { BrandLogo } from "@/components/brand-logo";
 
-const navItems = [
+const coreNavItems = [
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
   { href: "/my-work", label: "Today", icon: ListChecks },
-  { href: "/research", label: "Research", icon: Telescope },
-  { href: "/companies", label: "Companies", icon: Building2 },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
-export function AppShell({ member, instanceName, children }: { member: CurrentMember; instanceName: string; children: React.ReactNode }) {
+export function AppShell({ member, instanceName, edition, children }: { member: CurrentMember; instanceName: string; edition: EditionKey; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -60,6 +57,15 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
     router.refresh();
   }
 
+  const navItems = [
+    ...coreNavItems,
+    ...(edition === "service" ? [{ href: "/research", label: "Ideas", icon: Sparkles }] : []),
+    { href: "/targets", label: "Targets", icon: Target },
+    { href: "/companies", label: "Companies", icon: Building2 },
+    { href: "/search", label: "Search", icon: Search },
+    { href: "/reports", label: "Reports", icon: BarChart3 },
+  ];
+
   return (
     <div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
       <aside className="sidebar">
@@ -79,7 +85,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <span key={href} style={{ display: "contents" }}>
-                {index === 3 ? <span className="nav-spacer" aria-hidden="true" /> : null}
+                {index === 2 ? <span className="nav-spacer" aria-hidden="true" /> : null}
                 <Link href={href} aria-current={active ? "page" : undefined}>
                   <Icon size={18} aria-hidden="true" />
                   <span>{label}</span>

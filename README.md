@@ -16,7 +16,8 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 
 | Workspace | What you can do |
 | --- | --- |
-| Research | Research target accounts or market themes before they become opportunities, hand structured briefs to Codex or Cowork, merge returned account evidence safely, and promote only after human review. |
+| Ideas | In Service Sales, test market needs and service angles without mixing them into named prospect work. Hand a guarded brief to Codex or Cowork, keep dated evidence, and delete ideas that go nowhere. |
+| Targets | Build the organisation, qualification evidence, provisional opportunity and named contact routes before the first touch. Focused Sales starts here; Service Sales can bring targets across from Ideas. |
 | Offers | Define the products or services you pitch once. A second active offer quietly unlocks contextual filters, labels, reporting, playbook assets and AI grounding across the CRM. |
 | Pipeline | Start with the whole sales picture, drag or keyboard-move opportunities into a deliberate order, spread a busy stage across two lanes, filter by owner/attention, and switch between comfortable and compact cards. |
 | Opportunity | Talk or type a new opportunity naturally, then work in a wide relationship workspace with editable company fit/scale, contacts, tasks, outreach rhythm, timeline, logging, and AI together. |
@@ -27,7 +28,7 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 | Search | Find companies, people, notes, outcomes, roles, and opportunity context. |
 | Reports | See pipeline health, stage distribution, workload, channel mix, and attention gaps. |
 | Playbook | Navigate a visual outreach loop, multi-channel cadence, guardrails and adaptable patterns; track the readiness, link and owner of six essential sales assets. |
-| Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI and FreeMax. |
+| Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI. |
 | Import | Preview the research tracker, validate all expected columns, detect duplicates, then import it idempotently from Settings or the CLI. |
 
 The design principle is simple: important work should be obvious, updates should be quick, and the system should help a human make a better decision without pretending to be the human.
@@ -44,7 +45,7 @@ After sign-in, GUD opens **Pipeline**. The first screen answers the broad questi
 
 The complete schedule is one collapsed section below Today. Pipeline is the place to understand and move the whole book of work; Today is the place to choose the next few actions when it is time to focus.
 
-Research is deliberately outside the sales journey. A possible target remains in the Research Hub until a person promotes it. The active pipeline is intentionally outcome-led:
+Targets are deliberately outside the sales journey. A possible target remains in the Targets workspace until it has qualification evidence, a usable contact route and a human chooses to start outreach. The active pipeline is intentionally outcome-led:
 
 `Ready to contact → Outreach active → Engaged → Discovery booked → Trial proposed → Trial active → Won`
 
@@ -171,15 +172,21 @@ AI_RATE_LIMIT=6
 
 Restart the app after changing provider settings. Workspace admins can enable or disable the coach from Settings, where **Configure OpenAI** gives a copy-ready server configuration and a direct route to project API keys. The app intentionally never accepts the live secret in a browser form: keep API keys in `.env.local`, VPS/CapRover secret variables, or a managed secret store—never browser code or Git.
 
-## Research handoff and enrichment
+## Ideas, targets and enrichment
 
-The Research Hub keeps target finding out of the live opportunity board. A target can be added manually or imported from the tracker, researched in GUD CRM, or handed to Codex/Cowork through a copy-ready brief and versioned JSON pack. Returned JSON is matched by IDs, domain, then normalised name; existing notes, source URLs and contacts are merged rather than replaced. Importing never promotes a target.
+The pre-pipeline workspace keeps target finding out of the live opportunity board. A target can be added manually or imported from the tracker, researched in GUD CRM, or handed to Codex/Cowork through a copy-ready brief and versioned JSON pack. Returned JSON is matched by IDs, domain, then normalised name; existing notes, source URLs and contacts are merged rather than replaced. Importing never promotes a target.
 
-Research has two deliberately small shapes. **Accounts** asks whether a particular organisation is worth pursuing. **Themes** asks whether an audience problem or market change is real enough to support an existing or emerging service. Service Sales opens on Themes; Focused Sales opens on Accounts. A theme remains outside the pipeline until it produces a credible account target.
+The two shapes are separate destinations instead of a dense toggle:
 
-Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
+- **Ideas** exists in Service Sales. It asks whether an audience problem or market change is real enough to support an existing or emerging service. Ideas can be edited, researched externally or deleted, and remain separate from named prospects.
+- **Targets** exists in both sales models. It asks whether a particular organisation is worth pursuing, records qualification evidence and contact routes, and lets the team shape the provisional opportunity before it reaches the pipeline.
+- **Focused Sales** shows Targets only. It does not expose the market-Ideas workflow that a single-product team normally does not need.
 
-Named contact enrichment is deliberately one-at-a-time. **FreeMax** uses free resources in the order the workspace chooses: Hunter's recurring monthly allowance is the sensible default, while Voila Norbert's one-off starter pool can be first or fallback. An admin can connect, disconnect or reorder either provider in **Settings → FreeMax enrichment** and continue immediately—no restart is required. Stored keys are encrypted using the deployment auth secret, never returned to the browser, and never included in Git.
+The assistant handoff is a compact disclosure rather than a permanent instruction panel. Open it only when you want a guarded research brief, JSON round-trip or browser-capable coworker. If the workspace is connected through MCP, the coworker can submit the same cited findings directly for human review.
+
+Company and opportunity forms also expose **Just talk** in compatible browsers. The browser's speech service produces a transcript, the configured OpenAI provider turns that transcript into a structured draft, populated fields are highlighted for review, and nothing is saved automatically. Opportunity speech always produces a reviewable opportunity title when work is described. Only Opportunity and Organisation are required; websites are optional, and a bare domain is normalised to HTTPS. GUD does not store raw audio, but the browser or operating-system speech provider may process it under its own privacy terms.
+
+Named contact enrichment is deliberately one-at-a-time. **FreeMax** now lives where it is used, at the top of **Targets**. It uses free resources in the order the workspace chooses: Hunter's recurring monthly allowance is the sensible default, while Voila Norbert's one-off starter pool can be first or fallback. An admin can connect, disconnect or reorder either provider there and continue immediately—no restart is required. Stored keys are encrypted using the deployment auth secret, never returned to the browser, and never included in Git.
 
 Environment variables remain a useful deployment-level fallback:
 

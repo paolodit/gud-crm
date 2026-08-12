@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractDomain, isSafeHttpUrl, safeExternalUrl } from "./normalise";
+import { extractDomain, isSafeHttpUrl, normaliseHttpUrlInput, safeExternalUrl } from "./normalise";
 
 describe("external URL safety", () => {
   it("allows complete HTTP and HTTPS links", () => {
@@ -20,5 +20,12 @@ describe("external URL safety", () => {
     expect(extractDomain("example.com")).toBe("example.com");
     expect(extractDomain("https://www.example.com/a")).toBe("example.com");
     expect(extractDomain("javascript:alert(1)")).toBeNull();
+  });
+
+  it("turns a bare domain into a safe HTTPS URL without disguising unsafe schemes", () => {
+    expect(normaliseHttpUrlInput("example.com/about")).toBe("https://example.com/about");
+    expect(normaliseHttpUrlInput(" https://example.com ")).toBe("https://example.com");
+    expect(normaliseHttpUrlInput("javascript:alert(1)")).toBe("javascript:alert(1)");
+    expect(isSafeHttpUrl(normaliseHttpUrlInput("javascript:alert(1)"))).toBe(false);
   });
 });

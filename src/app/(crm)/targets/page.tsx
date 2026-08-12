@@ -2,15 +2,13 @@ import { ResearchHub } from "@/components/research-hub";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import { getCurrentMember } from "@/lib/session";
-import { redirect } from "next/navigation";
 
-export default async function ResearchPage() {
+export default async function TargetsPage() {
   const member = await getCurrentMember();
   if (!member) return null;
   const [snapshot, freeMaxStatus] = await Promise.all([
     getBoardSnapshot(member.organisationId),
     getFreeMaxStatus(member.organisationId, member.storageMode),
   ]);
-  if (snapshot.edition !== "service") redirect("/targets");
-  return <ResearchHub snapshot={snapshot} freeMaxStatus={freeMaxStatus} view="themes" canManage={member.role === "admin"} />;
+  return <ResearchHub snapshot={snapshot} freeMaxStatus={freeMaxStatus} view="accounts" canManage={member.role === "admin"} />;
 }

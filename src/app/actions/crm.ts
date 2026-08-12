@@ -21,7 +21,7 @@ import {
   tasks,
   users,
 } from "@/db/schema";
-import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
+import { extractDomain, isSafeHttpUrl, normaliseHttpUrlInput, normaliseName } from "@/lib/domain/normalise";
 import { isActivityTimeAllowed } from "@/lib/domain/activity";
 import { activeOffers } from "@/lib/domain/offers";
 import { recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
@@ -186,7 +186,7 @@ async function requireMember() {
 }
 
 export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResult> {
-  const parsed = saveCompanySchema.safeParse(input);
+  const parsed = saveCompanySchema.safeParse(normaliseCompanyUrls(input));
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the company details." };
 
   try {
@@ -426,7 +426,7 @@ function iconForChannel(channel: ActivityTypeSummary["channel"]) {
 }
 
 export async function createOpportunityAction(input: unknown): Promise<CreateActionResult> {
-  const parsed = createOpportunitySchema.safeParse(input);
+  const parsed = createOpportunitySchema.safeParse(normaliseOpportunityUrls(input));
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the opportunity details." };
   }
@@ -666,6 +666,27 @@ export async function createOpportunityAction(input: unknown): Promise<CreateAct
       error: publicActionError(error, "Opportunity could not be created."),
     };
   }
+}
+
+function normaliseOpportunityUrls(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const record = input as Record<string, unknown>;
+  return {
+    ...record,
+    websiteUrl: typeof record.websiteUrl === "string" ? normaliseHttpUrlInput(record.websiteUrl) : record.websiteUrl,
+    companyLinkedinUrl: typeof record.companyLinkedinUrl === "string" ? normaliseHttpUrlInput(record.companyLinkedinUrl) : record.companyLinkedinUrl,
+    contactLinkedinUrl: typeof record.contactLinkedinUrl === "string" ? normaliseHttpUrlInput(record.contactLinkedinUrl) : record.contactLinkedinUrl,
+  };
+}
+
+function normaliseCompanyUrls(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const record = input as Record<string, unknown>;
+  return {
+    ...record,
+    websiteUrl: typeof record.websiteUrl === "string" ? normaliseHttpUrlInput(record.websiteUrl) : record.websiteUrl,
+    linkedinUrl: typeof record.linkedinUrl === "string" ? normaliseHttpUrlInput(record.linkedinUrl) : record.linkedinUrl,
+  };
 }
 
 export async function saveContactAction(input: unknown): Promise<SaveContactResult> {
@@ -1059,7 +1080,7 @@ export async function reorderOpportunityAction(input: unknown): Promise<ActionRe
 }
 
 function revalidateCrmPaths() {
-  for (const path of ["/pipeline", "/research", "/companies", "/search", "/reports", "/my-work", "/playbook"]) {
+  for (const path of ["/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) {
     revalidatePath(path);
   }
 }

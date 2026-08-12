@@ -30,8 +30,21 @@ import type {
 } from "@/lib/domain/types";
 import { env } from "@/lib/env";
 import { getEdition, normaliseEditionKey } from "@/lib/editions";
+import type { EditionKey } from "@/lib/editions";
 
 const iso = (value: Date | null) => value?.toISOString() ?? null;
+
+export async function getWorkspaceEdition(organisationId: string): Promise<EditionKey> {
+  if (env.demoMode) return getEdition(env.defaultEdition).key;
+  if (env.sqliteMode) return getLocalBoardSnapshot().edition;
+
+  const [organisation] = await db
+    .select({ settings: organisations.settings })
+    .from(organisations)
+    .where(eq(organisations.id, organisationId))
+    .limit(1);
+  return organisation ? normaliseEditionKey(organisation.settings.edition) : getEdition(env.defaultEdition).key;
+}
 
 export async function getBoardSnapshot(organisationId: string): Promise<BoardSnapshot> {
   if (env.demoMode) return demoBoardForEdition(env.defaultEdition);

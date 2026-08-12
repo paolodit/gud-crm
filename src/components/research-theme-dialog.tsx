@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, ChevronDown, LoaderCircle, Search, Users, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Search, Trash2, Users, X } from "lucide-react";
 import { FormEvent, useState } from "react";
 
-import { saveResearchThemeAction } from "@/app/actions/research";
+import { deleteResearchThemeAction, saveResearchThemeAction } from "@/app/actions/research";
 import type { BoardSnapshot, ResearchThemeSummary } from "@/lib/domain/types";
 
 export function ResearchThemeDialog({
@@ -11,13 +11,16 @@ export function ResearchThemeDialog({
   offers,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   theme: ResearchThemeSummary | null;
   offers: BoardSnapshot["offers"];
   onClose: () => void;
   onSaved: (theme: ResearchThemeSummary) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -40,6 +43,16 @@ export function ResearchThemeDialog({
     setPending(false);
     if (!result.ok) return setError(result.error);
     onSaved(result.theme);
+  }
+
+  async function remove() {
+    if (!theme || !window.confirm(`Delete “${theme.title}”? This removes the idea, not any targets already created from it.`)) return;
+    setDeleting(true);
+    setError(null);
+    const result = await deleteResearchThemeAction({ themeId: theme.id });
+    setDeleting(false);
+    if (!result.ok) return setError(result.error);
+    onDeleted(theme.id);
   }
 
   return (
@@ -82,6 +95,7 @@ export function ResearchThemeDialog({
           </div>
           {error ? <p className="form-error">{error}</p> : null}
           <footer className="dialog-actions">
+            {theme ? <button className="btn btn-danger theme-delete" type="button" onClick={remove} disabled={pending || deleting}>{deleting ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}{deleting ? "Deleting…" : "Delete idea"}</button> : null}
             <button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}{pending ? "Saving…" : "Save theme"}</button>
           </footer>

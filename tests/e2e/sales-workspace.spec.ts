@@ -18,6 +18,35 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(edition.getByText("Consultancies, agencies and independent specialists", { exact: true })).toBeVisible();
   });
 
+  test("keeps market ideas and named targets in separate workspaces", async ({ page }) => {
+    await page.goto("/research");
+    await expect(page.getByRole("heading", { name: "Ideas", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Targets", exact: true })).toBeVisible();
+
+    await page.getByRole("link", { name: "Targets", exact: true }).click();
+    await expect(page).toHaveURL(/\/targets$/);
+    await expect(page.getByRole("heading", { name: "Targets", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Find a work email" })).toBeVisible();
+  });
+
+  test("explains required opportunity fields and accepts a bare optional website", async ({ page }) => {
+    await page.goto("/pipeline");
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+    await expect(page.locator(".opportunity-create-form .form-error")).toContainText("Add the opportunity");
+    await page.getByLabel("Opportunity title").fill("Bare-domain website project");
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+    await expect(page.locator(".opportunity-create-form .form-error")).toContainText("Add the organisation");
+
+    await page.getByLabel("Company name").fill("DEMO · Optional Website Studio");
+    await page.getByText("Organisation details", { exact: false }).click();
+    await page.getByLabel("Website").fill("optional-website.example");
+    await page.getByRole("button", { name: "Create opportunity" }).click();
+
+    await expect(page.getByRole("heading", { name: "DEMO · Optional Website Studio" })).toBeVisible();
+  });
+
   test("creates an opportunity with optional commercial context", async ({ page }) => {
     await page.goto("/pipeline");
     await page.getByRole("button", { name: "Create a new opportunity" }).click();

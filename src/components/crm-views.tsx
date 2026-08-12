@@ -55,7 +55,6 @@ import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
 import { deactivateOfferAction, deactivateTeamMemberAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
 import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary } from "@/lib/domain/types";
@@ -127,13 +126,13 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
                 {contacts.slice(0, 2).map((contact) => <span key={contact.id}><CircleUserRound size={15} /><span><strong>{contact.name}</strong><small>{contact.title || "Role not set"}</small></span></span>)}
                 {!contacts.length ? <span className="muted-row"><CircleUserRound size={15} /> No decision-maker found yet</span> : null}
               </div>
-              <Link className="card-link" href={inResearch ? `/research?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`}>{inResearch ? "Open research" : "Open relationship"} <ArrowRight size={15} /></Link>
+              <Link className="card-link" href={inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`}>{inResearch ? "Open target" : "Open relationship"} <ArrowRight size={15} /></Link>
             </article>
           );
         })}
       </section>
       {!sorted.length ? <EmptyResult title="No companies match" detail="Try a broader name or clear the sector filter." /> : null}
-      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/research?target=${opportunityId}`); else router.refresh(); }} /> : null}
+      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
     </WorkspaceFrame>
   );
 }
@@ -146,7 +145,7 @@ export function GlobalSearch({ snapshot }: { snapshot: BoardSnapshot }) {
     return snapshot.opportunities.flatMap((opportunity) => {
       const output: SearchResult[] = [];
       const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
-      const href = isResearchStage(stage) ? `/research?target=${opportunity.id}` : `/pipeline?opportunity=${opportunity.id}`;
+      const href = isResearchStage(stage) ? `/targets?target=${opportunity.id}` : `/pipeline?opportunity=${opportunity.id}`;
       if (`${opportunity.company.name} ${opportunity.company.sector ?? ""} ${opportunity.company.researchNote ?? ""} ${opportunity.company.idealBuyerRoles ?? ""} ${opportunity.title} ${opportunity.offer?.name ?? ""} ${opportunity.offer?.description ?? ""} ${opportunity.outreachAngle ?? ""}`.toLowerCase().includes(normalised)) {
         output.push({ id: `opp-${opportunity.id}`, kind: isResearchStage(stage) ? "Research" : "Opportunity", title: opportunity.company.name, detail: `${snapshot.offers.filter((offer) => offer.active).length > 1 && opportunity.offer ? `${opportunity.offer.name} · ` : ""}${opportunity.title}`, href });
       }
@@ -539,7 +538,6 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
         </article>
 
         <article className="surface settings-card ai-settings-card"><div className="settings-icon settings-icon-ai"><KeyRound /></div><div><h2>AI coach</h2><p>Provider, server-side key and workspace access</p></div><div className="status-list"><StatusRow label="Provider" value={runtime.aiProvider === "openai" ? "OpenAI Responses API" : "Local deterministic coach"} good={runtime.aiEnabled} /><StatusRow label="OpenAI key" value={runtime.aiKeyConfigured ? "Configured on server" : "Not configured"} good={runtime.aiKeyConfigured || runtime.aiProvider === "local"} /><StatusRow label="Model" value={runtime.aiProvider === "openai" ? runtime.aiModel : "No API model used"} good /><StatusRow label="Workspace AI" value={workspaceAiEnabled && runtime.aiEnabled ? "Enabled" : "Disabled"} good={workspaceAiEnabled && runtime.aiEnabled} /></div><div className="settings-ai-control"><button className="btn btn-quiet" type="button" disabled={aiPending || !runtime.aiEnabled || currentRole !== "admin"} onClick={toggleAi}><Sparkles size={14} />{aiPending ? "Saving..." : workspaceAiEnabled ? "Disable AI coach" : "Enable AI coach"}</button><button className="btn btn-primary" type="button" disabled={currentRole !== "admin"} onClick={() => setAiSetupOpen((value) => !value)}><KeyRound size={14} />{aiSetupOpen ? "Close setup" : "Configure OpenAI"}</button>{currentRole !== "admin" ? <small>Admin access is required to change AI settings.</small> : aiMessage ? <small>{aiMessage}</small> : null}</div>{aiSetupOpen && currentRole === "admin" ? <div className="ai-setup-panel"><div className="ai-setup-step"><b>1</b><span><strong>Create a project API key</strong><small>Use a dedicated project key with its own spend controls.</small></span><a className="btn btn-quiet" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Open API keys <ExternalLink size={13} /></a></div><div className="ai-setup-step"><b>2</b><span><strong>Add it to the server environment</strong><small>Use <code>.env.local</code> locally, or your VPS/CapRover secret variables in production.</small></span></div><code className="ai-env-block">AI_PROVIDER=openai{"\n"}AI_MODEL={runtime.aiModel}{"\n"}OPENAI_API_KEY=sk-proj-your-server-side-key</code><div className="ai-setup-actions"><button className="btn btn-quiet" type="button" onClick={copyAiConfiguration}>{aiConfigCopied ? <Check size={14} /> : <Copy size={14} />}{aiConfigCopied ? "Copied" : "Copy configuration"}</button><span><ShieldCheck size={14} />Never paste a live key into a browser form or commit it to Git. Restart the app after changing server variables.</span></div></div> : null}</article>
-        <FreeMaxSettingsCard status={runtime.freeMaxStatus} canManage={currentRole === "admin"} />
         <article className="surface settings-card settings-card-wide" id="import">
           <div className="settings-icon"><FileSpreadsheet /></div>
           <div><h2>Tracker import</h2><p>Review the local research file, then import it safely into this workspace</p></div>
