@@ -30,21 +30,8 @@ import type {
 } from "@/lib/domain/types";
 import { env } from "@/lib/env";
 import { getEdition, normaliseEditionKey } from "@/lib/editions";
-import type { EditionKey } from "@/lib/editions";
 
 const iso = (value: Date | null) => value?.toISOString() ?? null;
-
-export async function getWorkspaceEdition(organisationId: string): Promise<EditionKey> {
-  if (env.demoMode) return getEdition(env.defaultEdition).key;
-  if (env.sqliteMode) return getLocalBoardSnapshot().edition;
-
-  const [organisation] = await db
-    .select({ settings: organisations.settings })
-    .from(organisations)
-    .where(eq(organisations.id, organisationId))
-    .limit(1);
-  return organisation ? normaliseEditionKey(organisation.settings.edition) : getEdition(env.defaultEdition).key;
-}
 
 export async function getBoardSnapshot(organisationId: string): Promise<BoardSnapshot> {
   if (env.demoMode) return demoBoardForEdition(env.defaultEdition);
@@ -107,7 +94,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
       .from(users)
       .where(and(eq(users.organisationId, organisationId), eq(users.active, true)))
       .orderBy(asc(users.name)),
-    db.select().from(researchThemes).where(eq(researchThemes.organisationId, organisationId)).orderBy(desc(researchThemes.updatedAt)),
+    db.select().from(researchThemes).where(eq(researchThemes.organisationId, organisationId)).orderBy(asc(researchThemes.position), desc(researchThemes.updatedAt)),
   ]);
 
   const opportunityIds = opportunityRows.map((row) => row.opportunity.id);
@@ -327,6 +314,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
     opportunities: mappedOpportunities,
     researchThemes: researchThemeRows.map((theme) => ({
       id: theme.id,
+      position: theme.position,
       title: theme.title,
       audience: theme.audience,
       problem: theme.problem,

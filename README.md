@@ -16,8 +16,8 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 
 | Workspace | What you can do |
 | --- | --- |
-| Ideas | In Service Sales, test market needs and service angles without mixing them into named prospect work. Hand a guarded brief to Codex or Cowork, keep dated evidence, and delete ideas that go nowhere. |
-| Targets | Build the organisation, qualification evidence, provisional opportunity and named contact routes before the first touch. Focused Sales starts here; Service Sales can bring targets across from Ideas. |
+| Ideas | Test market needs, sector signals, campaign angles or use cases without mixing them into named prospect work. Reorder priorities, hand a guarded brief to Codex or Cowork, and delete ideas that go nowhere. |
+| Targets | Build the organisation, qualification evidence, provisional opportunity and named contact routes before the first touch. Credible organisations can arrive from an Idea or be added directly. |
 | Offers | Define the products or services you pitch once. A second active offer quietly unlocks contextual filters, labels, reporting, playbook assets and AI grounding across the CRM. |
 | Pipeline | Start with the whole sales picture, drag or keyboard-move opportunities into a deliberate order, spread a busy stage across two lanes, filter by owner/attention, and switch between comfortable and compact cards. |
 | Opportunity | Talk or type a new opportunity naturally, then work in a wide relationship workspace with editable company fit/scale, contacts, tasks, outreach rhythm, timeline, logging, and AI together. |
@@ -27,7 +27,7 @@ GUD is one **Sales Workspace** with two sales models: **Focused Sales** for a si
 | Companies | Add a company manually, sort by fit/name/contact coverage/pipeline order, then jump into live work. Every manually added company gets a research card so it cannot vanish between lists. |
 | Search | Find companies, people, notes, outcomes, roles, and opportunity context. |
 | Reports | See pipeline health, stage distribution, workload, channel mix, and attention gaps. |
-| Playbook | Navigate a visual outreach loop, multi-channel cadence, guardrails and adaptable patterns; track the readiness, link and owner of six essential sales assets. |
+| Sales guide | Start with a simple prepare → converse → record journey, then reveal outreach rhythm, sales assets and adaptable patterns only when needed. |
 | Settings | Manage the team, roles and offer library; rename the pipeline; inspect backup/update readiness; edit activity types; understand stage semantics; and configure AI. |
 | Import | Preview the research tracker, validate all expected columns, detect duplicates, then import it idempotently from Settings or the CLI. |
 
@@ -63,7 +63,7 @@ Offers are the intentionally small abstraction that lets the same CRM handle a w
 - The pipeline, Companies, My work and Reports can focus on one offer or show all. Offer labels appear only in mixed views where the distinction matters.
 - One company can have several opportunities for different offers. The existing company/contact and opportunity/contact model keeps those pitches connected to the same relationship without duplicating the company.
 - The AI coach receives the selected offer’s description, ideal customer and positioning. It does not blend another service into the draft.
-- Each offer has its own six-item sales asset kit in the Playbook. Existing assets migrate to the default offer automatically.
+- Each offer has its own six-item sales asset kit in the Sales guide. Existing assets migrate to the default offer automatically.
 - Offers with history are archived, not deleted. Old activity and reporting retain their meaning.
 
 The pipeline stages remain shared. That is deliberate: one operating language keeps reporting and team habits coherent. Separate stage models should only be introduced later if real usage proves that two sales motions cannot honestly share the same outcomes.
@@ -178,9 +178,9 @@ The pre-pipeline workspace keeps target finding out of the live opportunity boar
 
 The two shapes are separate destinations instead of a dense toggle:
 
-- **Ideas** exists in Service Sales. It asks whether an audience problem or market change is real enough to support an existing or emerging service. Ideas can be edited, researched externally or deleted, and remain separate from named prospects.
+- **Ideas** exists in both editions. In Service Sales it may be an audience problem or emerging service angle; in Focused Sales it may be a sector signal, campaign, partnership route, regulatory change or new use case. Ideas can be prioritised, researched externally or deleted and remain separate from named prospects.
 - **Targets** exists in both sales models. It asks whether a particular organisation is worth pursuing, records qualification evidence and contact routes, and lets the team shape the provisional opportunity before it reaches the pipeline.
-- **Focused Sales** shows Targets only. It does not expose the market-Ideas workflow that a single-product team normally does not need.
+- **Focused Sales** keeps the same clean Ideas → Targets boundary without requiring ideas as a pipeline step. Teams can add a named target directly whenever they already know who they want to reach.
 
 The assistant handoff is a compact disclosure rather than a permanent instruction panel. Open it only when you want a guarded research brief, JSON round-trip or browser-capable coworker. If the workspace is connected through MCP, the coworker can submit the same cited findings directly for human review.
 

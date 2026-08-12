@@ -22,11 +22,26 @@ test.describe.serial("Service Sales workspace", () => {
     await page.goto("/research");
     await expect(page.getByRole("heading", { name: "Ideas", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Targets", exact: true })).toBeVisible();
+    await expect(page.locator(".research-overview")).toHaveCount(0);
+    await page.getByRole("button", { name: "Add idea" }).click();
+    await page.getByLabel("Research question").fill("DEMO · A useful market question");
+    await page.getByRole("button", { name: "Save theme" }).click();
+    await expect(page.getByRole("button", { name: "Reorder DEMO · A useful market question" })).toBeVisible();
 
     await page.getByRole("link", { name: "Targets", exact: true }).click();
     await expect(page).toHaveURL(/\/targets$/);
     await expect(page.getByRole("heading", { name: "Targets", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Find a work email" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Enrich contacts & find emails" })).toBeVisible();
+    await expect(page.locator(".research-helper-grid")).toBeVisible();
+  });
+
+  test("presents the sales guide as a simple first-use path", async ({ page }) => {
+    await page.goto("/playbook");
+    await expect(page.getByRole("heading", { name: "Sales guide" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Three steps are enough" })).toBeVisible();
+    await expect(page.getByText("Plan an outreach rhythm", { exact: true })).toBeVisible();
+    await expect(page.getByText("Check what proof is ready", { exact: true })).toBeVisible();
+    await expect(page.locator(".playbook-tool[open]")).toHaveCount(0);
   });
 
   test("explains required opportunity fields and accepts a bare optional website", async ({ page }) => {

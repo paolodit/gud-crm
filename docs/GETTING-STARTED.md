@@ -30,8 +30,8 @@ This is workspace configuration, not a separate application version. A real orga
 5. Review **Offers**. Keep one offer for the cleanest experience. Add a second only when the team is actively pitching another kind of work.
 6. Review the team and roles: admin, manager and sales support. Local changes prepare the roster; separate passwords start with PostgreSQL.
 7. Review the activity types. Use language the team will actually log consistently.
-8. In **Playbook**, record which sales assets are ready, missing or owned by somebody.
-9. In Service Sales, keep market questions in **Ideas**. Add named organisations manually, import a validated tracker, or bring a structured research pack into **Targets**. Focused Sales begins directly in Targets.
+8. Open **Sales guide** for the three-step route, message patterns and each offer's progressively disclosed asset kit.
+9. Keep market questions, sector signals and campaign angles in **Ideas** in either edition. Add named organisations directly, import validated research, or carry credible candidates into **Targets**.
 10. Download a SQLite backup after the first meaningful setup session.
 
 ## The minimum useful record

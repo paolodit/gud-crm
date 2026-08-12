@@ -1,6 +1,23 @@
 "use client";
 
 import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ArrowRight,
   Bot,
   Building2,
@@ -13,6 +30,7 @@ import {
   ExternalLink,
   FileUp,
   Globe2,
+  GripVertical,
   KeyRound,
   LoaderCircle,
   Mail,
@@ -31,7 +49,7 @@ import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
 import { saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
-import { enrichResearchContactAction, importResearchResultsAction } from "@/app/actions/research";
+import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
@@ -186,6 +204,21 @@ export function ResearchHub({
     router.refresh();
   }
 
+  async function reorderThemes(activeId: string, overId: string) {
+    if (activeId === overId) return;
+    const previous = themes;
+    const from = previous.findIndex((theme) => theme.id === activeId);
+    const to = previous.findIndex((theme) => theme.id === overId);
+    if (from < 0 || to < 0) return;
+    const reordered = arrayMove(previous, from, to).map((theme, index) => ({ ...theme, position: (index + 1) * 1000 }));
+    setThemes(reordered);
+    const result = await reorderResearchThemesAction({ themeIds: reordered.map((theme) => theme.id) });
+    if (!result.ok) {
+      setThemes(previous);
+      setNotice(result.error);
+    }
+  }
+
   function currentPack() {
     const chosen = selected ? [selected] : filtered.map((item) => item.opportunity);
     return buildResearchPack(chosen, snapshot.generatedAt);
@@ -221,10 +254,9 @@ export function ResearchHub({
         </div>
       </header>
 
-      <section className="research-overview" aria-label="Research overview">
-        {researchView === "themes" ? <><ResearchMetric label="Ideas" value={themes.length} icon={<Sparkles />} /><ResearchMetric label="Ready to shortlist" value={themes.filter((theme) => theme.status === "ready").length} icon={<Check />} tone="green" /><ResearchMetric label="Gathering evidence" value={themes.filter((theme) => theme.status === "evidence").length} icon={<Search />} tone="blue" /><ResearchMetric label="Account targets" value={targets.length} icon={<Target />} tone="slate" /></> : <><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></>}
-      </section>
+      {researchView === "accounts" ? <section className="research-overview" aria-label="Research overview"><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></section> : null}
 
+      <section className={`research-helper-grid${researchView === "themes" ? " research-helper-grid-ideas" : ""}`}>
       <details className="research-assistant-path" aria-label="Research workflow">
         <summary><span className="research-assistant-intro"><span><Bot size={18} /></span><span><strong>Research with Codex, Cowork or your preferred assistant</strong><small>Open the handoff guide for browser research or contact discovery.</small></span></span><ChevronDown size={18} /></summary>
         <div className="research-assistant-detail">
@@ -237,9 +269,12 @@ export function ResearchHub({
         </div>
       </details>
 
+      {researchView === "accounts" ? <FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" /> : null}
+      </section>
+
       {notice ? <div className="research-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X size={15} /></button></div> : null}
 
-      {researchView === "accounts" ? <><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" /><section className="research-toolbar">
+      {researchView === "accounts" ? <><section className="research-toolbar">
         <label className="search-box search-box-grow"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search targets, sectors, contacts or evidence" /></label>
         {availableOffers.length > 1 ? <label className="field-select research-filter"><span className="sr-only">Offer</span><select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
         <label className="field-select research-filter"><span className="sr-only">Research status</span><select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label>
@@ -334,7 +369,7 @@ export function ResearchHub({
             </>
           ) : <div className="research-empty research-empty-panel"><Target size={28} /><strong>Select a target</strong><span>Research details, sources and contacts will appear here.</span></div>}
         </aside>
-      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
+      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onReorder={reorderThemes} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
 
       {showHandoff ? (
         <div className="dialog-backdrop" role="presentation">
@@ -359,8 +394,15 @@ export function ResearchHub({
   );
 }
 
-function ThemeWorkspace({ themes, selected, offers, onSelect, onEdit, onAddTarget, onCopied }: { themes: ResearchThemeSummary[]; selected: ResearchThemeSummary | null; offers: BoardSnapshot["offers"]; onSelect: (id: string) => void; onEdit: (theme: ResearchThemeSummary) => void; onAddTarget: () => void; onCopied: () => void }) {
+function ThemeWorkspace({ themes, selected, offers, onSelect, onEdit, onReorder, onAddTarget, onCopied }: { themes: ResearchThemeSummary[]; selected: ResearchThemeSummary | null; offers: BoardSnapshot["offers"]; onSelect: (id: string) => void; onEdit: (theme: ResearchThemeSummary) => void; onReorder: (activeId: string, overId: string) => void; onAddTarget: () => void; onCopied: () => void }) {
   const offer = selected ? offers.find((item) => item.id === selected.offerId) : null;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  function dragEnd(event: DragEndEvent) {
+    if (event.over && event.active.id !== event.over.id) onReorder(String(event.active.id), String(event.over.id));
+  }
   async function copyTheme() {
     if (!selected) return;
     await navigator.clipboard.writeText([
@@ -377,12 +419,28 @@ function ThemeWorkspace({ themes, selected, offers, onSelect, onEdit, onAddTarge
   return <div className="research-workspace theme-workspace">
     <section className="research-list" aria-label="Research themes">
       <div className="research-list-heading"><strong>{themes.length} {themes.length === 1 ? "idea" : "ideas"}</strong><span>Ideas stay here until evidence supports real targets.</span></div>
-      {themes.map((theme) => <button className="research-row theme-row" data-active={selected?.id === theme.id} type="button" key={theme.id} onClick={() => onSelect(theme.id)}><span className="research-row-mark"><Sparkles size={16} /></span><span className="research-row-copy"><span className="research-row-title"><strong>{theme.title}</strong><ThemeStatus status={theme.status} /></span><span>{theme.audience || "Audience not defined"}</span><small>{theme.angle || theme.problem || "Add the problem and angle worth testing"}</small></span><ChevronRight size={18} /></button>)}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={dragEnd}>
+        <SortableContext items={themes.map((theme) => theme.id)} strategy={verticalListSortingStrategy}>
+          {themes.map((theme) => <SortableThemeRow key={theme.id} theme={theme} active={selected?.id === theme.id} onSelect={onSelect} />)}
+        </SortableContext>
+      </DndContext>
       {!themes.length ? <div className="research-empty"><Sparkles size={24} /><strong>Start with one useful question</strong><span>A theme is a market problem or change you may be able to help with—not a vague content topic.</span></div> : null}
     </section>
     <aside className="research-inspector theme-inspector" aria-label="Selected research theme">
       {selected ? <><header className="research-inspector-head"><div className="research-company-icon"><Sparkles size={19} /></div><div><ThemeStatus status={selected.status} /><h2>{selected.title}</h2><p>{selected.audience || "Audience not defined"}</p></div><button className="icon-button" type="button" onClick={() => onEdit(selected)} aria-label={`Edit ${selected.title}`}><Pencil size={16} /></button></header><div className="research-fit-strip"><span><small>Offer angle</small><strong>{offer?.name ?? "Open"}</strong></span><span><small>Sources</small><strong>{selected.sourceUrls.length}</strong></span><span><small>State</small><strong>{themeStatusLabel(selected.status)}</strong></span></div><section className="research-section theme-question"><span className="eyebrow">The question</span><h3>Is this a problem worth pursuing?</h3><dl><div><dt>Problem or change</dt><dd>{selected.problem || "Not recorded yet"}</dd></div><div><dt>Evidence signal</dt><dd>{selected.signal || "Add the strongest fact, trend or repeated observation."}</dd></div><div><dt>Angle to test</dt><dd>{selected.angle || "Describe one useful way your service might respond."}</dd></div></dl>{selected.sourceUrls.length ? <div className="research-links">{selected.sourceUrls.slice(0, 6).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}</div> : null}</section><footer className="research-decision"><div><span className="eyebrow">Next move</span><strong>Research externally, then turn credible matches into account targets.</strong></div><div><button className="btn btn-quiet" type="button" onClick={copyTheme}><Clipboard size={15} />Copy brief</button><button className="btn btn-primary" type="button" onClick={onAddTarget}><ArrowRight size={15} />Open targets</button></div></footer></> : <div className="research-empty research-empty-panel"><Sparkles size={28} /><strong>Select an idea</strong><span>The research question and offer angle will appear here.</span></div>}
     </aside>
+  </div>;
+}
+
+function SortableThemeRow({ theme, active, onSelect }: { theme: ResearchThemeSummary; active: boolean; onSelect: (id: string) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: theme.id });
+  return <div ref={setNodeRef} className="research-row theme-row" data-active={active} data-dragging={isDragging} style={{ transform: CSS.Transform.toString(transform), transition }}>
+    <button className="theme-drag-handle" type="button" aria-label={`Reorder ${theme.title}`} title="Drag to reorder" {...attributes} {...listeners}><GripVertical size={17} /></button>
+    <button className="theme-row-open" type="button" onClick={() => onSelect(theme.id)}>
+      <span className="research-row-mark"><Sparkles size={16} /></span>
+      <span className="research-row-copy"><span className="research-row-title"><strong>{theme.title}</strong><ThemeStatus status={theme.status} /></span><span>{theme.audience || "Audience not defined"}</span><small>{theme.angle || theme.problem || "Add the problem and angle worth testing"}</small></span>
+      <ChevronRight size={18} />
+    </button>
   </div>;
 }
 

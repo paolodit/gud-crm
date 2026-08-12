@@ -157,6 +157,7 @@ export type OpportunitySummary = {
 
 export type ResearchThemeSummary = {
   id: string;
+  position: number;
   title: string;
   audience: string | null;
   problem: string | null;

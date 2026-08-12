@@ -2,7 +2,6 @@ import { ResearchHub } from "@/components/research-hub";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import { getCurrentMember } from "@/lib/session";
-import { redirect } from "next/navigation";
 
 export default async function ResearchPage() {
   const member = await getCurrentMember();
@@ -11,6 +10,5 @@ export default async function ResearchPage() {
     getBoardSnapshot(member.organisationId),
     getFreeMaxStatus(member.organisationId, member.storageMode),
   ]);
-  if (snapshot.edition !== "service") redirect("/targets");
   return <ResearchHub snapshot={snapshot} freeMaxStatus={freeMaxStatus} view="themes" canManage={member.role === "admin"} />;
 }

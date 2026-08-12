@@ -191,6 +191,9 @@ export function getLocalBoardSnapshot(): BoardSnapshot {
   snapshot.storageMode = "sqlite";
   snapshot.generatedAt = new Date().toISOString();
   snapshot.researchThemes ??= [];
+  snapshot.researchThemes = snapshot.researchThemes
+    .map((theme, index) => ({ ...theme, position: theme.position ?? (index + 1) * 1000 }))
+    .sort((a, b) => a.position - b.position);
   return snapshot;
 }
 

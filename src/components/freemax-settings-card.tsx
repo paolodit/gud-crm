@@ -35,9 +35,9 @@ export function FreeMaxSettingsCard({ status, canManage, context = "settings" }:
   return (
     <article className={`surface settings-card settings-card-wide enrichment-settings-card enrichment-settings-card-live${context === "targets" ? " target-enrichment-card" : ""}`} id="freemax">
       <div className="settings-icon settings-icon-enrichment"><Sparkles /></div>
-      <div><h2>{context === "targets" ? "Find a work email" : "FreeMax enrichment"}</h2><p>Use Hunter and Voila Norbert only after you have a named contact and company domain</p></div>
-      {canManage ? <button className="btn btn-primary settings-card-action" type="button" onClick={() => setOpen((value) => !value)}><KeyRound size={14} />{open ? "Close setup" : "Manage providers"}</button> : null}
-      <div className="enrichment-provider-grid">
+      <div><h2>{context === "targets" ? "Enrich contacts & find emails" : "FreeMax enrichment"}</h2><p>{context === "targets" ? `FreeMax your allowances · Hunter ${status.hunter.configured ? "connected" : "not connected"} · Norbert ${status.norbert.configured ? "connected" : "not connected"}` : "Use Hunter and Voila Norbert only after you have a named contact and company domain"}</p></div>
+      {canManage ? <button className="btn btn-primary settings-card-action" type="button" onClick={() => setOpen((value) => !value)}><KeyRound size={14} />{open ? "Close setup" : "Connect providers"}</button> : null}
+      <div className="enrichment-provider-grid" hidden={context === "targets" && !open}>
         <div data-ready={status.hunter.configured}><span><strong>Hunter {status.order[0] === "hunter" ? "· First" : ""}</strong><small>Monthly free allowance</small></span><b>{status.hunter.configured ? `${status.hunter.used}/${status.hunter.limit} used` : "Not connected"}</b></div>
         <div data-ready={status.norbert.configured}><span><strong>Voila Norbert {status.order[0] === "norbert" ? "· First" : ""}</strong><small>Starter allowance</small></span><b>{status.norbert.configured ? `${status.norbert.used}/${status.norbert.limit} used` : "Not connected"}</b></div>
       </div>
@@ -46,7 +46,7 @@ export function FreeMaxSettingsCard({ status, canManage, context = "settings" }:
         <span><b>2</b><small>Click Find work email in Research</small></span>
         <span><b>3</b><small>GUD stays inside connected providers and safety caps</small></span>
       </div>
-      <p className="freemax-explainer"><ShieldCheck size={15} /><span>{context === "targets" ? "GUD tries your preferred provider first and falls back only when needed. Keys stay encrypted server-side." : "Keys are encrypted with this deployment’s secret and are never sent back to the browser. Successful lookups are counted here; provider dashboards remain authoritative."}</span></p>
+      <p className="freemax-explainer" hidden={context === "targets" && !open}><ShieldCheck size={15} /><span>{context === "targets" ? "GUD tries your preferred provider first and falls back only when needed. Keys stay encrypted server-side." : "Keys are encrypted with this deployment’s secret and are never sent back to the browser. Successful lookups are counted here; provider dashboards remain authoritative."}</span></p>
       {open && canManage ? (
         <form className="freemax-key-form" onSubmit={submit}>
           <header><div><strong>Connect or switch providers</strong><small>Paste a new key only when adding or replacing it. Blank fields keep the current key.</small></div><div className="button-row"><a className="btn btn-quiet btn-compact" href="https://hunter.io/users/sign_up" target="_blank" rel="noreferrer">Hunter <ExternalLink size={13} /></a><a className="btn btn-quiet btn-compact" href="https://www.voilanorbert.com/" target="_blank" rel="noreferrer">Norbert <ExternalLink size={13} /></a></div></header>

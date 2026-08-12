@@ -365,10 +365,14 @@ export const researchThemes = pgTable(
     signal: text("signal"),
     angle: text("angle"),
     status: varchar("status", { length: 24 }).default("idea").notNull(),
+    position: integer("position").default(0).notNull(),
     sourceUrls: jsonb("source_urls").$type<string[]>().default([]).notNull(),
     ...timestamps,
   },
-  (table) => [index("research_themes_org_status_idx").on(table.organisationId, table.status, table.updatedAt)],
+  (table) => [
+    index("research_themes_org_position_idx").on(table.organisationId, table.position),
+    index("research_themes_org_status_idx").on(table.organisationId, table.status, table.updatedAt),
+  ],
 );
 
 export const opportunityContacts = pgTable(

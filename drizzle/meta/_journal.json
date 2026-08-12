@@ -50,6 +50,13 @@
       "when": 1785244022674,
       "tag": "0006_mature_vivisector",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786533266653,
+      "tag": "0007_pretty_blindfold",
+      "breakpoints": true
     }
   ]
 }
