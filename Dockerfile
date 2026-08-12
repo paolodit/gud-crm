@@ -3,6 +3,7 @@ FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /app
 
 FROM base AS deps
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci
 
@@ -16,6 +17,7 @@ RUN npm run build:runtime-tools
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+RUN apk add --no-cache libstdc++
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
