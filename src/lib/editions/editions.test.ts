@@ -19,7 +19,8 @@ describe("sales editions", () => {
     expect(snapshot.offers.map((offer) => offer.name)).toEqual(["Primary service"]);
     expect(snapshot.opportunities).toEqual([]);
     expect(snapshot.users.map((user) => user.name)).toEqual(["Alex Morgan"]);
-    expect(snapshot.stages.some((stage) => stage.name === "Proposal sent")).toBe(true);
+    expect(snapshot.stages.some((stage) => stage.name === "Proposal / decision")).toBe(true);
+    expect(snapshot.stages.some((stage) => stage.name === "Ready to contact")).toBe(false);
   });
 
   it("creates a clean Focused Sales workspace without mixing in public demo records", () => {

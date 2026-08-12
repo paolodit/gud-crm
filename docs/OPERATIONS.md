@@ -11,11 +11,12 @@
 
 ## Pipeline discipline
 
-- **Ready to contact** means a credible person and route are identified.
 - **Outreach active** means at least one real touch is underway; no response is required yet.
-- **Engaged** begins only when a person responds or opens a conversation.
-- **Nurture** requires a real relationship signal plus an explicit re-entry trigger.
+- **Conversation active** begins only when a person responds or opens a useful conversation.
+- **Proposal / decision** means a defined commercial next step is with the buyer or awaiting a decision.
 - **Lost** requires a genuine post-contact commercial loss. Desk research and no-fit targets belong in Research holding.
+
+Admins can rename or add visible sales stages in Settings. Removing a stage is an archive operation: GUD requires a destination and moves every opportunity before hiding the old bucket. The two Targets stages remain protected.
 
 The board describes outcomes. Calls, emails, LinkedIn attempts, letters, demos and useful diagnostics belong in the activity timeline.
 
@@ -24,7 +25,7 @@ The board describes outcomes. Calls, emails, LinkedIn attempts, letters, demos a
 - Clear overdue actions or consciously reschedule them.
 - Review opportunities with no next action.
 - Check Outreach active records for repeated use of one channel without new value.
-- Review Nurture triggers and dates.
+- Review quiet conversations and either create a credible next action, return them to Targets or close them.
 - Check the Sales guide asset kit for missing or stalled material.
 - Review Reports by owner and, when relevant, by offer.
 - Download a fresh SQLite backup during development or confirm the latest PostgreSQL backup and restore-test status in production.

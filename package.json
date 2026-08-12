@@ -30,6 +30,7 @@
     "db:local:export": "tsx scripts/local-db.ts export",
     "db:promote:sql": "tsx scripts/export-postgres-promotion.ts",
     "db:postgres:backup": "node scripts/backup-postgres.mjs",
+    "deploy:secrets": "node scripts/generate-deployment-secrets.mjs",
     "import:tracker": "tsx scripts/import-tracker.ts"
   },
   "dependencies": {

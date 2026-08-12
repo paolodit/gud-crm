@@ -57,6 +57,13 @@
       "when": 1786533266653,
       "tag": "0007_pretty_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786540800000,
+      "tag": "0008_simpler_sales_stages",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,40 @@
 
 GUD ships one Docker image for every sales model. Deploy that image as one stateless CapRover app per private organisation and give every app its own PostgreSQL database, authentication secret, hostname and backup stream.
 
+## The shortest safe install
+
+If you already have CapRover and PostgreSQL, a clean first instance is five deliberate steps:
+
+1. Run `npm run deploy:secrets`, save the three values in a password manager, then create a database and login role used only by this GUD instance.
+2. Create a normal CapRover app, set **Container HTTP Port** to `3000`, and leave app-level persistence off.
+3. Add the variables from the minimal block below, using fresh generated secrets.
+4. Deploy the repository tarball or Git source using the included `captain-definition`.
+5. Sign in, confirm `/api/health`, then set `GUD_BOOTSTRAP=off`, remove the seed password and restart.
+
+Minimal first-boot environment:
+
+```dotenv
+DATA_BACKEND=postgres
+DATABASE_URL=postgresql://INSTANCE_USER:URL_ENCODED_PASSWORD@srv-captain--POSTGRES_APP:5432/INSTANCE_DATABASE?sslmode=disable
+GUD_DEFAULT_MODEL=service
+GUD_INSTANCE_NAME=Your sales workspace
+BETTER_AUTH_SECRET=GENERATE_AT_LEAST_32_RANDOM_CHARACTERS
+BETTER_AUTH_URL=https://crm.example.com
+NEXT_PUBLIC_APP_URL=https://crm.example.com
+GUD_BOOTSTRAP=if-empty
+SEED_ORGANISATION_NAME=Your sales workspace
+SEED_ADMIN_NAME=Your name
+SEED_ADMIN_EMAIL=admin@example.com
+SEED_ADMIN_PASSWORD=GENERATE_A_UNIQUE_12_PLUS_CHARACTER_PASSWORD
+AI_ENABLED=true
+AI_PROVIDER=local
+MCP_ENABLED=false
+```
+
+Then connect the domain, enable HTTPS and **Force HTTPS**. Do not leave the container port at CapRover's default `80`: the GUD image listens on `3000`.
+
+`npm run deploy:secrets` only prints fresh random values. It does not create a file, alter the database or send anything over the network. Use the generated PostgreSQL password when creating the role, URL-encode it in `DATABASE_URL`, and remove `SEED_ADMIN_PASSWORD` from CapRover after the first successful sign-in.
+
 The root [`captain-definition`](../captain-definition) points CapRover at the production Dockerfile. The image builds the Next.js standalone runtime, bundles only the migration and first-run bootstrap utilities it needs, applies committed migrations before starting, and exposes a database-aware Docker health check at `/api/health`.
 
 ## Recommended topology
@@ -149,5 +183,19 @@ After import, compare the script's final count result with its adjacent `.manife
 - Administrator sign-in, sign-out and password recovery have been tested.
 - AI and enrichment providers are disabled or configured with project-level spend/quota controls.
 - A staging restore and the local-data promotion reconciliation have passed.
+
+## Docker Compose alternative
+
+For a single server without CapRover:
+
+```bash
+cp .env.example .env
+# edit .env: set POSTGRES_PASSWORD, APP_URL, BETTER_AUTH_SECRET and first-boot admin values
+docker compose up -d --build
+docker compose ps
+curl -fsS https://crm.example.com/api/health
+```
+
+The committed Compose file creates a persistent PostgreSQL volume and exposes GUD on host port `3000`. Put an HTTPS reverse proxy in front of it. After the first sign-in, change `GUD_BOOTSTRAP` to `off`, remove `SEED_ADMIN_PASSWORD`, and run `docker compose up -d` again. Back up the PostgreSQL volume with `pg_dump`; a container image rebuild does not contain your database.
 
 Official references: [captain-definition and Dockerfiles](https://caprover.com/docs/captain-definition-file.html), [zero-downtime health checks](https://caprover.com/docs/zero-downtime.html), [persistent applications](https://caprover.com/docs/persistent-apps.html), [application configuration](https://caprover.com/docs/app-configuration.html), and [backup limitations](https://caprover.com/docs/backup-and-restore.html).

@@ -53,7 +53,7 @@ import { enrichResearchContactAction, importResearchResultsAction, reorderResear
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
-import { getResearchTargets, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
+import { getResearchTargets, isResearchStage, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type { BoardSnapshot, ContactSummary, OpportunitySummary, Priority, ResearchThemeSummary, Temperature } from "@/lib/domain/types";
@@ -121,7 +121,7 @@ export function ResearchHub({
   const selectedWebsiteUrl = safeExternalUrl(selected?.company.websiteUrl);
   const selectedSourceUrls = (selected?.company.sourceUrls ?? []).map(safeExternalUrl).filter((url): url is string => Boolean(url));
   const enrichableContact = selected?.contacts.find((contact) => !contact.email) ?? null;
-  const readyStage = snapshot.stages.find((stage) => stage.name === "Ready to contact");
+  const firstSalesStage = snapshot.stages.find((stage) => !isResearchStage(stage) && stage.terminalType === "open");
   const activeResearchStage = snapshot.stages.find((stage) => stage.name === "Researching");
   const holdStage = snapshot.stages.find((stage) => stage.name === "Research holding");
   const freeMaxConfigured = freeMaxStatus.hunter.configured || freeMaxStatus.norbert.configured;
@@ -144,7 +144,7 @@ export function ResearchHub({
     const result = await moveOpportunityAction({ opportunityId: selected.id, toStageId: stageId });
     setPendingAction(null);
     if (!result.ok) return setNotice(result.error);
-    setNotice(action === "promote" ? `${selected.company.name} is now ready to contact.` : `${selected.company.name} has been updated.`);
+    setNotice(action === "promote" ? `${selected.company.name} is now in Outreach active.` : `${selected.company.name} has been updated.`);
     router.replace("/targets", { scroll: false });
     router.refresh();
   }
@@ -254,7 +254,7 @@ export function ResearchHub({
         </div>
       </header>
 
-      {researchView === "accounts" ? <section className="research-overview" aria-label="Research overview"><ResearchMetric label="Targets preserved" value={targets.length} icon={<Target />} /><ResearchMetric label="Ready to review" value={counts.ready} icon={<Check />} tone="green" /><ResearchMetric label="Need a contact" value={counts.needs_contact} icon={<Users />} tone="blue" /><ResearchMetric label="On hold" value={counts.held} icon={<CirclePause />} tone="slate" /></section> : null}
+      {researchView === "accounts" ? <section className="target-summary-line" aria-label="Target summary"><strong>{targets.length} {targets.length === 1 ? "target" : "targets"}</strong><span><Check size={14} />{counts.ready} ready</span><span><Users size={14} />{counts.needs_contact} need a contact</span><span><CirclePause size={14} />{counts.held} on hold</span></section> : null}
 
       <section className={`research-helper-grid${researchView === "themes" ? " research-helper-grid-ideas" : ""}`}>
       <details className="research-assistant-path" aria-label="Research workflow">
@@ -274,15 +274,14 @@ export function ResearchHub({
 
       {notice ? <div className="research-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X size={15} /></button></div> : null}
 
-      {researchView === "accounts" ? <><section className="research-toolbar">
-        <label className="search-box search-box-grow"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search targets, sectors, contacts or evidence" /></label>
-        {availableOffers.length > 1 ? <label className="field-select research-filter"><span className="sr-only">Offer</span><select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
-        <label className="field-select research-filter"><span className="sr-only">Research status</span><select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label>
+      {researchView === "accounts" ? <><section className="research-toolbar target-toolbar">
+        <label className="search-box search-box-grow"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search targets" /></label>
+        <details className="target-filter-menu"><summary>Filter <ChevronDown size={15} /></summary><div>{availableOffers.length > 1 ? <label className="field-label">Offer<select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}<label className="field-label">Research status<select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label></div></details>
       </section>
 
-      <div className="research-workspace">
+      <div className="research-workspace target-workspace">
         <section className="research-list" aria-label="Research targets">
-          <div className="research-list-heading"><strong>{filtered.length} {filtered.length === 1 ? "target" : "targets"}</strong><span>Existing tracker data stays intact until you promote it.</span></div>
+          <div className="research-list-heading"><strong>{filtered.length} shown</strong><span>Kept outside the pipeline until outreach starts.</span></div>
           {filtered.map(({ opportunity, readiness }) => {
             const contact = opportunity.contacts.find((item) => item.primary) ?? opportunity.contacts[0];
             return (
@@ -363,7 +362,7 @@ export function ResearchHub({
                 <div><span className="eyebrow">Human decision</span><strong>{statusCopy[selectedReadiness].detail}</strong></div>
                 <div>
                   {selectedStage?.name === "Research holding" ? <button className="btn btn-quiet" type="button" disabled={!activeResearchStage || pendingAction !== null} onClick={() => moveSelected(activeResearchStage?.id, "resume")}>{pendingAction === "resume" ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}Resume research</button> : <button className="btn btn-quiet" type="button" disabled={!holdStage || pendingAction !== null} onClick={() => moveSelected(holdStage?.id, "hold")}><CirclePause size={15} />Hold</button>}
-                  <button className="btn btn-primary" type="button" disabled={!readyStage || pendingAction !== null || selectedReadiness !== "ready" || (availableOffers.length > 1 && !selected.offer)} title={selectedReadiness !== "ready" ? statusCopy[selectedReadiness].detail : availableOffers.length > 1 && !selected.offer ? "Choose what you are pitching first" : undefined} onClick={() => moveSelected(readyStage?.id, "promote")}>{pendingAction === "promote" ? <LoaderCircle className="spin" size={15} /> : <ArrowRight size={15} />}Start outreach</button>
+                  <button className="btn btn-primary" type="button" disabled={!firstSalesStage || pendingAction !== null || selectedReadiness !== "ready" || (availableOffers.length > 1 && !selected.offer)} title={selectedReadiness !== "ready" ? statusCopy[selectedReadiness].detail : availableOffers.length > 1 && !selected.offer ? "Choose what you are pitching first" : undefined} onClick={() => moveSelected(firstSalesStage?.id, "promote")}>{pendingAction === "promote" ? <LoaderCircle className="spin" size={15} /> : <ArrowRight size={15} />}Start outreach</button>
                 </div>
               </footer>
             </>
@@ -450,10 +449,6 @@ function ThemeStatus({ status }: { status: ResearchThemeSummary["status"] }) {
 
 function themeStatusLabel(status: ResearchThemeSummary["status"]) {
   return status === "ready" ? "Ready to shortlist" : status === "evidence" ? "Gathering evidence" : "Idea";
-}
-
-function ResearchMetric({ label, value, icon, tone = "purple" }: { label: string; value: number; icon: React.ReactNode; tone?: string }) {
-  return <div className="research-metric" data-tone={tone}><span>{icon}</span><div><strong>{value}</strong><small>{label}</small></div></div>;
 }
 
 function ResearchStatus({ status }: { status: ResearchReadiness }) {

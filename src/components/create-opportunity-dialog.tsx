@@ -196,6 +196,7 @@ export function CreateOpportunityDialog({
                   <li>the opportunity and what you might offer</li>
                   <li>the organisation, sector and why now</li>
                   <li>the contact and a sensible next move</li>
+                  <li>how warm it is and its likely value</li>
                 </ul>
               </div>
             </div>

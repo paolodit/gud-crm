@@ -19,6 +19,13 @@ type Recognition = {
 };
 type RecognitionConstructor = new () => Recognition;
 
+const opportunityPrompts = [
+  "the opportunity and what you might offer",
+  "the organisation, its sector and why now",
+  "the contact and a sensible next move",
+  "how warm it is and its likely value",
+];
+
 export function VoiceFillButton({
   kind,
   onDraft,
@@ -34,12 +41,19 @@ export function VoiceFillButton({
   const [state, setState] = useState<"idle" | "listening" | "thinking">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [heard, setHeard] = useState("");
+  const [promptIndex, setPromptIndex] = useState(0);
 
   useEffect(() => {
     const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     queueMicrotask(() => setSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition)));
     return () => recognition.current?.stop();
   }, []);
+
+  useEffect(() => {
+    if (state !== "listening" || kind !== "opportunity") return;
+    const timer = window.setInterval(() => setPromptIndex((index) => (index + 1) % opportunityPrompts.length), 3200);
+    return () => window.clearInterval(timer);
+  }, [state, kind]);
 
   async function start() {
     if (state === "listening") {
@@ -54,6 +68,7 @@ export function VoiceFillButton({
     recognition.current = next;
     processing.current = false;
     setHeard("");
+    setPromptIndex(0);
     next.lang = "en-GB";
     next.continuous = true;
     next.interimResults = true;
@@ -107,7 +122,7 @@ export function VoiceFillButton({
         <span className="voice-live" role="status" aria-live="polite">
           <span className="voice-live-label"><i />Listening now</span>
           <span className="voice-levels" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}</span>
-          <span className="voice-live-copy">{heard || "Start speaking — your words will appear here."}</span>
+          <span className="voice-live-copy">{heard || (kind === "opportunity" ? `You could mention ${opportunityPrompts[promptIndex]}…` : "Start speaking — your words will appear here.")}</span>
         </span>
       ) : null}
       {message && state !== "listening" ? <span className="voice-fill-status" role="status" aria-live="polite"><Sparkles size={13} />{message}</span> : null}

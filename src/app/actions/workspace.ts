@@ -1,18 +1,18 @@
 "use server";
 
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/db";
-import { auditEvents, oauthAccessTokens, oauthConsents, offers, opportunities, organisations, pipelines, sessions, stages, users } from "@/db/schema";
+import { auditEvents, oauthAccessTokens, oauthConsents, offers, opportunities, organisations, pipelines, sessions, stageHistory, stages, users } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { publicActionError } from "@/lib/action-error";
 import { getLocalBoardSnapshot, getLocalSetting, recordLocalAuditEvent, setLocalSetting, updateLocalBoardSnapshot } from "@/lib/data/local-store";
 import { salesAssetDefaults } from "@/lib/data/workspace-repository";
 import { normaliseName } from "@/lib/domain/normalise";
-import type { OfferSummary, PersonSummary, SalesAssetSummary } from "@/lib/domain/types";
+import type { OfferSummary, PersonSummary, SalesAssetSummary, StageSummary } from "@/lib/domain/types";
 import { getCurrentMember } from "@/lib/session";
 import { isSafeHttpUrl } from "@/lib/domain/normalise";
 import { saveFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
@@ -20,6 +20,7 @@ import { saveFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 type Result = { ok: true } | { ok: false; error: string };
 type TeamResult = { ok: true; member: PersonSummary } | { ok: false; error: string };
 type OfferResult = { ok: true; offer: OfferSummary } | { ok: false; error: string };
+type StageResult = { ok: true; stage: StageSummary } | { ok: false; error: string };
 
 const optionalUrl = z.string().trim().max(2_000).refine((value) => !value || isSafeHttpUrl(value), "Enter a complete HTTP or HTTPS URL.");
 const savePipelineSchema = z.object({ name: z.string().trim().min(2).max(160) });
@@ -49,6 +50,13 @@ const saveOfferSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 const deactivateOfferSchema = z.object({ offerId: z.uuid() });
+const saveStageSchema = z.object({
+  stageId: z.uuid().nullable().optional(),
+  name: z.string().trim().min(2).max(120),
+  colour: z.string().regex(/^#[0-9a-f]{6}$/i, "Choose a valid colour."),
+  terminalType: z.enum(["open", "won", "lost"]),
+});
+const archiveStageSchema = z.object({ stageId: z.uuid(), destinationStageId: z.uuid() });
 const revokeMcpConnectionSchema = z.object({ clientId: z.string().trim().min(1).max(200) });
 const saveFreeMaxSchema = z.object({
   hunterKey: z.string().trim().max(1_000).default(""),
@@ -84,6 +92,127 @@ export async function savePipelineNameAction(input: unknown): Promise<Result> {
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Pipeline name could not be saved.") };
+  }
+}
+
+export async function savePipelineStageAction(input: unknown): Promise<StageResult> {
+  const parsed = saveStageSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the stage details." };
+  try {
+    const member = await requireAdmin();
+    if (member.demoMode) return { ok: false, error: "Stage changes reset in demo mode." };
+    const data = parsed.data;
+    let saved: StageSummary;
+    if (member.storageMode === "sqlite") {
+      saved = updateLocalBoardSnapshot((snapshot) => {
+        const existing = data.stageId ? snapshot.stages.find((stage) => stage.id === data.stageId) : null;
+        if (data.stageId && !existing) throw new Error("That stage is not available.");
+        if (existing && isProtectedResearchStage(existing)) throw new Error("Targets uses this protected pre-pipeline stage.");
+        const duplicate = snapshot.stages.find((stage) => stage.id !== data.stageId && stage.name.trim().toLowerCase() === data.name.toLowerCase());
+        if (duplicate) throw new Error("A stage with that name already exists.");
+        const next: StageSummary = existing ? { ...existing, name: data.name, colour: data.colour.toUpperCase(), terminalType: data.terminalType } : {
+          id: crypto.randomUUID(), name: data.name, colour: data.colour.toUpperCase(), terminalType: data.terminalType, position: 0,
+        };
+        if (existing) snapshot.stages = snapshot.stages.map((stage) => stage.id === existing.id ? next : stage);
+        else {
+          const firstTerminal = snapshot.stages.findIndex((stage) => !isProtectedResearchStage(stage) && stage.terminalType !== "open");
+          snapshot.stages.splice(firstTerminal < 0 ? snapshot.stages.length : firstTerminal, 0, next);
+        }
+        snapshot.stages.forEach((stage, index) => { stage.position = (index + 1) * 1000; });
+        return next;
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: data.stageId ? "stage.updated" : "stage.created", entityType: "stage", entityId: saved.id, detail: { name: saved.name, terminalType: saved.terminalType } });
+    } else {
+      saved = await db.transaction(async (tx) => {
+        const [pipeline] = await tx.select().from(pipelines).where(and(eq(pipelines.organisationId, member.organisationId), eq(pipelines.active, true))).limit(1);
+        if (!pipeline) throw new Error("No active pipeline is configured.");
+        const allRows = await tx.select().from(stages).where(eq(stages.pipelineId, pipeline.id)).orderBy(asc(stages.position));
+        const rows = allRows.filter((stage) => stage.active);
+        const existing = data.stageId ? rows.find((stage) => stage.id === data.stageId) : null;
+        if (data.stageId && !existing) throw new Error("That stage is not available.");
+        if (existing && isProtectedResearchStage(existing)) throw new Error("Targets uses this protected pre-pipeline stage.");
+        if (rows.some((stage) => stage.id !== data.stageId && stage.name.trim().toLowerCase() === data.name.toLowerCase())) throw new Error("A stage with that name already exists.");
+        let row = existing;
+        if (existing) {
+          [row] = await tx.update(stages).set({ name: data.name, colour: data.colour.toUpperCase(), terminalType: data.terminalType, updatedAt: new Date() }).where(eq(stages.id, existing.id)).returning();
+        } else {
+          [row] = await tx.insert(stages).values({ pipelineId: pipeline.id, name: data.name, colour: data.colour.toUpperCase(), terminalType: data.terminalType, position: Math.max(0, ...allRows.map((stage) => stage.position)) + 1000 }).returning();
+          const ordered = [...rows];
+          const firstTerminal = ordered.findIndex((stage) => !isProtectedResearchStage(stage) && stage.terminalType !== "open");
+          ordered.splice(firstTerminal < 0 ? ordered.length : firstTerminal, 0, row);
+          const positions = [...allRows.map((stage) => stage.position), row.position];
+          const offset = Math.max(...positions) - Math.min(...positions) + 100000;
+          await tx.update(stages).set({ position: sql`${stages.position} + ${offset}` }).where(eq(stages.pipelineId, pipeline.id));
+          for (const [index, stage] of ordered.entries()) await tx.update(stages).set({ position: (index + 1) * 1000 }).where(eq(stages.id, stage.id));
+          row = { ...row, position: (ordered.findIndex((stage) => stage.id === row?.id) + 1) * 1000 };
+        }
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: existing ? "stage.updated" : "stage.created", entityType: "stage", entityId: row.id, after: { name: row.name, terminalType: row.terminalType } });
+        return { id: row.id, name: row.name, colour: row.colour, position: row.position, terminalType: row.terminalType };
+      });
+    }
+    revalidateStagePaths();
+    return { ok: true, stage: saved };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Pipeline stage could not be saved.") };
+  }
+}
+
+export async function archivePipelineStageAction(input: unknown): Promise<Result> {
+  const parsed = archiveStageSchema.safeParse(input);
+  if (!parsed.success || parsed.data.stageId === parsed.data.destinationStageId) return { ok: false, error: "Choose a different destination stage." };
+  try {
+    const member = await requireAdmin();
+    if (member.demoMode) return { ok: false, error: "Stage changes reset in demo mode." };
+    const { stageId, destinationStageId } = parsed.data;
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => {
+        const source = snapshot.stages.find((stage) => stage.id === stageId);
+        const destination = snapshot.stages.find((stage) => stage.id === destinationStageId);
+        if (!source || !destination) throw new Error("Choose valid source and destination stages.");
+        if (isProtectedResearchStage(source) || isProtectedResearchStage(destination)) throw new Error("Targets stages cannot be edited here.");
+        if (snapshot.stages.filter((stage) => !isProtectedResearchStage(stage) && stage.id !== source.id).length < 1) throw new Error("Keep at least one sales stage.");
+        let position = Math.max(0, ...snapshot.opportunities.filter((item) => item.stageId === destination.id).map((item) => item.position));
+        for (const opportunity of snapshot.opportunities.filter((item) => item.stageId === source.id).sort((a, b) => a.position - b.position)) {
+          position += 1000;
+          opportunity.stageId = destination.id;
+          opportunity.position = position;
+        }
+        snapshot.stages = snapshot.stages.filter((stage) => stage.id !== source.id);
+        snapshot.stages.forEach((stage, index) => { stage.position = (index + 1) * 1000; });
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "stage.archived", entityType: "stage", entityId: stageId, detail: { destinationStageId } });
+    } else {
+      await db.transaction(async (tx) => {
+        const [pipeline] = await tx.select().from(pipelines).where(and(eq(pipelines.organisationId, member.organisationId), eq(pipelines.active, true))).limit(1);
+        if (!pipeline) throw new Error("No active pipeline is configured.");
+        const allRows = await tx.select().from(stages).where(eq(stages.pipelineId, pipeline.id)).orderBy(asc(stages.position));
+        const rows = allRows.filter((stage) => stage.active);
+        const source = rows.find((stage) => stage.id === stageId);
+        const destination = rows.find((stage) => stage.id === destinationStageId);
+        if (!source || !destination) throw new Error("Choose valid source and destination stages.");
+        if (isProtectedResearchStage(source) || isProtectedResearchStage(destination)) throw new Error("Targets stages cannot be edited here.");
+        if (rows.filter((stage) => !isProtectedResearchStage(stage) && stage.id !== source.id).length < 1) throw new Error("Keep at least one sales stage.");
+        const destinationRows = await tx.select().from(opportunities).where(and(eq(opportunities.organisationId, member.organisationId), eq(opportunities.stageId, destination.id))).orderBy(asc(opportunities.position));
+        const sourceRows = await tx.select().from(opportunities).where(and(eq(opportunities.organisationId, member.organisationId), eq(opportunities.stageId, source.id))).orderBy(asc(opportunities.position));
+        let position = Math.max(0, ...destinationRows.map((item) => item.position));
+        for (const opportunity of sourceRows) {
+          position += 1000;
+          await tx.update(opportunities).set({ stageId: destination.id, position, updatedAt: new Date() }).where(eq(opportunities.id, opportunity.id));
+          await tx.insert(stageHistory).values({ opportunityId: opportunity.id, fromStageId: source.id, toStageId: destination.id, movedById: member.id });
+        }
+        const allPositions = allRows.map((stage) => stage.position);
+        const offset = Math.max(...allPositions) - Math.min(...allPositions) + 100000;
+        await tx.update(stages).set({ position: sql`${stages.position} + ${offset}` }).where(eq(stages.pipelineId, pipeline.id));
+        const remaining = rows.filter((stage) => stage.id !== source.id);
+        for (const [index, stage] of remaining.entries()) await tx.update(stages).set({ position: (index + 1) * 1000 }).where(eq(stages.id, stage.id));
+        await tx.update(stages).set({ active: false, updatedAt: new Date() }).where(eq(stages.id, source.id));
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "stage.archived", entityType: "stage", entityId: source.id, before: { name: source.name }, after: { destinationStageId: destination.id, movedOpportunities: sourceRows.length } });
+      });
+    }
+    revalidateStagePaths();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Pipeline stage could not be removed.") };
   }
 }
 
@@ -288,6 +417,14 @@ export async function deactivateOfferAction(input: unknown): Promise<Result> {
 
 function revalidateOfferPaths() {
   for (const path of ["/settings", "/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) revalidatePath(path);
+}
+
+function isProtectedResearchStage(stage: Pick<StageSummary, "name">) {
+  return stage.name === "Researching" || stage.name === "Research holding";
+}
+
+function revalidateStagePaths() {
+  for (const path of ["/settings", "/pipeline", "/targets", "/companies", "/search", "/reports", "/my-work"]) revalidatePath(path);
 }
 
 export async function saveSalesAssetAction(input: unknown): Promise<Result> {
