@@ -15,8 +15,10 @@ describe("tracker normalisation", () => {
   });
 
   it("maps tracker workflow states to pipeline progress", () => {
-    expect(mapTrackerStage("Outreach Ready", "Contact identified")).toBe("Ready to contact");
+    expect(mapTrackerStage("Outreach Ready", "Contact identified")).toBe("Researching");
     expect(mapTrackerStage("Outreach started", "Contact identified")).toBe("Outreach active");
+    expect(mapTrackerStage("Discovery booked", "Contact identified")).toBe("Conversation active");
+    expect(mapTrackerStage("Proposal sent", "Contact identified")).toBe("Proposal / decision");
     expect(mapTrackerStage("Paused", "Researched")).toBe("Research holding");
     expect(mapTrackerStage("Closed", "No fit")).toBe("Research holding");
   });

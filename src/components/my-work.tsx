@@ -76,10 +76,9 @@ export function MyWork({
   );
   const attention = [...new Map([...noNextAction, ...atRisk].map((item) => [item.id, item])).values()];
 
-  const readyCount = stageCount(opportunities, stageById, ["Ready to contact"]);
   const outreachCount = stageCount(opportunities, stageById, ["Outreach active"]);
-  const conversationCount = stageCount(opportunities, stageById, ["Engaged", "Review booked", "Pilot proposed", "Pilot active", "Conversation active", "Discovery booked", "Proposal sent", "Decision pending"]);
-  const nurtureCount = stageCount(opportunities, stageById, ["Nurture"]);
+  const conversationCount = stageCount(opportunities, stageById, ["Conversation active"]);
+  const proposalCount = stageCount(opportunities, stageById, ["Proposal / decision"]);
   const firstName = memberName.trim().split(/\s+/)[0] || "there";
   const edition = getEdition(initialSnapshot.edition);
 
@@ -136,17 +135,15 @@ export function MyWork({
           <aside className="today-rail">
             <section className="surface pulse-card" aria-labelledby="pulse-heading">
               <header><div><span className="eyebrow">Where things stand</span><h2 id="pulse-heading">Pipeline pulse</h2></div><Link href="/pipeline">View board <ArrowRight size={14} /></Link></header>
-              <div className="pulse-track" aria-label={`${readyCount} ready, ${outreachCount} in outreach, ${conversationCount} in conversation, ${nurtureCount} nurturing`}>
-                <i style={{ flexGrow: Math.max(readyCount, 0), background: "#53a0ff" }} />
+              <div className="pulse-track" aria-label={`${outreachCount} in outreach, ${conversationCount} in conversation, ${proposalCount} at proposal or decision`}>
                 <i style={{ flexGrow: Math.max(outreachCount, 0), background: "#087bed" }} />
                 <i style={{ flexGrow: Math.max(conversationCount, 0), background: "#08a878" }} />
-                <i style={{ flexGrow: Math.max(nurtureCount, 0), background: "#64748b" }} />
+                <i style={{ flexGrow: Math.max(proposalCount, 0), background: "#d68a00" }} />
               </div>
               <div className="pulse-list">
-                <PulseRow label="Ready to contact" value={readyCount} colour="#53a0ff" />
                 <PulseRow label="Outreach underway" value={outreachCount} colour="#087bed" />
                 <PulseRow label="Live conversations" value={conversationCount} colour="#08a878" />
-                <PulseRow label="Nurture" value={nurtureCount} colour="#64748b" />
+                <PulseRow label="Proposal / decision" value={proposalCount} colour="#d68a00" />
               </div>
             </section>
 

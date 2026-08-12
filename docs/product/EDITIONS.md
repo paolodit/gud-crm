@@ -20,7 +20,7 @@ Sales-model configuration lives in `src/lib/editions`. It supplies defaults and 
 
 ## What changing a sales model does
 
-Changing the model updates product guidance and terminology. It deliberately does not rewrite existing stages, offers, companies, opportunities or activity history. An admin can then adjust workspace configuration deliberately.
+Changing the model updates product guidance and terminology. It deliberately does not rewrite existing stages, offers, companies, opportunities or activity history. Admins can then add, edit or remove visible sales stages deliberately; removal always asks where existing opportunities should move. Targets' two pre-pipeline buckets remain protected.
 
 ## Instance boundary
 

@@ -260,7 +260,7 @@ export async function createOpportunity(actor: McpActor, input: CreateOpportunit
     )).orderBy(asc(pipelines.createdAt)).limit(1);
     if (!pipeline) throw new Error("No active pipeline is configured.");
 
-    const stage = await resolveStage(tx, pipeline.id, input.stageId, input.stageName, "Ready to contact");
+    const stage = await resolveStage(tx, pipeline.id, input.stageId, input.stageName, "Outreach active");
     const offerId = await resolveOffer(tx, actor.organisationId, input.offerId, input.offerName);
     if (!["Researching", "Research holding"].includes(stage.name) && !offerId) {
       throw new Error("Choose an offer before creating an active sales opportunity.");

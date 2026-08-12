@@ -642,9 +642,13 @@ export function companyKey(websiteUrl: string, name: string) {
 export function mapTrackerStage(outreachStatus: string, researchStatus: string) {
   const outreach = outreachStatus.toLowerCase();
   const research = researchStatus.toLowerCase();
+  if (outreach.includes("won") || outreach.includes("customer")) return "Won";
+  if (outreach.includes("lost")) return "Lost";
   if (outreach.includes("closed") || outreach.includes("paused") || outreach.includes("watch")) return "Research holding";
+  if (outreach.includes("proposal") || outreach.includes("decision") || outreach.includes("trial")) return "Proposal / decision";
+  if (outreach.includes("conversation") || outreach.includes("engaged") || outreach.includes("discovery")) return "Conversation active";
   if (outreach.includes("outreach") && !outreach.includes("ready")) return "Outreach active";
-  if (outreach.includes("ready") || outreach.includes("soft queue") || research.includes("contact")) return "Ready to contact";
+  if (outreach.includes("ready") || outreach.includes("soft queue") || research.includes("contact")) return "Researching";
   return "Researching";
 }
 

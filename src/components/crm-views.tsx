@@ -52,11 +52,11 @@ import { setWorkspaceAiEnabledAction } from "@/app/actions/ai";
 import { saveActivityTypeAction } from "@/app/actions/crm";
 import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
-import { deactivateOfferAction, deactivateTeamMemberAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
+import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
-import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary } from "@/lib/domain/types";
+import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary, StageSummary } from "@/lib/domain/types";
 import { editions, getEdition, type EditionKey } from "@/lib/editions";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
 
@@ -365,6 +365,8 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
   const [teamEditor, setTeamEditor] = useState<PersonSummary | "new" | null>(null);
   const [offerList, setOfferList] = useState(snapshot.offers);
   const [offerEditor, setOfferEditor] = useState<OfferSummary | "new" | null>(null);
+  const [stageList, setStageList] = useState(snapshot.stages);
+  const [stageEditor, setStageEditor] = useState<StageSummary | "new" | null>(null);
   const [pipelineName, setPipelineName] = useState(snapshot.pipeline.name);
   const [editingPipelineName, setEditingPipelineName] = useState(false);
   const [pipelinePending, setPipelinePending] = useState(false);
@@ -496,7 +498,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
         </article>
         <article className="surface settings-card"><div className="settings-icon"><Users /></div><div><h2>Team access</h2><p>{team.length} active members · role-based access</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setTeamEditor("new")}><Plus size={14} />Add member</button> : null}<div className="settings-list">{team.map((user) => <span key={user.id}><i className="mini-avatar">{initials(user.name)}</i><span><strong>{user.name}{user.id === currentMemberId ? " · You" : ""}</strong><small>{user.email || "No email"} · {roleLabel(user.role)}</small></span>{currentRole === "admin" ? <button className="icon-button taxonomy-edit" type="button" onClick={() => setTeamEditor(user)} aria-label={`Edit ${user.name}`}><Pencil size={13} /></button> : null}</span>)}</div><p className="settings-hint">Admins manage access and workspace settings. Managers can run imports and maintain sales assets. Sales support can work opportunities, contacts, tasks and activities but cannot manage the team.</p>{runtime.storageMode === "sqlite" ? <p className="settings-local-note"><ShieldCheck size={14} />Local SQLite is one trusted admin session. This roster and its roles are ready for migration; separate logins become active on PostgreSQL.</p> : null}{teamEditor ? <TeamMemberEditor member={teamEditor === "new" ? null : teamEditor} storageMode={runtime.storageMode} currentMemberId={currentMemberId} onClose={() => setTeamEditor(null)} onSaved={(saved) => { setTeam((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved]); setTeamEditor(null); }} onDeactivated={(id) => { setTeam((items) => items.filter((item) => item.id !== id)); setTeamEditor(null); }} /> : null}</article>
         <article className="surface settings-card settings-card-offers"><div className="settings-icon"><Target /></div><div><h2>Offers</h2><p>{offerList.filter((offer) => offer.active).length} active · what the team can pitch</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setOfferEditor("new")}><Plus size={14} />Add offer</button> : null}<div className="offer-settings-list">{offerList.filter((offer) => offer.active).sort((a, b) => a.position - b.position).map((offer) => <button type="button" key={offer.id} onClick={() => currentRole === "admin" && setOfferEditor(offer)} disabled={currentRole !== "admin"}><i style={{ background: offer.colour }} /><span><strong>{offer.name}{offer.isDefault ? " · Default" : ""}</strong><small>{offer.description || "Add a short description"}</small></span>{currentRole === "admin" ? <Pencil size={13} /> : null}</button>)}</div><p className="settings-hint">With one active offer, GUD stays visually single-focus. Add a second and offer controls appear only where they help.</p>{offerEditor && currentRole === "admin" ? <OfferEditor offer={offerEditor === "new" ? null : offerEditor} activeCount={offerList.filter((offer) => offer.active).length} onClose={() => setOfferEditor(null)} onSaved={(saved) => { setOfferList((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : saved.isDefault ? { ...item, isDefault: false } : item) : [...items.map((item) => saved.isDefault ? { ...item, isDefault: false } : item), saved]); setOfferEditor(null); }} onArchived={(id) => { setOfferList((items) => items.map((item) => item.id === id ? { ...item, active: false } : item)); setOfferEditor(null); }} /> : null}</article>
-        <article className="surface settings-card"><div className="settings-icon"><Workflow /></div><div><h2>Pipeline stages</h2><p>{snapshot.stages.length} stages, including side-buckets for research and nurture</p></div><div className="stage-key">{snapshot.stages.map((stage) => <span key={stage.id} title={settingsStageGuidance(stage.name)}><i style={{ background: stage.colour }} /><span><strong>{stage.name}</strong><small>{settingsStageGuidance(stage.name)}</small></span></span>)}</div></article>
+        <article className="surface settings-card settings-card-stages"><div className="settings-icon"><Workflow /></div><div><h2>Pipeline stages</h2><p>{stageList.filter((stage) => !isResearchStage(stage)).length} visible sales stages</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setStageEditor("new")}><Plus size={14} />Add stage</button> : null}<div className="stage-settings-list">{stageList.filter((stage) => !isResearchStage(stage)).sort((a, b) => a.position - b.position).map((stage) => <button type="button" key={stage.id} onClick={() => currentRole === "admin" && setStageEditor(stage)} disabled={currentRole !== "admin"}><i style={{ background: stage.colour }} /><span><strong>{stage.name}</strong><small>{settingsStageGuidance(stage.name)}</small></span>{currentRole === "admin" ? <Pencil size={13} /> : null}</button>)}</div><p className="settings-hint">Targets stays outside the active pipeline. Removing a stage first moves every opportunity into a destination you choose, so records and history stay intact.</p>{stageEditor && currentRole === "admin" ? <PipelineStageEditor stage={stageEditor === "new" ? null : stageEditor} stages={stageList.filter((stage) => !isResearchStage(stage))} opportunityCounts={Object.fromEntries(stageList.map((stage) => [stage.id, snapshot.opportunities.filter((item) => item.stageId === stage.id).length]))} onClose={() => setStageEditor(null)} onSaved={(saved) => { setStageList((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved]); setStageEditor(null); }} onArchived={(id) => { setStageList((items) => items.filter((item) => item.id !== id)); setStageEditor(null); }} /> : null}</article>
 
         <article className="surface settings-card"><div className="settings-icon"><Pencil /></div><div><h2>Pipeline name</h2><p>The title shown above the board</p></div>{currentRole === "admin" && !editingPipelineName ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setEditingPipelineName(true)}><Pencil size={14} />Edit</button> : null}{editingPipelineName && currentRole === "admin" ? <form className="settings-inline-form" onSubmit={savePipelineName}><label className="field-label">Name<input className="field" value={pipelineName} onChange={(event) => setPipelineName(event.target.value)} required minLength={2} autoFocus /></label><div className="button-row"><button className="btn btn-quiet" type="button" onClick={() => { setPipelineName(snapshot.pipeline.name); setEditingPipelineName(false); setPipelineMessage(null); }}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pipelinePending}>{pipelinePending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{pipelinePending ? "Saving…" : "Save name"}</button></div>{pipelineMessage ? <small>{pipelineMessage}</small> : null}</form> : <div className="settings-readonly-value"><strong>{pipelineName}</strong><small>{currentRole === "admin" ? "Click Edit to change it." : "Only an admin can change this."}</small></div>}</article>
 
@@ -549,6 +551,43 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
       </section>
     </WorkspaceFrame>
   );
+}
+
+function PipelineStageEditor({ stage, stages, opportunityCounts, onClose, onSaved, onArchived }: { stage: StageSummary | null; stages: StageSummary[]; opportunityCounts: Record<string, number>; onClose: () => void; onSaved: (stage: StageSummary) => void; onArchived: (id: string) => void }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const destinations = stages.filter((item) => item.id !== stage?.id);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    const form = new FormData(event.currentTarget);
+    const result = await savePipelineStageAction({ stageId: stage?.id ?? null, name: form.get("name"), colour: form.get("colour"), terminalType: form.get("terminalType") });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    onSaved(result.stage);
+  }
+
+  async function archive(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!stage) return;
+    const form = new FormData(event.currentTarget);
+    const destinationStageId = String(form.get("destinationStageId") ?? "");
+    const destination = stages.find((item) => item.id === destinationStageId);
+    if (!destination || !window.confirm(`Remove ${stage.name} and move ${opportunityCounts[stage.id] ?? 0} ${opportunityCounts[stage.id] === 1 ? "opportunity" : "opportunities"} to ${destination.name}?`)) return;
+    setPending(true);
+    setError(null);
+    const result = await archivePipelineStageAction({ stageId: stage.id, destinationStageId });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    onArchived(stage.id);
+  }
+
+  if (removing && stage) return <form className="stage-editor" onSubmit={archive}><header><div><strong>Remove {stage.name}</strong><small>Nothing is deleted: choose where its {opportunityCounts[stage.id] ?? 0} current {opportunityCounts[stage.id] === 1 ? "opportunity goes" : "opportunities go"}.</small></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close stage editor"><X size={14} /></button></header><label className="field-label">Move opportunities to<select name="destinationStageId" defaultValue={destinations[0]?.id ?? ""} required>{destinations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>{error ? <p className="settings-form-error">{error}</p> : null}<div className="team-editor-actions"><button className="btn btn-quiet" type="button" onClick={() => setRemoving(false)}>Back</button><button className="btn btn-danger" type="submit" disabled={pending || !destinations.length}><Trash2 size={14} />{pending ? "Moving…" : "Move and remove"}</button></div></form>;
+
+  return <form className="stage-editor" onSubmit={submit}><header><div><strong>{stage ? `Edit ${stage.name}` : "Add a pipeline stage"}</strong><small>Keep stages outcome-based and few enough to understand at a glance.</small></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close stage editor"><X size={14} /></button></header><div className="stage-editor-fields"><label className="field-label">Name<input className="field" name="name" defaultValue={stage?.name ?? ""} required minLength={2} placeholder="Commercial review" /></label><label className="field-label">Meaning<select name="terminalType" defaultValue={stage?.terminalType === "nurture" ? "open" : stage?.terminalType ?? "open"}><option value="open">Work in progress</option><option value="won">Won / converted</option><option value="lost">Lost / closed</option></select></label><label className="field-label colour-field">Colour<input name="colour" type="color" defaultValue={stage?.colour ?? "#0073EA"} /></label></div>{error ? <p className="settings-form-error">{error}</p> : null}<div className="team-editor-actions">{stage && destinations.length ? <button className="btn btn-danger" type="button" onClick={() => setRemoving(true)} disabled={pending}><Trash2 size={14} />Remove stage</button> : <span />}<div className="button-row"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{pending ? "Saving…" : "Save stage"}</button></div></div></form>;
 }
 
 function OfferEditor({ offer, activeCount, onClose, onSaved, onArchived }: { offer: OfferSummary | null; activeCount: number; onClose: () => void; onSaved: (offer: OfferSummary) => void; onArchived: (id: string) => void }) {
@@ -649,6 +688,7 @@ function settingsStageGuidance(name: string) {
     "Outreach active": "Touches are underway; a response is not required yet.",
     "Engaged": "A real person has responded or opened a conversation.",
     "Conversation active": "A real person has responded and a useful sales conversation is underway.",
+    "Proposal / decision": "A clear commercial next step is with the buyer for review or decision.",
     "Review booked": "A review or discovery session is booked.",
     "Discovery booked": "A discovery or scoping conversation is booked.",
     "Pilot proposed": "A concrete pilot or commercial next step is offered.",

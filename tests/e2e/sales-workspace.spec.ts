@@ -18,6 +18,23 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(edition.getByText("Consultancies, agencies and independent specialists", { exact: true })).toBeVisible();
   });
 
+  test("lets an admin add and safely remove a pipeline stage", async ({ page }) => {
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Add stage" }).click();
+    await page.getByLabel("Name").fill("Commercial review");
+    await page.getByLabel("Meaning").selectOption("open");
+    await page.getByRole("button", { name: "Save stage" }).click();
+
+    const stage = page.locator(".stage-settings-list button").filter({ hasText: "Commercial review" });
+    await expect(stage).toBeVisible();
+    await stage.click();
+    await page.getByRole("button", { name: "Remove stage" }).click();
+    await page.getByLabel("Move opportunities to").selectOption({ label: "Outreach active" });
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Move and remove" }).click();
+    await expect(stage).toHaveCount(0);
+  });
+
   test("keeps market ideas and named targets in separate workspaces", async ({ page }) => {
     await page.goto("/research");
     await expect(page.getByRole("heading", { name: "Ideas", exact: true })).toBeVisible();
@@ -88,10 +105,10 @@ test.describe.serial("Service Sales workspace", () => {
     await page.getByRole("button", { name: "Create opportunity" }).click();
     await page.goto("/pipeline");
 
-    const spread = page.getByRole("button", { name: "Spread Ready to contact across two lanes" });
+    const spread = page.getByRole("button", { name: "Spread Outreach active across two lanes" });
     await expect(spread).toBeVisible();
     await spread.click();
-    await expect(page.getByRole("button", { name: "Return Ready to contact to one lane" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Return Outreach active to one lane" })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("pulls the pipeline sideways from empty board space", async ({ page }) => {

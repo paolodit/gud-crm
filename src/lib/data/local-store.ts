@@ -15,7 +15,7 @@ import { createInitialSnapshot } from "@/lib/editions/bootstrap";
 import { isEditionKey, normaliseEditionKey } from "@/lib/editions";
 
 const workspaceId = "default";
-const snapshotVersion = 13;
+const snapshotVersion = 14;
 const globalForSqlite = globalThis as unknown as { gudLocalDb?: Database.Database };
 
 function database() {
@@ -173,9 +173,51 @@ function migrateLocalSnapshot(db: Database.Database) {
     }
   }
   if (currentVersion < 13) snapshot.researchThemes = [];
+  if (currentVersion < 14) simplifyPipelineStages(snapshot);
   const now = new Date().toISOString();
   db.prepare("UPDATE local_workspaces SET snapshot_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(snapshot), now, workspaceId);
   db.prepare("INSERT INTO local_settings (key, value, updated_at) VALUES ('snapshot_version', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(String(snapshotVersion), now);
+}
+
+function simplifyPipelineStages(snapshot: BoardSnapshot) {
+  const sourceStages = [...snapshot.stages];
+  const researching = sourceStages.find((stage) => stage.name === "Researching");
+  const researchHolding = sourceStages.find((stage) => stage.name === "Research holding");
+  const outreach = sourceStages.find((stage) => stage.name === "Outreach active");
+  const conversation = sourceStages.find((stage) => ["Conversation active", "Engaged"].includes(stage.name)) ?? sourceStages.find((stage) => ["Discovery booked", "Review booked"].includes(stage.name));
+  const proposal = sourceStages.find((stage) => ["Proposal / decision", "Proposal sent", "Pilot proposed", "Trial proposed"].includes(stage.name)) ?? sourceStages.find((stage) => ["Decision pending", "Pilot active", "Trial active"].includes(stage.name));
+  const won = sourceStages.find((stage) => stage.name === "Won");
+  const lost = sourceStages.find((stage) => stage.name === "Lost");
+  const destinationByName = new Map<string, string | undefined>([
+    ["Ready to contact", researching?.id],
+    ["Engaged", conversation?.id],
+    ["Conversation active", conversation?.id],
+    ["Discovery booked", conversation?.id],
+    ["Review booked", conversation?.id],
+    ["Nurture", conversation?.id],
+    ["Pilot proposed", proposal?.id],
+    ["Pilot active", proposal?.id],
+    ["Trial proposed", proposal?.id],
+    ["Trial active", proposal?.id],
+    ["Proposal sent", proposal?.id],
+    ["Decision pending", proposal?.id],
+  ]);
+  const stageById = new Map(sourceStages.map((stage) => [stage.id, stage]));
+  for (const opportunity of snapshot.opportunities) {
+    const current = stageById.get(opportunity.stageId);
+    const destination = current ? destinationByName.get(current.name) : null;
+    if (destination) opportunity.stageId = destination;
+  }
+  if (conversation) Object.assign(conversation, { name: "Conversation active", colour: "#00A86B", terminalType: "open" as const });
+  if (proposal) Object.assign(proposal, { name: "Proposal / decision", colour: "#D98200", terminalType: "open" as const });
+  snapshot.stages = [researching, researchHolding, outreach, conversation, proposal, won, lost].filter((stage): stage is NonNullable<typeof stage> => Boolean(stage));
+  snapshot.stages.forEach((stage, index) => { stage.position = (index + 1) * 1000; });
+  const nextByStage = new Map<string, number>();
+  for (const opportunity of snapshot.opportunities) {
+    const position = (nextByStage.get(opportunity.stageId) ?? 0) + 1000;
+    opportunity.position = position;
+    nextByStage.set(opportunity.stageId, position);
+  }
 }
 
 function freshSnapshot(): BoardSnapshot {

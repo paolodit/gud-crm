@@ -40,16 +40,16 @@ After sign-in, GUD opens **Pipeline**. The first screen answers the broad questi
 **Today** remains one click away as a deliberate focus layer. It answers three narrower questions:
 
 1. **What should I do next?** Five owned actions are ranked by overdue state, priority, temperature, pipeline progress and date.
-2. **Where is the pipeline?** A small pulse shows how many opportunities are ready, in outreach, in a live conversation or in nurture.
+2. **Where is the pipeline?** A small pulse shows how many opportunities are in outreach, in a live conversation or at proposal/decision.
 3. **What needs a decision?** Records without an owned next step, marked at risk, unresponsive or overdue are surfaced separately.
 
 The complete schedule is one collapsed section below Today. Pipeline is the place to understand and move the whole book of work; Today is the place to choose the next few actions when it is time to focus.
 
 Targets are deliberately outside the sales journey. A possible target remains in the Targets workspace until it has qualification evidence, a usable contact route and a human chooses to start outreach. The active pipeline is intentionally outcome-led:
 
-`Ready to contact → Outreach active → Engaged → Discovery booked → Trial proposed → Trial active → Won`
+`Outreach active → Conversation active → Proposal / decision → Won`
 
-Three side outcomes stay out of that compulsory journey: **Research holding** keeps market-map, reference, weak-route, paused, or no-fit desk research without pretending it was a sales loss; **Nurture** is only for a real relationship with inactive timing plus a recorded re-entry trigger; **Lost** is reserved for a genuine post-contact commercial loss. Sending an overview or useful diagnostic is an activity, not a pipeline gate; several LinkedIn, email, phone, or physical attempts can live cleanly inside **Outreach active** until a person engages. Every opportunity shows attempt count, channel coverage, latest outcome, activity history, and the next owned action.
+Targets and paused research remain in the protected pre-pipeline **Researching** and **Research holding** buckets. **Lost** is reserved for a genuine post-contact commercial loss. Sending an overview or useful diagnostic is an activity, not a pipeline gate; several LinkedIn, email, phone, or physical attempts can live cleanly inside **Outreach active** until a person engages. Every opportunity shows attempt count, channel coverage, latest outcome, activity history, and the next owned action. Admins can rename, add and archive visible sales stages in Settings. Archiving first moves every opportunity to a chosen surviving stage, so work and history are never silently discarded.
 
 The bundled roster is fictional. Admins manage users and workspace controls; managers can import and maintain sales assets; sales support can work opportunities, contacts, activities and tasks but cannot manage team access or workspace settings. Real users and PostgreSQL seed credentials remain environment-controlled.
 
@@ -66,7 +66,7 @@ Offers are the intentionally small abstraction that lets the same CRM handle a w
 - Each offer has its own six-item sales asset kit in the Sales guide. Existing assets migrate to the default offer automatically.
 - Offers with history are archived, not deleted. Old activity and reporting retain their meaning.
 
-The pipeline stages remain shared. That is deliberate: one operating language keeps reporting and team habits coherent. Separate stage models should only be introduced later if real usage proves that two sales motions cannot honestly share the same outcomes.
+The clean default sales pipeline is shared: **Outreach active → Conversation active → Proposal / decision → Won / Lost**. Targets remains a pre-pipeline workspace. Workspace admins can add, rename, recolour or remove visible sales stages in Settings; removing one requires a destination, so every opportunity and its history survives.
 
 ## Start locally in two minutes
 
@@ -409,13 +409,14 @@ npm run auth:smoke        # real HTTP auth flow against a running PostgreSQL app
 npm run db:generate       # generate a PostgreSQL migration
 npm run db:migrate        # apply committed PostgreSQL migrations
 npm run db:seed           # seed the PostgreSQL workspace
+npm run deploy:secrets    # print fresh deployment secrets without writing a file
 ```
 
 Before opening a pull request, run typecheck, lint, tests, and build. Changes involving personal data, imports, authentication, attachments, or AI should include a brief threat/privacy note.
 
 ### Data-safe upgrades
 
-SQLite snapshots are versioned and migrated in place. The Offer upgrade is additive: it creates a default core offer and links every existing opportunity without replaying older roster, stage or example-data migrations. PostgreSQL migration `0002_charming_morlun.sql` creates the relational offer table, seeds one default offer per existing organisation, then links existing opportunities before adding indexes and the foreign key. Back up before deployment as usual; do not reset a real local workspace to pick up a schema change.
+SQLite snapshots are versioned and migrated in place. PostgreSQL migrations are additive and run before the new server starts. The simplified-pipeline migration moves every existing opportunity before retiring an old bucket: Ready to contact returns to Targets; engaged, conversation, discovery and review stages consolidate; proposal, pilot, trial and decision stages consolidate; and Nurture returns to Conversation active. Activities, contacts, tasks and stage history remain. Back up before deployment as usual; do not reset a real workspace to pick up schema or configuration changes.
 
 ## Production checklist
 
@@ -428,6 +429,8 @@ SQLite snapshots are versioned and migrated in place. The Offer upgrade is addit
 7. Review retention, lawful-basis, suppression, access, and deletion obligations before loading real personal data.
 8. Run the committed CI checks, including the PostgreSQL sign-in/session/sign-out smoke test and dependency audit.
 9. Red-team prompts and review AI outputs before enabling the OpenAI provider for real customer context.
+
+For a copy-and-follow installation path, use [CapRover deployment](docs/CAPROVER.md). It includes the minimal environment block, the required container port (`3000`), first-boot lockdown, Docker Compose alternative, backups and rollback constraints.
 
 Attachment schema/storage foundations exist, but authenticated upload/download routes are still roadmap work. The coach deliberately remains advisory and on demand.
 
