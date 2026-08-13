@@ -38,6 +38,7 @@ import {
   Phone,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
   Target,
   UserRound,
@@ -45,7 +46,6 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
 import { saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
@@ -89,6 +89,7 @@ export function ResearchHub({
   const availableOffers = activeOffers(snapshot.offers);
   const [offerFilter, setOfferFilter] = useState("all");
   const [showHandoff, setShowHandoff] = useState(false);
+  const [showEnrichment, setShowEnrichment] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
   const [editingContact, setEditingContact] = useState<ContactSummary | "new" | null>(null);
@@ -112,10 +113,11 @@ export function ResearchHub({
     return searchText.includes(query.trim().toLowerCase()) && matchesOffer && (filter === "all" || readiness === filter);
   });
   const requestedId = searchParams.get("target");
-  const selected = filtered.find(({ opportunity }) => opportunity.id === requestedId)?.opportunity
-    ?? decorated.find(({ opportunity }) => opportunity.id === requestedId)?.opportunity
-    ?? filtered[0]?.opportunity
-    ?? null;
+  const selected = requestedId
+    ? filtered.find(({ opportunity }) => opportunity.id === requestedId)?.opportunity
+      ?? decorated.find(({ opportunity }) => opportunity.id === requestedId)?.opportunity
+      ?? null
+    : null;
   const selectedStage = selected ? snapshot.stages.find((stage) => stage.id === selected.stageId) : undefined;
   const selectedReadiness = selected ? researchReadiness(selected, selectedStage) : null;
   const selectedWebsiteUrl = safeExternalUrl(selected?.company.websiteUrl);
@@ -136,6 +138,13 @@ export function ResearchHub({
     const params = new URLSearchParams(searchParams.toString());
     params.set("target", id);
     router.replace(`/targets?${params.toString()}`, { scroll: false });
+  }
+
+  function closeTarget() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("target");
+    const suffix = params.toString();
+    router.replace(suffix ? `/targets?${suffix}` : "/targets", { scroll: false });
   }
 
   async function moveSelected(stageId: string | undefined, action: string) {
@@ -249,39 +258,18 @@ export function ResearchHub({
           <p>{researchView === "themes" ? "Explore a need, test the evidence, then carry only credible prospects into Targets." : "Build the account and contact picture before outreach enters the pipeline."}</p>
         </div>
         <div className="research-hero-actions">
-          <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowHandoff(true)}><Bot size={17} />Research handoff</button>
+          <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowHandoff(true)}><Bot size={17} />Research with AI</button>
+          {researchView === "accounts" ? <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowEnrichment(true)}><KeyRound size={17} />Find emails</button> : null}
           <button className="btn btn-primary" type="button" onClick={() => researchView === "themes" ? setThemeEditor("new") : setAddingCompany(true)}><Plus size={17} />{researchView === "themes" ? "Add idea" : "Add target"}</button>
         </div>
+        {researchView === "accounts" ? <div className="research-hero-meta" aria-label="Target summary"><strong>{targets.length} targets</strong><span><Check size={13} />{counts.ready} ready</span><span><Users size={13} />{counts.needs_contact} need a contact</span><span><CirclePause size={13} />{counts.held} on hold</span></div> : null}
       </header>
-
-      {researchView === "accounts" ? <section className="target-summary-line" aria-label="Target summary"><strong>{targets.length} {targets.length === 1 ? "target" : "targets"}</strong><span><Check size={14} />{counts.ready} ready</span><span><Users size={14} />{counts.needs_contact} need a contact</span><span><CirclePause size={14} />{counts.held} on hold</span></section> : null}
-
-      <section className={`research-helper-grid${researchView === "themes" ? " research-helper-grid-ideas" : ""}`}>
-      <details className="research-assistant-path" aria-label="Research workflow">
-        <summary><span className="research-assistant-intro"><span><Bot size={18} /></span><span><strong>Research with Codex, Cowork or your preferred assistant</strong><small>Open the handoff guide for browser research or contact discovery.</small></span></span><ChevronDown size={18} /></summary>
-        <div className="research-assistant-detail">
-        <ol>
-          <li><b>1</b><span><strong>Prepare</strong><small>Choose one {researchView === "themes" ? "idea" : "target"}; GUD builds a guarded brief from what is already recorded.</small></span></li>
-          <li><b>2</b><span><strong>Research outside GUD</strong><small>Ask for dated public evidence and named contact candidates. LinkedIn helps identify roles; never guess private data.</small></span></li>
-          <li><b>3</b><span><strong>Review the return</strong><small>{researchView === "themes" ? "Sharpen the idea and create only credible targets." : "Import or record the evidence, then enrich only a named person."}</small></span></li>
-        </ol>
-        <div className="research-assistant-actions"><button className="btn btn-primary" type="button" onClick={() => setShowHandoff(true)}><Clipboard size={15} />Prepare handoff</button>{researchView === "accounts" ? <a className="btn btn-quiet" href="#freemax"><KeyRound size={15} />Email enrichment</a> : <Link className="btn btn-quiet" href="/targets"><Target size={15} />Go to targets</Link>}</div>
-        </div>
-      </details>
-
-      {researchView === "accounts" ? <FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" /> : null}
-      </section>
 
       {notice ? <div className="research-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} aria-label="Dismiss message"><X size={15} /></button></div> : null}
 
-      {researchView === "accounts" ? <><section className="research-toolbar target-toolbar">
-        <label className="search-box search-box-grow"><Search size={17} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search targets" /></label>
-        <details className="target-filter-menu"><summary>Filter <ChevronDown size={15} /></summary><div>{availableOffers.length > 1 ? <label className="field-label">Offer<select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}<label className="field-label">Research status<select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label></div></details>
-      </section>
-
-      <div className="research-workspace target-workspace">
+      {researchView === "accounts" ? <><div className="research-workspace target-workspace" data-detail-open={Boolean(selected)}>
         <section className="research-list" aria-label="Research targets">
-          <div className="research-list-heading"><strong>{filtered.length} shown</strong><span>Kept outside the pipeline until outreach starts.</span></div>
+          <div className="research-list-heading target-list-heading"><label className="target-list-search"><Search size={15} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${filtered.length} targets`} /></label><details className="target-filter-menu"><summary><span>Filter</span><ChevronDown size={15} /></summary><div>{availableOffers.length > 1 ? <label className="field-label">Offer<select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option><option value="unassigned">Not assigned yet</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}<label className="field-label">Research status<select value={filter} onChange={(event) => setFilter(event.target.value as ResearchReadiness | "all")}><option value="all">All research</option><option value="ready">Ready to review</option><option value="needs_contact">Needs a contact</option><option value="needs_evidence">Needs evidence</option><option value="held">On hold</option></select></label></div></details><span className="target-list-count">{filtered.length} shown</span></div>
           {filtered.map(({ opportunity, readiness }) => {
             const contact = opportunity.contacts.find((item) => item.primary) ?? opportunity.contacts[0];
             return (
@@ -290,8 +278,8 @@ export function ResearchHub({
                 <span className="research-row-copy">
                   <span className="research-row-title"><strong>{opportunity.company.name}</strong><ResearchStatus status={readiness} /></span>
                   {availableOffers.length > 1 ? <span className="research-row-offer">{opportunity.offer?.name ?? "Offer not chosen"}</span> : null}
-                  <span>{opportunity.company.sector || "Sector not set"}{opportunity.company.scaleNote ? ` · ${opportunity.company.scaleNote}` : ""}</span>
-                  <small>{contact ? `${contact.name}${contact.title ? ` · ${contact.title}` : ""}` : "No contact route yet"}</small>
+                  <span className="research-row-company-context">{opportunity.company.sector || "Sector not set"}{opportunity.company.scaleNote ? ` · ${opportunity.company.scaleNote}` : ""}</span>
+                  <small className="research-row-contact">{contact ? `${contact.name}${contact.title ? ` · ${contact.title}` : ""}` : "No contact route yet"}</small>
                 </span>
                 <span className="research-row-fit">{opportunity.company.fitScore ? `${opportunity.company.fitScore}/5` : "—"}</span>
                 <ChevronRight size={18} />
@@ -301,13 +289,13 @@ export function ResearchHub({
           {!filtered.length ? <div className="research-empty"><Sparkles size={24} /><strong>No targets in this view</strong><span>Change the filter or add a new company to begin research.</span></div> : null}
         </section>
 
-        <aside className="research-inspector" aria-label="Selected research target">
+        {selected ? <aside className="research-inspector" aria-label="Selected research target">
           {selected && selectedReadiness ? (
             <>
               <header className="research-inspector-head">
                 <div className="research-company-icon">{initials(selected.company.name)}</div>
                 <div><ResearchStatus status={selectedReadiness} /><h2>{selected.company.name}</h2><p>{selected.company.sector || "Sector not set"}</p></div>
-                <button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button>
+                <div className="research-inspector-actions"><button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={closeTarget} aria-label="Close target details"><X size={17} /></button></div>
               </header>
 
               <div className="research-fit-strip">
@@ -344,7 +332,7 @@ export function ResearchHub({
               </section>
 
               <section className="research-section">
-                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? freeMaxConfigured ? <button className="btn btn-quiet btn-compact" type="button" disabled={pendingAction !== null} onClick={enrichContact} title={`FreeMax tries Hunter first, then Norbert only if needed, for ${enrichableContact.name}`}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : <a className="btn btn-quiet btn-compact" href="#freemax"><KeyRound size={14} />Connect FreeMax</a> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
+                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? freeMaxConfigured ? <button className="btn btn-quiet btn-compact" type="button" disabled={pendingAction !== null} onClick={enrichContact} title={`FreeMax tries Hunter first, then Norbert only if needed, for ${enrichableContact.name}`}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : <button className="btn btn-quiet btn-compact" type="button" onClick={() => setShowEnrichment(true)}><KeyRound size={14} />Connect FreeMax</button> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
                 {freeMaxConfigured ? <FreeMaxSummary status={freeMaxStatus} /> : null}
                 <div className="research-contacts">
                   {selected.contacts.map((contact) => (
@@ -367,22 +355,25 @@ export function ResearchHub({
               </footer>
             </>
           ) : <div className="research-empty research-empty-panel"><Target size={28} /><strong>Select a target</strong><span>Research details, sources and contacts will appear here.</span></div>}
-        </aside>
+        </aside> : null}
       </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onReorder={reorderThemes} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
 
       {showHandoff ? (
         <div className="dialog-backdrop" role="presentation">
           <section className="dialog-card research-handoff" role="dialog" aria-modal="true" aria-labelledby="research-handoff-title">
-            <header className="dialog-header"><div><span className="eyebrow">No CRM API required</span><h2 id="research-handoff-title">Research with your preferred assistant</h2><p>Send a focused brief out, then bring structured evidence back for human review.</p></div><button className="icon-button" type="button" onClick={() => setShowHandoff(false)} aria-label="Close research handoff"><X size={17} /></button></header>
+            <header className="dialog-header research-desk-header"><div><span className="eyebrow">Your external research workspace</span><h2 id="research-handoff-title">AI research desk</h2><p>Take a clean brief to Codex, Cowork or another browser-capable assistant, then bring only cited findings back.</p></div><button className="icon-button" type="button" onClick={() => setShowHandoff(false)} aria-label="Close AI research desk"><X size={17} /></button></header>
+            <ol className="research-desk-flow"><li><b>1</b><span><strong>Take the brief</strong><small>GUD includes what you know and the exact gaps to investigate.</small></span></li><li><b>2</b><span><strong>Research in the browser</strong><small>Find dated evidence, named people and source URLs—never guessed private data.</small></span></li><li><b>3</b><span><strong>Bring it back</strong><small>Review the return in GUD before anything reaches the sales pipeline.</small></span></li></ol>
             <div className="research-handoff-steps">
-              <button type="button" onClick={copyBrief}><span><Clipboard size={20} /></span><strong>Copy the brief</strong><small>Best for one target in Codex or Cowork.</small></button>
-              <button type="button" onClick={downloadPack}><span><Download size={20} /></span><strong>Download JSON</strong><small>Use the exact return format for a batch.</small></button>
-              {researchView === "accounts" ? <><button type="button" onClick={() => fileInput.current?.click()} disabled={pendingAction === "import"}><span>{pendingAction === "import" ? <LoaderCircle className="spin" size={20} /> : <FileUp size={20} />}</span><strong>Import results</strong><small>Match companies, merge evidence and add contacts.</small></button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => importFile(event.target.files?.[0])} /></> : null}
+              <button type="button" onClick={copyBrief}><span><Clipboard size={20} /></span><strong>Copy focused brief</strong><small>Paste into Codex or Cowork for one selected record.</small></button>
+              <button type="button" onClick={downloadPack}><span><Download size={20} /></span><strong>Download research pack</strong><small>Best for batches or a repeatable research run.</small></button>
+              {researchView === "accounts" ? <><button type="button" onClick={() => fileInput.current?.click()} disabled={pendingAction === "import"}><span>{pendingAction === "import" ? <LoaderCircle className="spin" size={20} /> : <FileUp size={20} />}</span><strong>Review returned results</strong><small>Match companies, merge evidence and add contacts safely.</small></button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => importFile(event.target.files?.[0])} /></> : null}
             </div>
             <div className="research-handoff-rule"><Sparkles size={17} /><span><strong>Nothing is promoted automatically.</strong> {researchView === "themes" ? "Use the returned evidence to sharpen the theme, then add only credible account targets." : "Imported findings remain in research until a person chooses otherwise."}</span></div>
           </section>
         </div>
       ) : null}
+
+      {showEnrichment ? <div className="dialog-backdrop" role="presentation"><section className="dialog-card enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title"><header className="dialog-header enrichment-dialog-header"><div><span className="eyebrow">FreeMax your allowances</span><h2 id="enrichment-dialog-title">Find verified work emails</h2><p>Connect Hunter or Voila Norbert once, choose which goes first, and spend free credits only after a real person has been identified.</p></div><button className="icon-button" type="button" onClick={() => setShowEnrichment(false)} aria-label="Close email enrichment"><X size={17} /></button></header><div className="enrichment-dialog-body"><div className="enrichment-principle"><ShieldCheck size={19} /><span><strong>A named person and company domain come first.</strong><small>GUD never invents a private address. It uses your provider keys server-side and records only successful lookups against the safety cap.</small></span></div><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" initiallyOpen /></div></section></div> : null}
 
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
       {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} /> : null}

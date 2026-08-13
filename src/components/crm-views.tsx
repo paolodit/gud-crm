@@ -42,17 +42,19 @@ import {
   Users,
   Video,
   Workflow,
+  GripVertical,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import { arrayMove } from "@dnd-kit/sortable";
 
 import { setWorkspaceAiEnabledAction } from "@/app/actions/ai";
 import { saveActivityTypeAction } from "@/app/actions/crm";
 import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
-import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
+import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
@@ -108,7 +110,7 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
           const stage = snapshot.stages.find((item) => item.id === primary.stageId);
           const inResearch = isResearchStage(stage);
           return (
-            <article className="company-card" key={company.id}>
+            <article className="company-card company-card-clickable" key={company.id} role="link" tabIndex={0} aria-label={`Open ${company.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("a, button, input, select")) return; router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); } }}>
               <div className="company-card-head">
                 <div className="company-logo">{initials(company.name)}</div>
                 <div><h2>{company.name}</h2><p>{company.sector || "Sector not set"}</p></div>
@@ -366,6 +368,8 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
   const [offerList, setOfferList] = useState(snapshot.offers);
   const [offerEditor, setOfferEditor] = useState<OfferSummary | "new" | null>(null);
   const [stageList, setStageList] = useState(snapshot.stages);
+  const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
+  const [stageOrderMessage, setStageOrderMessage] = useState<string | null>(null);
   const [stageEditor, setStageEditor] = useState<StageSummary | "new" | null>(null);
   const [pipelineName, setPipelineName] = useState(snapshot.pipeline.name);
   const [editingPipelineName, setEditingPipelineName] = useState(false);
@@ -476,6 +480,39 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
     setUpdateMessage(result.ok ? result.message : result.error);
   }
 
+  async function reorderStage(fromStageId: string, overStageId: string) {
+    if (fromStageId === overStageId) return setDraggingStageId(null);
+    const salesStages = stageList.filter((stage) => !isResearchStage(stage)).sort((a, b) => a.position - b.position);
+    const from = salesStages.findIndex((stage) => stage.id === fromStageId);
+    const to = salesStages.findIndex((stage) => stage.id === overStageId);
+    if (from < 0 || to < 0) return setDraggingStageId(null);
+    const previous = stageList;
+    const protectedStages = stageList.filter(isResearchStage).sort((a, b) => a.position - b.position);
+    const reorderedSales = arrayMove(salesStages, from, to).map((stage, index) => ({ ...stage, position: (index + protectedStages.length + 1) * 1000 }));
+    const next = [...protectedStages, ...reorderedSales];
+    setStageList(next);
+    setDraggingStageId(null);
+    setStageOrderMessage("Saving stage order…");
+    const result = await reorderPipelineStagesAction({ stageIds: reorderedSales.map((stage) => stage.id) });
+    if (!result.ok) {
+      setStageList(previous);
+      setStageOrderMessage(result.error);
+    } else setStageOrderMessage("Stage order saved.");
+  }
+
+  function dropStage(overStageId: string) {
+    if (!draggingStageId) return;
+    void reorderStage(draggingStageId, overStageId);
+  }
+
+  function nudgeStage(stageId: string, direction: -1 | 1) {
+    const stages = stageList.filter((stage) => !isResearchStage(stage)).sort((a, b) => a.position - b.position);
+    const index = stages.findIndex((stage) => stage.id === stageId);
+    const destination = stages[index + direction];
+    if (!destination) return;
+    void reorderStage(stageId, destination.id);
+  }
+
   return (
     <WorkspaceFrame title="Settings" subtitle="Workspace shape, data readiness and operational guardrails">
       <section className="surface settings-readiness" data-ready={readinessCount === readinessChecks.length}>
@@ -498,7 +535,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
         </article>
         <article className="surface settings-card"><div className="settings-icon"><Users /></div><div><h2>Team access</h2><p>{team.length} active members · role-based access</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setTeamEditor("new")}><Plus size={14} />Add member</button> : null}<div className="settings-list">{team.map((user) => <span key={user.id}><i className="mini-avatar">{initials(user.name)}</i><span><strong>{user.name}{user.id === currentMemberId ? " · You" : ""}</strong><small>{user.email || "No email"} · {roleLabel(user.role)}</small></span>{currentRole === "admin" ? <button className="icon-button taxonomy-edit" type="button" onClick={() => setTeamEditor(user)} aria-label={`Edit ${user.name}`}><Pencil size={13} /></button> : null}</span>)}</div><p className="settings-hint">Admins manage access and workspace settings. Managers can run imports and maintain sales assets. Sales support can work opportunities, contacts, tasks and activities but cannot manage the team.</p>{runtime.storageMode === "sqlite" ? <p className="settings-local-note"><ShieldCheck size={14} />Local SQLite is one trusted admin session. This roster and its roles are ready for migration; separate logins become active on PostgreSQL.</p> : null}{teamEditor ? <TeamMemberEditor member={teamEditor === "new" ? null : teamEditor} storageMode={runtime.storageMode} currentMemberId={currentMemberId} onClose={() => setTeamEditor(null)} onSaved={(saved) => { setTeam((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved]); setTeamEditor(null); }} onDeactivated={(id) => { setTeam((items) => items.filter((item) => item.id !== id)); setTeamEditor(null); }} /> : null}</article>
         <article className="surface settings-card settings-card-offers"><div className="settings-icon"><Target /></div><div><h2>Offers</h2><p>{offerList.filter((offer) => offer.active).length} active · what the team can pitch</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setOfferEditor("new")}><Plus size={14} />Add offer</button> : null}<div className="offer-settings-list">{offerList.filter((offer) => offer.active).sort((a, b) => a.position - b.position).map((offer) => <button type="button" key={offer.id} onClick={() => currentRole === "admin" && setOfferEditor(offer)} disabled={currentRole !== "admin"}><i style={{ background: offer.colour }} /><span><strong>{offer.name}{offer.isDefault ? " · Default" : ""}</strong><small>{offer.description || "Add a short description"}</small></span>{currentRole === "admin" ? <Pencil size={13} /> : null}</button>)}</div><p className="settings-hint">With one active offer, GUD stays visually single-focus. Add a second and offer controls appear only where they help.</p>{offerEditor && currentRole === "admin" ? <OfferEditor offer={offerEditor === "new" ? null : offerEditor} activeCount={offerList.filter((offer) => offer.active).length} onClose={() => setOfferEditor(null)} onSaved={(saved) => { setOfferList((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : saved.isDefault ? { ...item, isDefault: false } : item) : [...items.map((item) => saved.isDefault ? { ...item, isDefault: false } : item), saved]); setOfferEditor(null); }} onArchived={(id) => { setOfferList((items) => items.map((item) => item.id === id ? { ...item, active: false } : item)); setOfferEditor(null); }} /> : null}</article>
-        <article className="surface settings-card settings-card-stages"><div className="settings-icon"><Workflow /></div><div><h2>Pipeline stages</h2><p>{stageList.filter((stage) => !isResearchStage(stage)).length} visible sales stages</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setStageEditor("new")}><Plus size={14} />Add stage</button> : null}<div className="stage-settings-list">{stageList.filter((stage) => !isResearchStage(stage)).sort((a, b) => a.position - b.position).map((stage) => <button type="button" key={stage.id} onClick={() => currentRole === "admin" && setStageEditor(stage)} disabled={currentRole !== "admin"}><i style={{ background: stage.colour }} /><span><strong>{stage.name}</strong><small>{settingsStageGuidance(stage.name)}</small></span>{currentRole === "admin" ? <Pencil size={13} /> : null}</button>)}</div><p className="settings-hint">Targets stays outside the active pipeline. Removing a stage first moves every opportunity into a destination you choose, so records and history stay intact.</p>{stageEditor && currentRole === "admin" ? <PipelineStageEditor stage={stageEditor === "new" ? null : stageEditor} stages={stageList.filter((stage) => !isResearchStage(stage))} opportunityCounts={Object.fromEntries(stageList.map((stage) => [stage.id, snapshot.opportunities.filter((item) => item.stageId === stage.id).length]))} onClose={() => setStageEditor(null)} onSaved={(saved) => { setStageList((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved]); setStageEditor(null); }} onArchived={(id) => { setStageList((items) => items.filter((item) => item.id !== id)); setStageEditor(null); }} /> : null}</article>
+        <article className="surface settings-card settings-card-stages"><div className="settings-icon"><Workflow /></div><div><h2>Pipeline stages</h2><p>{stageList.filter((stage) => !isResearchStage(stage)).length} visible sales stages</p></div>{currentRole === "admin" ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setStageEditor("new")}><Plus size={14} />Add stage</button> : null}<div className="stage-settings-list">{stageList.filter((stage) => !isResearchStage(stage)).sort((a, b) => a.position - b.position).map((stage) => <div className="stage-settings-row" data-dragging={draggingStageId === stage.id} draggable={currentRole === "admin"} key={stage.id} onDragStart={() => { setDraggingStageId(stage.id); setStageOrderMessage("Drop it where this stage should sit."); }} onDragEnd={() => setDraggingStageId(null)} onDragOver={(event) => { if (currentRole === "admin") event.preventDefault(); }} onDrop={() => dropStage(stage.id)}><button className="stage-drag-handle" type="button" disabled={currentRole !== "admin"} aria-label={`Reorder ${stage.name}. Use arrow keys or drag.`} onKeyDown={(event) => { if (event.key === "ArrowUp") { event.preventDefault(); nudgeStage(stage.id, -1); } if (event.key === "ArrowDown") { event.preventDefault(); nudgeStage(stage.id, 1); } }}><GripVertical size={16} /></button><button className="stage-settings-edit" type="button" onClick={() => currentRole === "admin" && setStageEditor(stage)} disabled={currentRole !== "admin"}><i style={{ background: stage.colour }} /><span><strong>{stage.name}</strong><small>{settingsStageGuidance(stage.name)}</small></span>{currentRole === "admin" ? <Pencil size={13} /> : null}</button></div>)}</div><p className="settings-hint" role="status">{stageOrderMessage ?? "Drag stages into the order your team sells. Arrow keys work from each drag handle. Removing a stage first moves every opportunity into a safe destination."}</p>{stageEditor && currentRole === "admin" ? <PipelineStageEditor stage={stageEditor === "new" ? null : stageEditor} stages={stageList.filter((stage) => !isResearchStage(stage))} opportunityCounts={Object.fromEntries(stageList.map((stage) => [stage.id, snapshot.opportunities.filter((item) => item.stageId === stage.id).length]))} onClose={() => setStageEditor(null)} onSaved={(saved) => { setStageList((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [...items, saved]); setStageEditor(null); }} onArchived={(id) => { setStageList((items) => items.filter((item) => item.id !== id)); setStageEditor(null); }} /> : null}</article>
 
         <article className="surface settings-card"><div className="settings-icon"><Pencil /></div><div><h2>Pipeline name</h2><p>The title shown above the board</p></div>{currentRole === "admin" && !editingPipelineName ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => setEditingPipelineName(true)}><Pencil size={14} />Edit</button> : null}{editingPipelineName && currentRole === "admin" ? <form className="settings-inline-form" onSubmit={savePipelineName}><label className="field-label">Name<input className="field" value={pipelineName} onChange={(event) => setPipelineName(event.target.value)} required minLength={2} autoFocus /></label><div className="button-row"><button className="btn btn-quiet" type="button" onClick={() => { setPipelineName(snapshot.pipeline.name); setEditingPipelineName(false); setPipelineMessage(null); }}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pipelinePending}>{pipelinePending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{pipelinePending ? "Saving…" : "Save name"}</button></div>{pipelineMessage ? <small>{pipelineMessage}</small> : null}</form> : <div className="settings-readonly-value"><strong>{pipelineName}</strong><small>{currentRole === "admin" ? "Click Edit to change it." : "Only an admin can change this."}</small></div>}</article>
 

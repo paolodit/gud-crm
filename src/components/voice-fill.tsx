@@ -26,12 +26,19 @@ const opportunityPrompts = [
   "how warm it is and its likely value",
 ];
 
+const updatePrompts = [
+  "what happened and whether it was an email, call, meeting or reply",
+  "who you spoke to and the useful detail",
+  "the outcome or signal you received",
+  "the sensible next move and when it is due",
+];
+
 export function VoiceFillButton({
   kind,
   onDraft,
   prominent = false,
 }: {
-  kind: "company" | "opportunity";
+  kind: "company" | "opportunity" | "activity_update";
   onDraft: (draft: SpokenCrmDraft) => number;
   prominent?: boolean;
 }) {
@@ -43,6 +50,13 @@ export function VoiceFillButton({
   const [heard, setHeard] = useState("");
   const [promptIndex, setPromptIndex] = useState(0);
 
+  function preflight() {
+    const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    if (browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition) return true;
+    setMessage("Voice input is not available in this browser. You can still log the update manually.");
+    return false;
+  }
+
   useEffect(() => {
     const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     queueMicrotask(() => setSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition)));
@@ -50,8 +64,9 @@ export function VoiceFillButton({
   }, []);
 
   useEffect(() => {
-    if (state !== "listening" || kind !== "opportunity") return;
-    const timer = window.setInterval(() => setPromptIndex((index) => (index + 1) % opportunityPrompts.length), 3200);
+    if (state !== "listening" || kind === "company") return;
+    const prompts = kind === "activity_update" ? updatePrompts : opportunityPrompts;
+    const timer = window.setInterval(() => setPromptIndex((index) => (index + 1) % prompts.length), 3200);
     return () => window.clearInterval(timer);
   }, [state, kind]);
 
@@ -114,15 +129,15 @@ export function VoiceFillButton({
 
   return (
     <div className="voice-fill" data-prominent={prominent} data-state={state}>
-      <button className="btn btn-voice" type="button" onClick={start} disabled={!supported || state === "thinking"} title={supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
+      <button className="btn btn-voice" type="button" onClick={() => { if (preflight()) void start(); }} disabled={state === "thinking"} aria-disabled={!supported} title={supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
         {state === "thinking" ? <LoaderCircle className="spin" size={16} /> : state === "listening" ? <Square size={15} /> : <Mic size={16} />}
-        {state === "listening" ? "Finish and fill" : state === "thinking" ? "Structuring…" : prominent ? "Talk it through" : "Just talk"}
+        {state === "listening" ? "Finish and fill" : state === "thinking" ? "Structuring…" : kind === "activity_update" ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}
       </button>
       {state === "listening" ? (
         <span className="voice-live" role="status" aria-live="polite">
           <span className="voice-live-label"><i />Listening now</span>
           <span className="voice-levels" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}</span>
-          <span className="voice-live-copy">{heard || (kind === "opportunity" ? `You could mention ${opportunityPrompts[promptIndex]}…` : "Start speaking — your words will appear here.")}</span>
+          <span className="voice-live-copy">{heard || (kind === "activity_update" ? `You could mention ${updatePrompts[promptIndex]}…` : kind === "opportunity" ? `You could mention ${opportunityPrompts[promptIndex]}…` : "Start speaking — your words will appear here.")}</span>
         </span>
       ) : null}
       {message && state !== "listening" ? <span className="voice-fill-status" role="status" aria-live="polite"><Sparkles size={13} />{message}</span> : null}

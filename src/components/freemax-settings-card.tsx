@@ -7,9 +7,9 @@ import { useRouter } from "next/navigation";
 import { saveFreeMaxConfigurationAction } from "@/app/actions/workspace";
 import type { FreeMaxProvider, FreeMaxStatus } from "@/lib/enrichment/freemax";
 
-export function FreeMaxSettingsCard({ status, canManage, context = "settings" }: { status: FreeMaxStatus; canManage: boolean; context?: "settings" | "targets" }) {
+export function FreeMaxSettingsCard({ status, canManage, context = "settings", initiallyOpen = false }: { status: FreeMaxStatus; canManage: boolean; context?: "settings" | "targets"; initiallyOpen?: boolean }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [primary, setPrimary] = useState<FreeMaxProvider>(status.order[0] ?? "hunter");
