@@ -12,6 +12,18 @@ If you already have CapRover and PostgreSQL, a clean first instance is five deli
 4. Deploy the repository tarball or Git source using the included `captain-definition`.
 5. Sign in, confirm `/api/health`, then set `GUD_BOOTSTRAP=off`, remove the seed password and restart.
 
+The repository already includes everything CapRover needs:
+
+| File or command | Purpose |
+| --- | --- |
+| [`captain-definition`](../captain-definition) | Tells CapRover to build the production Dockerfile |
+| [`Dockerfile`](../Dockerfile) | Node 24 standalone build, non-root runtime and health check |
+| `npm run deploy:secrets` | Generates strong first-install secrets without writing them to disk |
+| `npm run deploy:check -- --env config/caprover.local.my-app.env` | Checks a private deployment worksheet without printing its values |
+| `npm run db:postgres:backup` | Creates checksummed database dumps with retention |
+
+Files matching `config/caprover.local.*` are ignored by Git. They are optional private worksheets for preflight checking; CapRover environment variables remain the live source of truth.
+
 Minimal first-boot environment:
 
 ```dotenv
@@ -35,6 +47,14 @@ MCP_ENABLED=false
 Then connect the domain, enable HTTPS and **Force HTTPS**. Do not leave the container port at CapRover's default `80`: the GUD image listens on `3000`.
 
 `npm run deploy:secrets` only prints fresh random values. It does not create a file, alter the database or send anything over the network. Use the generated PostgreSQL password when creating the role, URL-encode it in `DATABASE_URL`, and remove `SEED_ADMIN_PASSWORD` from CapRover after the first successful sign-in.
+
+Before entering values in the dashboard, you can copy the minimal block into an ignored `config/caprover.local.my-app.env`, replace every value, and run:
+
+```bash
+npm run deploy:check -- --env config/caprover.local.my-app.env
+```
+
+The preflight reports names and corrective actions only. It never prints the database URL, passwords or API keys.
 
 The root [`captain-definition`](../captain-definition) points CapRover at the production Dockerfile. The image builds the Next.js standalone runtime, bundles only the migration and first-run bootstrap utilities it needs, applies committed migrations before starting, and exposes a database-aware Docker health check at `/api/health`.
 
@@ -63,6 +83,16 @@ CapRover's own configuration backup excludes persistent volumes. Schedule an enc
 Create two normal CapRover apps. Do **not** enable the app-level persistent-data checkbox: the Node containers are stateless in the current release, which lets CapRover use start-first deployments. Set container port `3000`, attach a different domain to each app, enable Let's Encrypt and force HTTPS.
 
 Deploy this same repository and `captain-definition` to both applications. Building once in CI and reusing the identical image is preferable when the deployment pipeline supports it; building twice from Git also works on a sufficiently sized VPS.
+
+For a manual deployment from a clean, committed branch, install and authenticate the CapRover CLI, then select the server and app:
+
+```bash
+npm install --global caprover
+caprover login
+caprover deploy --caproverName your-server --caproverApp your-app --branch main
+```
+
+CapRover packages committed files from the selected branch; ignored private data and uncommitted changes are not sent. App-specific deployment tokens are safer than a server-wide password for automated delivery.
 
 ## 3. Configure runtime variables
 

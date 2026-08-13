@@ -25,7 +25,7 @@ test.describe.serial("Service Sales workspace", () => {
     await page.getByLabel("Meaning").selectOption("open");
     await page.getByRole("button", { name: "Save stage" }).click();
 
-    const stage = page.locator(".stage-settings-list button").filter({ hasText: "Commercial review" });
+    const stage = page.locator(".stage-settings-edit").filter({ hasText: "Commercial review" });
     await expect(stage).toBeVisible();
     await stage.click();
     await page.getByRole("button", { name: "Remove stage" }).click();
@@ -48,8 +48,10 @@ test.describe.serial("Service Sales workspace", () => {
     await page.getByRole("link", { name: "Targets", exact: true }).click();
     await expect(page).toHaveURL(/\/targets$/);
     await expect(page.getByRole("heading", { name: "Targets", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Enrich contacts & find emails" })).toBeVisible();
-    await expect(page.locator(".research-helper-grid")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Research with AI" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Find emails" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Research targets" })).toBeVisible();
+    await expect(page.locator(".research-inspector")).toHaveCount(0);
   });
 
   test("presents the sales guide as a simple first-use path", async ({ page }) => {

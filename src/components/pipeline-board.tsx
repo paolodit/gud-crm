@@ -2,7 +2,9 @@
 
 import {
   DndContext,
+  DragOverlay,
   DragEndEvent,
+  DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   useDroppable,
@@ -77,6 +79,7 @@ import {
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
+import { VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type {
@@ -111,6 +114,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const boardPan = useRef<{
     pointerId: number;
     startX: number;
@@ -161,6 +165,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
   }
 
   function onDragEnd(event: DragEndEvent) {
+    setActiveDragId(null);
     if (!event.over) return;
     const opportunityId = String(event.active.id);
     const overId = String(event.over.id);
@@ -203,6 +208,10 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
         showToast(`Moved to ${stage?.name ?? "new stage"}`);
       }
     });
+  }
+
+  function onDragStart(event: DragStartEvent) {
+    setActiveDragId(String(event.active.id));
   }
 
   function showToast(message: string) {
@@ -330,7 +339,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
         </div>
       </section>
 
-      <DndContext id="gud-crm-pipeline" sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext id="gud-crm-pipeline" sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={onDragEnd}>
         <div className="board-shell">
           <div
             className="board-viewport"
@@ -360,6 +369,9 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
           </div>
           <span className="board-scroll-cue">Drag or scroll for later stages <ChevronRight size={13} /></span>
         </div>
+        <DragOverlay dropAnimation={null} zIndex={200}>
+          {activeDragId ? <OpportunityDragPreview opportunity={opportunities.find((item) => item.id === activeDragId) ?? null} stages={initialSnapshot.stages} /> : null}
+        </DragOverlay>
       </DndContext>
 
       {selected ? (
@@ -383,6 +395,19 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </>
   );
+}
+
+function OpportunityDragPreview({ opportunity, stages }: { opportunity: OpportunitySummary | null; stages: StageSummary[] }) {
+  if (!opportunity) return null;
+  const primaryContact = opportunity.contacts.find((item) => item.primary) ?? opportunity.contacts[0];
+  const stage = stages.find((item) => item.id === opportunity.stageId);
+  return <article className="opportunity-card opportunity-drag-overlay" style={{ borderLeftColor: stage?.colour ?? "#6554c0" }}>
+    <div className="card-open">
+      <div className="card-topline"><span className="company-name">{opportunity.company.name}</span><span className="card-drag-handle"><GripVertical size={14} /></span></div>
+      <p className="opportunity-title">{opportunity.title}</p>
+      <div className="card-contact"><UserRound size={13} /><span>{primaryContact ? `${primaryContact.name}${primaryContact.title ? ` · ${primaryContact.title}` : ""}` : "No contact yet"}</span></div>
+    </div>
+  </article>;
 }
 
 function BoardColumn({
@@ -990,6 +1015,28 @@ function QuickActivityComposer({
   const [pending, setPending] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  function applySpokenUpdate(draft: import("@/app/actions/ai").SpokenCrmDraft) {
+    setOpen(true);
+    const matchingType = draft.activityTypeName
+      ? snapshot.activityTypes.find((type) => type.name.trim().toLowerCase() === draft.activityTypeName?.trim().toLowerCase())
+        ?? snapshot.activityTypes.find((type) => draft.activityTypeName?.toLowerCase().includes(type.name.toLowerCase()) || type.name.toLowerCase().includes(draft.activityTypeName!.toLowerCase()))
+      : null;
+    const matchingContact = draft.contactName
+      ? opportunity.contacts.find((contact) => contact.name.trim().toLowerCase() === draft.contactName?.trim().toLowerCase())
+      : null;
+    if (matchingType) setTypeId(matchingType.id);
+    if (matchingContact) setContactId(matchingContact.id);
+    if (draft.activityNotes) setNotes(draft.activityNotes);
+    if (draft.activityOutcome) setOutcome(normaliseSpokenOutcome(draft.activityOutcome));
+    if (draft.activityOccurredAt) setOccurredAt(toDateTimeLocal(draft.activityOccurredAt));
+    if (draft.nextActionTitle) {
+      setAddFollowUp(true);
+      setNextActionTitle(draft.nextActionTitle);
+      if (draft.nextActionAt) setNextActionAt(toDateTimeLocal(draft.nextActionAt));
+    }
+    return [matchingType, matchingContact, draft.activityNotes, draft.activityOutcome, draft.activityOccurredAt, draft.nextActionTitle].filter(Boolean).length;
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const type = snapshot.activityTypes.find((item) => item.id === typeId);
@@ -1057,7 +1104,7 @@ function QuickActivityComposer({
     <section className="surface compact-composer" data-open={open}>
       <header className="surface-header">
         <div><h3>Log an activity</h3><small>Record every attempt, channel and outcome</small></div>
-        <button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button>
+        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
       </header>
       {open ? <form className="surface-content composer-fields" onSubmit={submit}>
         <div className="three-fields">
@@ -1126,6 +1173,16 @@ function getDueState(value: string | null | undefined, now: string): DueState {
   if (due < reference) return "overdue";
   if (due - reference < 48 * 60 * 60 * 1000) return "soon";
   return "future";
+}
+
+function normaliseSpokenOutcome(value: string) {
+  const normalised = value.trim().toLowerCase();
+  if (/positive|interested|good|yes/.test(normalised)) return "Positive";
+  if (/meeting|booked|scheduled/.test(normalised)) return "Meeting booked";
+  if (/refer|introduc/.test(normalised)) return "Referred";
+  if (/not now|later|timing/.test(normalised)) return "Not now";
+  if (/connect|spoke|conversation|answered/.test(normalised)) return "Connected";
+  return "No reply";
 }
 
 function stageGuidance(name: string) {

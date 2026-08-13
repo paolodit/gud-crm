@@ -29,6 +29,7 @@
 /coverage
 /playwright-report/
 /test-results/
+/showcase/
 /debug.log
 *.tsbuildinfo
 next-env.d.ts

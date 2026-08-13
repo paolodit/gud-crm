@@ -57,6 +57,7 @@ const saveStageSchema = z.object({
   terminalType: z.enum(["open", "won", "lost"]),
 });
 const archiveStageSchema = z.object({ stageId: z.uuid(), destinationStageId: z.uuid() });
+const reorderStagesSchema = z.object({ stageIds: z.array(z.uuid()).min(1).max(40) });
 const revokeMcpConnectionSchema = z.object({ clientId: z.string().trim().min(1).max(200) });
 const saveFreeMaxSchema = z.object({
   hunterKey: z.string().trim().max(1_000).default(""),
@@ -213,6 +214,55 @@ export async function archivePipelineStageAction(input: unknown): Promise<Result
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Pipeline stage could not be removed.") };
+  }
+}
+
+export async function reorderPipelineStagesAction(input: unknown): Promise<Result> {
+  const parsed = reorderStagesSchema.safeParse(input);
+  if (!parsed.success || new Set(parsed.data.stageIds).size !== parsed.data.stageIds.length) {
+    return { ok: false, error: "Choose each visible sales stage exactly once." };
+  }
+  try {
+    const member = await requireAdmin();
+    if (member.demoMode) return { ok: false, error: "Stage changes reset in demo mode." };
+    const requestedIds = parsed.data.stageIds;
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => {
+        const activeStages = [...snapshot.stages].sort((a, b) => a.position - b.position);
+        const protectedStages = activeStages.filter(isProtectedResearchStage);
+        const salesStages = activeStages.filter((stage) => !isProtectedResearchStage(stage));
+        if (requestedIds.length !== salesStages.length || requestedIds.some((id) => !salesStages.some((stage) => stage.id === id))) {
+          throw new Error("The pipeline changed while you were ordering it. Refresh and try again.");
+        }
+        const byId = new Map(salesStages.map((stage) => [stage.id, stage]));
+        snapshot.stages = [...protectedStages, ...requestedIds.map((id) => byId.get(id)!)];
+        snapshot.stages.forEach((stage, index) => { stage.position = (index + 1) * 1000; });
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "stages.reordered", entityType: "pipeline", entityId: "default", detail: { stageIds: requestedIds } });
+    } else {
+      await db.transaction(async (tx) => {
+        const [pipeline] = await tx.select().from(pipelines).where(and(eq(pipelines.organisationId, member.organisationId), eq(pipelines.active, true))).limit(1);
+        if (!pipeline) throw new Error("No active pipeline is configured.");
+        const allRows = await tx.select().from(stages).where(eq(stages.pipelineId, pipeline.id)).orderBy(asc(stages.position));
+        const activeRows = allRows.filter((stage) => stage.active);
+        const protectedRows = activeRows.filter(isProtectedResearchStage);
+        const salesRows = activeRows.filter((stage) => !isProtectedResearchStage(stage));
+        if (requestedIds.length !== salesRows.length || requestedIds.some((id) => !salesRows.some((stage) => stage.id === id))) {
+          throw new Error("The pipeline changed while you were ordering it. Refresh and try again.");
+        }
+        const offset = Math.max(100000, ...allRows.map((stage) => stage.position)) + 100000;
+        await tx.update(stages).set({ position: sql`${stages.position} + ${offset}` }).where(eq(stages.pipelineId, pipeline.id));
+        const orderedIds = [...protectedRows.map((stage) => stage.id), ...requestedIds];
+        for (const [index, stageId] of orderedIds.entries()) {
+          await tx.update(stages).set({ position: (index + 1) * 1000, updatedAt: new Date() }).where(eq(stages.id, stageId));
+        }
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "stages.reordered", entityType: "pipeline", entityId: pipeline.id, after: { stageIds: requestedIds } });
+      });
+    }
+    revalidateStagePaths();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Pipeline stages could not be reordered.") };
   }
 }
 
