@@ -10,6 +10,10 @@
   Understand the opportunity. Keep the relationship clear. Know the next move.
 </p>
 
+<p align="center">
+  Made with care by <a href="https://www.refreshcreative.com">Refresh</a>.
+</p>
+
 GUD CRM is for small sales teams, agencies, consultancies, SaaS companies and independent specialists who want useful sales discipline without traditional CRM sprawl.
 
 It keeps ideas, targets and live opportunities distinct; makes the whole pipeline readable at a glance; and gives every active relationship an owner, context and a next action. AI is available as an optional research and coaching layer, never an automatic salesperson.

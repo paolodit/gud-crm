@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Heart,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -106,6 +107,14 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
         </nav>
 
         <div className="side-footer">
+          <p className="maker-credit">
+            <span>Made with</span>
+            <Heart size={12} aria-label="love" fill="currentColor" />
+            <span>by</span>
+            <a href="https://www.refreshcreative.com" target="_blank" rel="noreferrer">
+              Refresh
+            </a>
+          </p>
           <div className="member-row">
             <div className="avatar">{initials(member.name)}</div>
             <div className="member-meta">
