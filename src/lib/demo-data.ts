@@ -70,12 +70,12 @@ function activity(
 }
 
 const companies = {
-  northstar: { id: "31000000-0000-4000-8000-000000000001", name: "DEMO · Northstar Operations", sector: "Business services", websiteUrl: "https://northstar.example", linkedinUrl: null, fitScore: 5, scaleNote: "Fictional multi-site operator", doNotContact: false },
-  brightline: { id: "31000000-0000-4000-8000-000000000002", name: "DEMO · Brightline Group", sector: "Software", websiteUrl: "https://brightline.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional growing software team", doNotContact: false },
-  harbour: { id: "31000000-0000-4000-8000-000000000003", name: "DEMO · Harbour & Co", sector: "Professional services", websiteUrl: "https://harbour.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional regional consultancy", doNotContact: false },
-  fieldwork: { id: "31000000-0000-4000-8000-000000000004", name: "DEMO · Fieldwork Services", sector: "Field services", websiteUrl: "https://fieldwork.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional distributed service team", doNotContact: false },
-  cedar: { id: "31000000-0000-4000-8000-000000000005", name: "DEMO · Cedar Network", sector: "Membership", websiteUrl: "https://cedar.example", linkedinUrl: null, fitScore: 3, scaleNote: "Fictional member organisation", doNotContact: false },
-  closed: { id: "31000000-0000-4000-8000-000000000007", name: "DEMO · Lantern Works", sector: "Illustrative account", websiteUrl: null, linkedinUrl: null, fitScore: 3, scaleNote: "Fictional example used to explain a genuine sales loss", doNotContact: false },
+  northstar: { id: "31000000-0000-4000-8000-000000000001", name: "Northstar Operations", sector: "Business services", websiteUrl: "https://northstar.example", linkedinUrl: null, fitScore: 5, scaleNote: "Fictional multi-site operator", doNotContact: false },
+  brightline: { id: "31000000-0000-4000-8000-000000000002", name: "Brightline Group", sector: "Software", websiteUrl: "https://brightline.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional growing software team", doNotContact: false },
+  harbour: { id: "31000000-0000-4000-8000-000000000003", name: "Harbour & Co", sector: "Professional services", websiteUrl: "https://harbour.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional regional consultancy", doNotContact: false },
+  fieldwork: { id: "31000000-0000-4000-8000-000000000004", name: "Fieldwork Services", sector: "Field services", websiteUrl: "https://fieldwork.example", linkedinUrl: null, fitScore: 4, scaleNote: "Fictional distributed service team", doNotContact: false },
+  cedar: { id: "31000000-0000-4000-8000-000000000005", name: "Cedar Network", sector: "Membership", websiteUrl: "https://cedar.example", linkedinUrl: null, fitScore: 3, scaleNote: "Fictional member organisation", doNotContact: false },
+  closed: { id: "31000000-0000-4000-8000-000000000007", name: "Lantern Works", sector: "Illustrative account", websiteUrl: null, linkedinUrl: null, fitScore: 3, scaleNote: "Fictional example used to explain a genuine sales loss", doNotContact: false },
 };
 
 const contacts = {
@@ -121,7 +121,7 @@ const opportunityRecords: Array<Omit<OpportunitySummary, "offer" | "position">> 
   },
   {
     id: "51000000-0000-4000-8000-000000000007", isExample: true, stageId: stages[6].id, company: companies.closed,
-    title: "DEMO · Closed after a real sales conversation", priority: "low", temperature: "cold", expectedValue: 6000, probability: 0, expectedCloseDate: null, owner: users[0],
+    title: "Closed after a real sales conversation", priority: "low", temperature: "cold", expectedValue: 6000, probability: 0, expectedCloseDate: null, owner: users[0],
     outreachAngle: "This fictional record demonstrates that Lost is reserved for a genuine commercial outcome.", lastActivityAt: "2026-07-11T14:30:00.000Z", nextActionAt: null, noNextActionReason: "The prospect confirmed there is no current project or budget",
     contacts: [contacts.morgan], activities: [activity("61000000-0000-4000-8000-000000000007", 9, "2026-07-11T14:30:00.000Z", "Morgan confirmed the team is not pursuing a change and asked us to close the conversation.", contacts.morgan, "Negative reply")], tasks: [], recentChannels: ["email"],
   },
@@ -181,7 +181,7 @@ const serviceOffers: OfferSummary[] = [
 
 const serviceDemoProfiles = [
   {
-    company: { name: "DEMO · Alder & Stone", sector: "Professional services", scaleNote: "Fictional consultancy with a dated website" },
+    company: { name: "Alder & Stone", sector: "Professional services", scaleNote: "Fictional consultancy with a dated website" },
     title: "Website repositioning project",
     offer: serviceOffers[0],
     value: 18000,
@@ -189,7 +189,7 @@ const serviceDemoProfiles = [
     angle: "Use the visible mismatch between the current site and the consultancy's stronger market position.",
   },
   {
-    company: { name: "DEMO · Northbank Foods", sector: "Food and hospitality", scaleNote: "Fictional regional food brand" },
+    company: { name: "Northbank Foods", sector: "Food and hospitality", scaleNote: "Fictional regional food brand" },
     title: "Ongoing growth programme",
     offer: serviceOffers[1],
     value: 24000,
@@ -197,7 +197,7 @@ const serviceDemoProfiles = [
     angle: "Lead with a small, measurable visibility opportunity before discussing a retainer.",
   },
   {
-    company: { name: "DEMO · Harbour Museum", sector: "Culture and heritage", scaleNote: "Fictional independent museum planning a new gallery" },
+    company: { name: "Harbour Museum", sector: "Culture and heritage", scaleNote: "Fictional independent museum planning a new gallery" },
     title: "Interactive gallery experience",
     offer: serviceOffers[2],
     value: 72000,
@@ -205,7 +205,7 @@ const serviceDemoProfiles = [
     angle: "Show an understanding of the visitor story and propose a short discovery conversation.",
   },
   {
-    company: { name: "DEMO · Fieldwork Partners", sector: "Business services", scaleNote: "Fictional distributed advisory team" },
+    company: { name: "Fieldwork Partners", sector: "Business services", scaleNote: "Fictional distributed advisory team" },
     title: "Website discovery sprint",
     offer: serviceOffers[0],
     value: 6500,
@@ -213,7 +213,7 @@ const serviceDemoProfiles = [
     angle: "Validate the commercial owner and the reason for change before shaping a larger project.",
   },
   {
-    company: { name: "DEMO · Cedar Foundation", sector: "Charity", scaleNote: "Fictional foundation awaiting a funding decision" },
+    company: { name: "Cedar Foundation", sector: "Charity", scaleNote: "Fictional foundation awaiting a funding decision" },
     title: "Search visibility support",
     offer: serviceOffers[1],
     value: 12000,
@@ -221,8 +221,8 @@ const serviceDemoProfiles = [
     angle: "Keep the opportunity quiet until funding and an internal owner are confirmed.",
   },
   {
-    company: { name: "DEMO · Lantern Arts", sector: "Arts and culture", scaleNote: "Fictional arts organisation used to demonstrate a genuine loss" },
-    title: "DEMO · Closed interpretation project",
+    company: { name: "Lantern Arts", sector: "Arts and culture", scaleNote: "Fictional arts organisation used to demonstrate a genuine loss" },
+    title: "Closed interpretation project",
     offer: serviceOffers[2],
     value: 42000,
     probability: 0,
@@ -236,7 +236,7 @@ export const serviceDemoBoard: BoardSnapshot = (() => {
   snapshot.pipeline.name = serviceEdition.pipelineName;
   snapshot.offers = structuredClone(serviceOffers);
   snapshot.researchThemes = [
-    { id: "81000000-0000-4000-8000-000000000001", position: 1000, title: "DEMO · Better follow-up for specialist firms", audience: "Small professional-service teams", problem: "Good conversations are being lost between inboxes and informal notes.", signal: "Teams are adopting narrower workflow tools instead of heavyweight CRMs.", angle: "Offer a short sales-workflow review tied to one measurable handoff problem.", status: "evidence", offerId: serviceOffers[2]?.id ?? null, sourceUrls: ["https://example.com/fictional-research"], updatedAt: "2026-07-17T09:00:00.000Z" },
+    { id: "81000000-0000-4000-8000-000000000001", position: 1000, title: "Better follow-up for specialist firms", audience: "Small professional-service teams", problem: "Good conversations are being lost between inboxes and informal notes.", signal: "Teams are adopting narrower workflow tools instead of heavyweight CRMs.", angle: "Offer a short sales-workflow review tied to one measurable handoff problem.", status: "evidence", offerId: serviceOffers[2]?.id ?? null, sourceUrls: ["https://example.com/fictional-research"], updatedAt: "2026-07-17T09:00:00.000Z" },
   ];
   snapshot.stages = snapshot.stages.map((stage, index) => ({
     ...stage,

@@ -23,11 +23,13 @@ import { getEdition } from "@/lib/editions";
 export function CreateOpportunityDialog({
   snapshot,
   currentUserId,
+  voiceAiConfigured,
   onClose,
   onCreated,
 }: {
   snapshot: BoardSnapshot;
   currentUserId: string;
+  voiceAiConfigured: boolean;
   onClose: () => void;
   onCreated: (opportunity: OpportunitySummary) => void;
 }) {
@@ -200,7 +202,7 @@ export function CreateOpportunityDialog({
                 </ul>
               </div>
             </div>
-            <VoiceFillButton kind="opportunity" prominent onDraft={fillDraft} />
+            <VoiceFillButton kind="opportunity" prominent aiConfigured={voiceAiConfigured} onDraft={fillDraft} />
             <div className="capture-note">
               <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} placeholder="For example: Ross wants a coffee e-shop. It feels warm. I should call him next week to understand the range and timing…" aria-label="Describe the opportunity in your own words" />
               <button className="btn btn-quiet" type="button" onClick={structureNote} disabled={notePending}>

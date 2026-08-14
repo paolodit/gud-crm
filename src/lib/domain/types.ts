@@ -81,6 +81,7 @@ export type CompanySummary = {
   fitScore: number | null;
   scaleNote: string | null;
   doNotContact: boolean;
+  archivedAt?: string | null;
   researchNote?: string | null;
   sourceUrls?: string[];
   linkedinPeopleSearchUrl?: string | null;
@@ -152,6 +153,7 @@ export type OpportunitySummary = {
   activities: ActivitySummary[];
   tasks: TaskSummary[];
   recentChannels: Channel[];
+  archivedAt?: string | null;
   aiSuggestions?: AISuggestionSummary[];
 };
 

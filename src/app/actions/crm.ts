@@ -67,6 +67,8 @@ const logActivitySchema = z.object({
 });
 
 const completeTaskSchema = z.object({ taskId: z.uuid() });
+const archiveOpportunitySchema = z.object({ opportunityId: z.uuid(), archived: z.boolean() });
+const archiveCompanySchema = z.object({ companyId: z.uuid(), archived: z.boolean() });
 
 const optionalUrl = z
   .string()
@@ -339,6 +341,7 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
         fitScore: row.fitScore,
         scaleNote: row.scaleNote,
         doNotContact: row.doNotContact,
+        archivedAt: row.archivedAt?.toISOString() ?? null,
         researchNote: row.researchNote,
         sourceUrls: row.sourceUrls,
       };
@@ -903,6 +906,126 @@ export async function saveOpportunityDetailsAction(input: unknown): Promise<Acti
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Opportunity could not be saved.") };
+  }
+}
+
+export async function archiveOpportunityAction(input: unknown): Promise<ActionResult> {
+  const parsed = archiveOpportunitySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That archive request is invalid." };
+
+  try {
+    const member = await requireMember();
+    if (member.demoMode) return { ok: true };
+    const archivedAt = parsed.data.archived ? new Date() : null;
+
+    if (member.storageMode === "sqlite") {
+      let companyId = "";
+      updateLocalBoardSnapshot((snapshot) => {
+        const opportunity = snapshot.opportunities.find((item) => item.id === parsed.data.opportunityId);
+        if (!opportunity) throw new Error("Opportunity not found.");
+        companyId = opportunity.company.id;
+        opportunity.archivedAt = archivedAt?.toISOString() ?? null;
+        if (!parsed.data.archived) {
+          for (const item of snapshot.opportunities) {
+            if (item.company.id === companyId) item.company.archivedAt = null;
+          }
+        }
+      });
+      recordLocalAuditEvent({
+        actorId: member.id,
+        action: parsed.data.archived ? "opportunity.archived" : "opportunity.restored",
+        entityType: "opportunity",
+        entityId: parsed.data.opportunityId,
+        detail: { companyId },
+      });
+      revalidateCrmPaths();
+      return { ok: true };
+    }
+
+    await db.transaction(async (tx) => {
+      const [record] = await tx.select({ id: opportunities.id, companyId: opportunities.companyId })
+        .from(opportunities)
+        .where(and(eq(opportunities.id, parsed.data.opportunityId), eq(opportunities.organisationId, member.organisationId)))
+        .limit(1);
+      if (!record) throw new Error("Opportunity not found.");
+      await tx.update(opportunities).set({ archivedAt, updatedAt: new Date() }).where(eq(opportunities.id, record.id));
+      if (!parsed.data.archived) {
+        await tx.update(companies).set({ archivedAt: null, updatedAt: new Date() }).where(and(
+          eq(companies.id, record.companyId),
+          eq(companies.organisationId, member.organisationId),
+        ));
+      }
+      await tx.insert(auditEvents).values({
+        organisationId: member.organisationId,
+        actorId: member.id,
+        action: parsed.data.archived ? "opportunity.archived" : "opportunity.restored",
+        entityType: "opportunity",
+        entityId: record.id,
+        after: { archivedAt, companyId: record.companyId },
+      });
+    });
+    revalidateCrmPaths();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Opportunity archive could not be updated.") };
+  }
+}
+
+export async function archiveCompanyAction(input: unknown): Promise<ActionResult> {
+  const parsed = archiveCompanySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "That archive request is invalid." };
+
+  try {
+    const member = await requireMember();
+    if (member.demoMode) return { ok: true };
+    const archivedAt = parsed.data.archived ? new Date() : null;
+
+    if (member.storageMode === "sqlite") {
+      let affected = 0;
+      updateLocalBoardSnapshot((snapshot) => {
+        const matches = snapshot.opportunities.filter((item) => item.company.id === parsed.data.companyId);
+        if (!matches.length) throw new Error("Organisation not found.");
+        affected = matches.length;
+        for (const opportunity of matches) {
+          opportunity.archivedAt = archivedAt?.toISOString() ?? null;
+          opportunity.company.archivedAt = archivedAt?.toISOString() ?? null;
+        }
+      });
+      recordLocalAuditEvent({
+        actorId: member.id,
+        action: parsed.data.archived ? "company.archived" : "company.restored",
+        entityType: "company",
+        entityId: parsed.data.companyId,
+        detail: { affectedOpportunities: affected },
+      });
+      revalidateCrmPaths();
+      return { ok: true };
+    }
+
+    await db.transaction(async (tx) => {
+      const [company] = await tx.select({ id: companies.id }).from(companies).where(and(
+        eq(companies.id, parsed.data.companyId),
+        eq(companies.organisationId, member.organisationId),
+      )).limit(1);
+      if (!company) throw new Error("Organisation not found.");
+      await tx.update(companies).set({ archivedAt, updatedAt: new Date() }).where(eq(companies.id, company.id));
+      await tx.update(opportunities).set({ archivedAt, updatedAt: new Date() }).where(and(
+        eq(opportunities.companyId, company.id),
+        eq(opportunities.organisationId, member.organisationId),
+      ));
+      await tx.insert(auditEvents).values({
+        organisationId: member.organisationId,
+        actorId: member.id,
+        action: parsed.data.archived ? "company.archived" : "company.restored",
+        entityType: "company",
+        entityId: company.id,
+        after: { archivedAt },
+      });
+    });
+    revalidateCrmPaths();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: publicActionError(error, "Organisation archive could not be updated.") };
   }
 }
 

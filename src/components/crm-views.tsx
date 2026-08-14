@@ -3,6 +3,8 @@
 import {
   Activity,
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowDownWideNarrow,
   ArrowRight,
   BookOpen,
@@ -56,13 +58,13 @@ import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
 import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { isResearchStage } from "@/lib/data/board-selectors";
+import { getActiveOpportunities, isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
 import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary, StageSummary } from "@/lib/domain/types";
 import { editions, getEdition, type EditionKey } from "@/lib/editions";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
 
-export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
+export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: BoardSnapshot; voiceAiConfigured: boolean }) {
   const router = useRouter();
   const edition = getEdition(snapshot.edition);
   const [query, setQuery] = useState("");
@@ -72,7 +74,10 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
   const [sort, setSort] = useState("fit-desc");
   const [compact, setCompact] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
-  const companies = useMemo(() => aggregateCompanies(snapshot.opportunities), [snapshot.opportunities]);
+  const [editingCompany, setEditingCompany] = useState<OpportunitySummary["company"] | null>(null);
+  const [archiveScope, setArchiveScope] = useState<"current" | "archived">("current");
+  const allCompanies = useMemo(() => aggregateCompanies(snapshot.opportunities), [snapshot.opportunities]);
+  const companies = allCompanies.filter((item) => archiveScope === "archived" ? Boolean(item.company.archivedAt) : !item.company.archivedAt);
   const sectors = [...new Set(companies.map((item) => item.company.sector).filter(Boolean))] as string[];
   const filtered = companies.filter((item) => {
     const haystack = [item.company.name, item.company.sector, item.company.researchNote, item.company.idealBuyerRoles, ...item.opportunities.map((opportunity) => opportunity.offer?.name ?? ""), ...item.contacts.map((contact) => `${contact.name} ${contact.title ?? ""} ${contact.email ?? ""} ${contact.phone ?? ""}`)]
@@ -100,12 +105,14 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
         {availableOffers.length > 1 ? <label className="field-select compact-select"><span className="sr-only">Offer</span><select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}{offer.active ? "" : " · Archived"}</option>)}</select></label> : null}
         <label className="field-select compact-select sort-select"><ArrowDownWideNarrow size={14} /><span className="sr-only">Sort companies</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="fit-desc">Fit: highest first</option><option value="name">Name: A–Z</option><option value="contacts">Most contacts</option><option value="stage">Pipeline order</option></select></label>
         <div className="view-toggle" role="group" aria-label="Company card density"><button type="button" aria-pressed={!compact} onClick={() => setCompact(false)} title="Comfortable cards"><Columns3 size={14} />Comfortable</button><button type="button" aria-pressed={compact} onClick={() => setCompact(true)} title="Compact cards"><Rows3 size={14} />Compact</button></div>
+        <button className="btn btn-quiet" type="button" onClick={() => setArchiveScope((scope) => scope === "current" ? "archived" : "current")}>{archiveScope === "archived" ? <ArchiveRestore size={15} /> : <Archive size={15} />}{archiveScope === "archived" ? "Current organisations" : `Archived${allCompanies.some((item) => item.company.archivedAt) ? ` ${allCompanies.filter((item) => item.company.archivedAt).length}` : ""}`}</button>
         <button className="btn btn-primary" type="button" onClick={() => setAddingCompany(true)}><Plus size={15} />Add company</button>
       </section>
 
       <section className="company-grid" data-density={compact ? "compact" : "comfortable"} aria-live="polite">
         {sorted.map(({ company, opportunities, contacts }) => {
-          const relevantOpportunities = offerFilter === "all" ? opportunities : opportunities.filter((opportunity) => opportunity.offer?.id === offerFilter);
+          const scopedOpportunities = archiveScope === "archived" ? opportunities : opportunities.filter((opportunity) => !opportunity.archivedAt);
+          const relevantOpportunities = offerFilter === "all" ? scopedOpportunities : scopedOpportunities.filter((opportunity) => opportunity.offer?.id === offerFilter);
           const primary = relevantOpportunities.find((item) => !isResearchStage(snapshot.stages.find((stage) => stage.id === item.stageId))) ?? relevantOpportunities[0] ?? opportunities[0];
           const stage = snapshot.stages.find((item) => item.id === primary.stageId);
           const inResearch = isResearchStage(stage);
@@ -115,6 +122,7 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
                 <div className="company-logo">{initials(company.name)}</div>
                 <div><h2>{company.name}</h2><p>{company.sector || "Sector not set"}</p></div>
                 <span className="fit-score" title="Fit score">{company.fitScore ? `${company.fitScore}/5 fit` : "Unscored"}</span>
+                <button className="icon-button company-manage" type="button" onClick={() => setEditingCompany(company)} aria-label={`Manage ${company.name}`} title="Edit or archive organisation"><Pencil size={14} /></button>
               </div>
               <p className="company-scale">{company.scaleNote || "Add a scale note to sharpen qualification."}</p>
               <div className="company-facts">
@@ -132,8 +140,9 @@ export function CompaniesDirectory({ snapshot }: { snapshot: BoardSnapshot }) {
           );
         })}
       </section>
-      {!sorted.length ? <EmptyResult title="No companies match" detail="Try a broader name or clear the sector filter." /> : null}
-      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
+      {!sorted.length ? <EmptyResult title={archiveScope === "archived" ? "No archived organisations" : "No companies match"} detail={archiveScope === "archived" ? "Archive an organisation when it should leave day-to-day views without losing its history." : "Try a broader name or clear the sector filter."} /> : null}
+      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
+      {editingCompany ? <CompanyEditorDialog company={editingCompany} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
     </WorkspaceFrame>
   );
 }
@@ -143,7 +152,7 @@ export function GlobalSearch({ snapshot }: { snapshot: BoardSnapshot }) {
   const normalised = query.trim().toLowerCase();
   const results = useMemo(() => {
     if (normalised.length < 2) return [];
-    return snapshot.opportunities.flatMap((opportunity) => {
+    return getActiveOpportunities(snapshot.opportunities).flatMap((opportunity) => {
       const output: SearchResult[] = [];
       const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
       const href = isResearchStage(stage) ? `/targets?target=${opportunity.id}` : `/pipeline?opportunity=${opportunity.id}`;
@@ -188,7 +197,8 @@ export function GlobalSearch({ snapshot }: { snapshot: BoardSnapshot }) {
 export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
   const availableOffers = contextualOffers(snapshot.offers, snapshot.opportunities);
   const [offerFilter, setOfferFilter] = useState("all");
-  const records = offerFilter === "all" ? snapshot.opportunities : snapshot.opportunities.filter((item) => item.offer?.id === offerFilter);
+  const activeRecords = getActiveOpportunities(snapshot.opportunities);
+  const records = offerFilter === "all" ? activeRecords : activeRecords.filter((item) => item.offer?.id === offerFilter);
   const now = new Date(snapshot.generatedAt).getTime();
   const open = records.filter((item) => snapshot.stages.find((stage) => stage.id === item.stageId)?.terminalType === "open");
   const overdue = open.filter((item) => item.nextActionAt && new Date(item.nextActionAt).getTime() < now);
@@ -220,7 +230,7 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
           <div className="surface-header"><div><h2>Stage distribution</h2><p>Where current attention is accumulating</p></div><Workflow size={18} /></div>
           <div className="bar-list">{snapshot.stages.map((stage) => { const count = records.filter((item) => item.stageId === stage.id).length; return <div className="bar-row" key={stage.id}><span>{stage.name}</span><div><i style={{ width: `${Math.max(count ? 8 : 0, (count / maxStage) * 100)}%`, background: stage.colour }} /></div><strong>{count}</strong></div>; })}</div>
         </section>
-        {availableOffers.length > 1 ? <section className="surface report-panel"><div className="surface-header"><div><h2>Offer mix</h2><p>Current focus and retained history</p></div><Target size={18} /></div><div className="offer-mix">{availableOffers.map((offer) => { const count = snapshot.opportunities.filter((item) => item.offer?.id === offer.id).length; return <button type="button" key={offer.id} onClick={() => setOfferFilter(offer.id)} data-active={offerFilter === offer.id}><i style={{ background: offer.colour }} /><span><strong>{offer.name}{offer.active ? "" : " · Archived"}</strong><small>{count} {count === 1 ? "record" : "records"}</small></span><b>{count}</b></button>; })}</div></section> : null}
+        {availableOffers.length > 1 ? <section className="surface report-panel"><div className="surface-header"><div><h2>Offer mix</h2><p>Current focus and retained history</p></div><Target size={18} /></div><div className="offer-mix">{availableOffers.map((offer) => { const count = activeRecords.filter((item) => item.offer?.id === offer.id).length; return <button type="button" key={offer.id} onClick={() => setOfferFilter(offer.id)} data-active={offerFilter === offer.id}><i style={{ background: offer.colour }} /><span><strong>{offer.name}{offer.active ? "" : " · Archived"}</strong><small>{count} {count === 1 ? "record" : "records"}</small></span><b>{count}</b></button>; })}</div></section> : null}
         <section className="surface report-panel">
           <div className="surface-header"><div><h2>Owner load</h2><p>Open opportunities by teammate</p></div><Users size={18} /></div>
           <div className="owner-load">{ownerCounts.map(({ user, count }) => <div key={user.id}><span className="mini-avatar">{initials(user.name)}</span><span><strong>{user.name}</strong><small>{count} open</small></span><div className="load-dots" aria-label={`${count} open opportunities`}>{Array.from({ length: Math.max(1, count) }, (_, index) => <i key={index} data-empty={count === 0} />)}</div></div>)}</div>

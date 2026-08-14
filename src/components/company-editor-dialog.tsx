@@ -1,26 +1,42 @@
 "use client";
 
-import { Building2, Check, LoaderCircle, X } from "lucide-react";
+import { Archive, ArchiveRestore, Building2, Check, LoaderCircle, X } from "lucide-react";
 import { FormEvent, useRef, useState } from "react";
 
-import { saveCompanyAction } from "@/app/actions/crm";
+import { archiveCompanyAction, saveCompanyAction } from "@/app/actions/crm";
 import { applySpokenDraft, VoiceFillButton } from "@/components/voice-fill";
 import type { CompanySummary, OfferSummary } from "@/lib/domain/types";
 
 export function CompanyEditorDialog({
   company,
   offers = [],
+  voiceAiConfigured,
   onClose,
   onSaved,
+  onArchiveChange,
 }: {
   company?: CompanySummary | null;
   offers?: OfferSummary[];
+  voiceAiConfigured: boolean;
   onClose: () => void;
   onSaved: (company: CompanySummary, opportunityId: string | null) => void;
+  onArchiveChange?: (company: CompanySummary, archived: boolean) => void;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  async function toggleArchive() {
+    if (!company) return;
+    const archived = !company.archivedAt;
+    if (archived && !window.confirm(`Archive ${company.name} and all of its opportunities? Nothing is deleted and everything can be restored.`)) return;
+    setPending(true);
+    setError(null);
+    const result = await archiveCompanyAction({ companyId: company.id, archived });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    onArchiveChange?.({ ...company, archivedAt: archived ? new Date().toISOString() : null }, archived);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +68,7 @@ export function CompanyEditorDialog({
       <section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="company-dialog-title">
         <header className="dialog-header">
           <div><span className="eyebrow">Company record</span><h2 id="company-dialog-title">{company ? `Edit ${company.name}` : "Add a company"}</h2><p>{company ? "Keep the fit and research context useful for the next person." : "Creates the company and a research card so it cannot disappear between lists."}</p></div>
-          <div className="dialog-header-actions"><VoiceFillButton kind="company" onDraft={(draft) => applySpokenDraft(formRef.current, { name: draft.companyName, sector: draft.sector, websiteUrl: draft.websiteUrl, linkedinUrl: draft.companyLinkedinUrl, fitScore: draft.fitScore, scaleNote: draft.scaleNote, researchNote: draft.researchNote })} /><button className="icon-button" type="button" onClick={onClose} aria-label="Close company editor"><X size={17} /></button></div>
+          <div className="dialog-header-actions"><VoiceFillButton kind="company" aiConfigured={voiceAiConfigured} onDraft={(draft) => applySpokenDraft(formRef.current, { name: draft.companyName, sector: draft.sector, websiteUrl: draft.websiteUrl, linkedinUrl: draft.companyLinkedinUrl, fitScore: draft.fitScore, scaleNote: draft.scaleNote, researchNote: draft.researchNote })} /><button className="icon-button" type="button" onClick={onClose} aria-label="Close company editor"><X size={17} /></button></div>
         </header>
         <form ref={formRef} className="dialog-form" onSubmit={submit}>
           <fieldset><legend>Company details</legend><div className="form-grid">
@@ -66,7 +82,7 @@ export function CompanyEditorDialog({
             <label className="field-label form-span-2">Research note<textarea className="field textarea" name="researchNote" rows={4} defaultValue={company?.researchNote ?? ""} placeholder="What makes this account relevant?" /></label>
           </div></fieldset>
           {error ? <p className="form-error">{error}</p> : null}
-          <div className="dialog-actions"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={15} /> : company ? <Check size={15} /> : <Building2 size={15} />}{pending ? "Saving…" : company ? "Save company" : "Add company"}</button></div>
+          <div className="dialog-actions">{company ? <button className={`btn ${company.archivedAt ? "btn-quiet" : "btn-danger"}`} type="button" onClick={toggleArchive} disabled={pending}>{company.archivedAt ? <ArchiveRestore size={15} /> : <Archive size={15} />}{company.archivedAt ? "Restore organisation" : "Archive organisation"}</button> : <span />}<div className="button-row"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={15} /> : company ? <Check size={15} /> : <Building2 size={15} />}{pending ? "Saving…" : company ? "Save company" : "Add company"}</button></div></div>
         </form>
       </section>
     </div>

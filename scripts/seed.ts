@@ -171,12 +171,13 @@ async function main() {
       .insert(companies)
       .values({
         ...company,
+        archivedAt: company.archivedAt ? new Date(company.archivedAt) : null,
         organisationId,
         normalisedName: normaliseName(company.name),
       })
       .onConflictDoUpdate({
         target: companies.id,
-        set: { name: company.name, sector: company.sector, websiteUrl: company.websiteUrl, linkedinUrl: company.linkedinUrl, fitScore: company.fitScore, scaleNote: company.scaleNote, updatedAt: new Date() },
+        set: { name: company.name, sector: company.sector, websiteUrl: company.websiteUrl, linkedinUrl: company.linkedinUrl, fitScore: company.fitScore, scaleNote: company.scaleNote, archivedAt: company.archivedAt ? new Date(company.archivedAt) : null, updatedAt: new Date() },
       });
   }
 
@@ -225,6 +226,7 @@ async function main() {
         lastActivityAt: opportunity.lastActivityAt ? new Date(opportunity.lastActivityAt) : null,
         nextActionAt: opportunity.nextActionAt ? new Date(opportunity.nextActionAt) : null,
         noNextActionReason: opportunity.noNextActionReason,
+        archivedAt: opportunity.archivedAt ? new Date(opportunity.archivedAt) : null,
         importMetadata: { demoExample: opportunity.isExample === true },
       })
       .onConflictDoUpdate({
@@ -240,6 +242,7 @@ async function main() {
           probability: opportunity.probability ?? null,
           expectedCloseDate: opportunity.expectedCloseDate ? new Date(opportunity.expectedCloseDate) : null,
           outreachAngle: opportunity.outreachAngle,
+          archivedAt: opportunity.archivedAt ? new Date(opportunity.archivedAt) : null,
           importMetadata: { demoExample: opportunity.isExample === true },
           updatedAt: new Date(),
         },

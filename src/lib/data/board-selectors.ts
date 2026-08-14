@@ -6,11 +6,23 @@ export function isResearchStage(stage: Pick<StageSummary, "name"> | undefined) {
   return Boolean(stage && researchStageNames.has(stage.name));
 }
 
+export function isArchivedOpportunity(opportunity: Pick<OpportunitySummary, "archivedAt" | "company">) {
+  return Boolean(opportunity.archivedAt || opportunity.company.archivedAt);
+}
+
+export function getActiveOpportunities(opportunities: OpportunitySummary[]) {
+  return opportunities.filter((opportunity) => !isArchivedOpportunity(opportunity));
+}
+
+export function getArchivedOpportunities(opportunities: OpportunitySummary[]) {
+  return opportunities.filter(isArchivedOpportunity);
+}
+
 export function getResearchTargets(snapshot: BoardSnapshot) {
   const researchStageIds = new Set(
     snapshot.stages.filter((stage) => isResearchStage(stage)).map((stage) => stage.id),
   );
-  return snapshot.opportunities.filter((opportunity) => researchStageIds.has(opportunity.stageId));
+  return getActiveOpportunities(snapshot.opportunities).filter((opportunity) => researchStageIds.has(opportunity.stageId));
 }
 
 export function getSalesBoardSnapshot(snapshot: BoardSnapshot): BoardSnapshot {

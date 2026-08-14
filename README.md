@@ -25,6 +25,7 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **One product or several services.** Focused Sales suits a single product or SaaS motion. Service Sales suits agencies and consultancies pitching different projects, retainers and advisory work.
 - **Updates are quick.** Type, use browser speech input, or log a touch and its follow-up together.
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
+- **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
 - **AI is bounded and reviewable.** Draft outreach, explore angles, prepare research and ask for a next move without auto-sending anything.
 - **Your existing AI workspace can connect.** The optional MCP endpoint lets authorised Codex, ChatGPT and compatible clients read or update GUD through a narrow, auditable tool surface.
 - **Free enrichment goes further.** Optional Hunter and Voila Norbert integrations use a visible, free-first provider order for one-contact-at-a-time email discovery.
@@ -140,7 +141,7 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 
 All three integrations are off or local-first by default:
 
-- The built-in deterministic coach needs no API key. Set `AI_PROVIDER=openai` and provide a server-side key only when model-generated coaching is wanted.
+- The built-in deterministic coach needs no API key. Voice-to-fields and model-generated coaching require `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to the in-app setup guide when that connection is missing.
 - Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 

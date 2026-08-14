@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getResearchTargets, getSalesBoardSnapshot, researchReadiness } from "@/lib/data/board-selectors";
+import { getActiveOpportunities, getArchivedOpportunities, getResearchTargets, getSalesBoardSnapshot, isArchivedOpportunity, researchReadiness } from "@/lib/data/board-selectors";
 import { demoBoard } from "@/lib/demo-data";
 import type { OpportunitySummary, StageSummary } from "@/lib/domain/types";
 
@@ -35,5 +35,17 @@ describe("board selectors", () => {
     }];
     expect(researchReadiness(base, stage)).toBe("ready");
     expect(researchReadiness(base, { ...stage, name: "Research holding" })).toBe("held");
+  });
+
+  it("keeps archived records out of active and research work without deleting them", () => {
+    const snapshot = structuredClone(demoBoard);
+    snapshot.opportunities[0].archivedAt = "2026-08-14T10:00:00.000Z";
+    snapshot.opportunities[1].company.archivedAt = "2026-08-14T10:00:00.000Z";
+
+    expect(isArchivedOpportunity(snapshot.opportunities[0])).toBe(true);
+    expect(isArchivedOpportunity(snapshot.opportunities[1])).toBe(true);
+    expect(getActiveOpportunities(snapshot.opportunities)).toHaveLength(snapshot.opportunities.length - 2);
+    expect(getArchivedOpportunities(snapshot.opportunities)).toHaveLength(2);
+    expect(getResearchTargets(snapshot).some((item) => isArchivedOpportunity(item))).toBe(false);
   });
 });

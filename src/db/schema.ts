@@ -213,6 +213,7 @@ export const companies = pgTable(
     sourceUrls: jsonb("source_urls").$type<string[]>().default([]).notNull(),
     legitimateInterestReason: text("legitimate_interest_reason"),
     doNotContact: boolean("do_not_contact").default(false).notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     importMetadata: jsonb("import_metadata").$type<Record<string, unknown>>(),
     ...timestamps,
   },
@@ -342,6 +343,7 @@ export const opportunities = pgTable(
     noNextActionReason: text("no_next_action_reason"),
     closedReason: text("closed_reason"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     importMetadata: jsonb("import_metadata").$type<Record<string, unknown>>(),
     ...timestamps,
   },
@@ -349,6 +351,7 @@ export const opportunities = pgTable(
     index("opportunities_board_idx").on(table.organisationId, table.pipelineId, table.stageId, table.position),
     index("opportunities_offer_stage_idx").on(table.organisationId, table.offerId, table.stageId),
     index("opportunities_owner_due_idx").on(table.ownerId, table.nextActionAt),
+    index("opportunities_archive_idx").on(table.organisationId, table.archivedAt),
   ],
 );
 

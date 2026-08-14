@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, max, or } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, max, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -188,6 +188,7 @@ export async function listOpportunities(
   const now = Date.now();
   return snapshot.opportunities
     .filter((opportunity) => {
+      if (opportunity.archivedAt || opportunity.company.archivedAt) return false;
       if (query && ![
         opportunity.company.name,
         opportunity.title,
@@ -243,6 +244,7 @@ export async function searchCompanies(actor: McpActor, query: string, limit = 25
     doNotContact: companies.doNotContact,
   }).from(companies).where(and(
     eq(companies.organisationId, actor.organisationId),
+    isNull(companies.archivedAt),
     needle ? or(
       ilike(companies.name, pattern),
       ilike(companies.domain, pattern),

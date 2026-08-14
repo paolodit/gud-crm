@@ -71,11 +71,13 @@ export function ResearchHub({
   freeMaxStatus,
   view: researchView,
   canManage,
+  voiceAiConfigured,
 }: {
   snapshot: BoardSnapshot;
   freeMaxStatus: FreeMaxStatus;
   view: "accounts" | "themes";
   canManage: boolean;
+  voiceAiConfigured: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -375,8 +377,8 @@ export function ResearchHub({
 
       {showEnrichment ? <div className="dialog-backdrop" role="presentation"><section className="dialog-card enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title"><header className="dialog-header enrichment-dialog-header"><div><span className="eyebrow">FreeMax your allowances</span><h2 id="enrichment-dialog-title">Find verified work emails</h2><p>Connect Hunter or Voila Norbert once, choose which goes first, and spend free credits only after a real person has been identified.</p></div><button className="icon-button" type="button" onClick={() => setShowEnrichment(false)} aria-label="Close email enrichment"><X size={17} /></button></header><div className="enrichment-dialog-body"><div className="enrichment-principle"><ShieldCheck size={19} /><span><strong>A named person and company domain come first.</strong><small>GUD never invents a private address. It uses your provider keys server-side and records only successful lookups against the safety cap.</small></span></div><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" initiallyOpen /></div></section></div> : null}
 
-      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
-      {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} /> : null}
+      {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
+      {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
       {editingContact && selected ? <ResearchContactDialog opportunity={selected} contact={editingContact === "new" ? null : editingContact} onClose={() => setEditingContact(null)} onSaved={() => { setEditingContact(null); router.refresh(); }} /> : null}
       {editingOpportunity && selected ? <TargetOpportunityDialog opportunity={selected} snapshot={snapshot} onClose={() => setEditingOpportunity(false)} onSaved={() => { setEditingOpportunity(false); router.refresh(); }} /> : null}
       {themeEditor ? <ResearchThemeDialogV2 theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} onDeleted={(id) => { const remaining = themes.filter((item) => item.id !== id); setThemes(remaining); setSelectedThemeId(remaining[0]?.id ?? null); setThemeEditor(null); setNotice("Idea deleted."); }} /> : null}

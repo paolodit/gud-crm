@@ -64,6 +64,13 @@
       "when": 1786540800000,
       "tag": "0008_simpler_sales_stages",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786708800000,
+      "tag": "0009_archive_records",
+      "breakpoints": true
     }
   ]
 }
