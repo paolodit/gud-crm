@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle, Mic, Square, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { parseSpokenCrmDraftAction, type SpokenCrmDraft } from "@/app/actions/ai";
@@ -37,10 +38,12 @@ export function VoiceFillButton({
   kind,
   onDraft,
   prominent = false,
+  aiConfigured = true,
 }: {
   kind: "company" | "opportunity" | "activity_update";
   onDraft: (draft: SpokenCrmDraft) => number;
   prominent?: boolean;
+  aiConfigured?: boolean;
 }) {
   const recognition = useRef<Recognition | null>(null);
   const processing = useRef(false);
@@ -49,8 +52,14 @@ export function VoiceFillButton({
   const [message, setMessage] = useState<string | null>(null);
   const [heard, setHeard] = useState("");
   const [promptIndex, setPromptIndex] = useState(0);
+  const [setupNeeded, setSetupNeeded] = useState(false);
 
   function preflight() {
+    if (!aiConfigured) {
+      setSetupNeeded(true);
+      setMessage("Voice capture is ready, but OpenAI must be connected before GUD can structure your words into fields.");
+      return false;
+    }
     const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     if (browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition) return true;
     setMessage("Voice input is not available in this browser. You can still log the update manually.");
@@ -122,17 +131,22 @@ export function VoiceFillButton({
     const result = await parseSpokenCrmDraftAction({ kind, transcript });
     processing.current = false;
     setState("idle");
-    if (!result.ok) return setMessage(result.error);
+    if (!result.ok) {
+      if (/openai|ai is disabled|ai connection/i.test(result.error)) setSetupNeeded(true);
+      return setMessage(result.error);
+    }
+    setSetupNeeded(false);
     const count = onDraft(result.draft);
     setMessage(count ? `${count} ${count === 1 ? "field" : "fields"} filled. Review before saving.` : "I heard you, but found no new fields to add.");
   }
 
   return (
     <div className="voice-fill" data-prominent={prominent} data-state={state}>
-      <button className="btn btn-voice" type="button" onClick={() => { if (preflight()) void start(); }} disabled={state === "thinking"} aria-disabled={!supported} title={supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
+      <button className="btn btn-voice" type="button" onClick={() => { if (preflight()) void start(); }} disabled={state === "thinking"} title={!aiConfigured ? "Connect OpenAI in Settings to turn speech into structured fields" : supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
         {state === "thinking" ? <LoaderCircle className="spin" size={16} /> : state === "listening" ? <Square size={15} /> : <Mic size={16} />}
         {state === "listening" ? "Finish and fill" : state === "thinking" ? "Structuring…" : kind === "activity_update" ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}
       </button>
+      {!aiConfigured && !message ? <Link className="voice-ai-needed" href="/settings">OpenAI setup needed</Link> : null}
       {state === "listening" ? (
         <span className="voice-live" role="status" aria-live="polite">
           <span className="voice-live-label"><i />Listening now</span>
@@ -140,7 +154,7 @@ export function VoiceFillButton({
           <span className="voice-live-copy">{heard || (kind === "activity_update" ? `You could mention ${updatePrompts[promptIndex]}…` : kind === "opportunity" ? `You could mention ${opportunityPrompts[promptIndex]}…` : "Start speaking — your words will appear here.")}</span>
         </span>
       ) : null}
-      {message && state !== "listening" ? <span className="voice-fill-status" role="status" aria-live="polite"><Sparkles size={13} />{message}</span> : null}
+      {message && state !== "listening" ? <span className="voice-fill-status" role="status" aria-live="polite"><Sparkles size={13} /><span>{message}{setupNeeded ? <Link href="/settings">Open AI setup</Link> : null}</span></span> : null}
     </div>
   );
 }

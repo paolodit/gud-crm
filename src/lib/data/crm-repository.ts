@@ -239,6 +239,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
         fitScore: row.company.fitScore,
         scaleNote: row.company.scaleNote,
         doNotContact: row.company.doNotContact,
+        archivedAt: iso(row.company.archivedAt),
         researchNote: row.company.researchNote,
         sourceUrls: row.company.sourceUrls,
       },
@@ -264,6 +265,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
       activities: relatedActivities,
       tasks: tasksByOpportunity.get(row.opportunity.id) ?? [],
       recentChannels: [...new Set(relatedActivities.slice(0, 4).map((item) => item.type.channel))],
+      archivedAt: iso(row.opportunity.archivedAt),
       aiSuggestions: suggestionRows
         .filter((item) => item.opportunityId === row.opportunity.id)
         .flatMap((item) => {

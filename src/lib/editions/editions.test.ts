@@ -41,7 +41,8 @@ describe("sales editions", () => {
     expect(service.edition).toBe("service");
     expect(service.offers.length).toBeGreaterThan(1);
     expect(service.opportunities.length).toBeGreaterThan(0);
-    expect(service.opportunities.every((item) => item.company.name.startsWith("DEMO ·"))).toBe(true);
+    expect(service.opportunities.every((item) => item.company.scaleNote?.startsWith("Fictional"))).toBe(true);
+    expect(service.opportunities.every((item) => !item.company.name.startsWith("DEMO"))).toBe(true);
     expect(new Set(service.opportunities.map((item) => item.offer?.id)).size).toBeGreaterThan(1);
   });
 });

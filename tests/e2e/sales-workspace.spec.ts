@@ -113,6 +113,20 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.getByRole("button", { name: "Return Outreach active to one lane" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  test("archives an opportunity without losing its record", async ({ page }) => {
+    await page.goto("/pipeline");
+    await page.locator(".opportunity-card").first().click();
+    await expect(page.locator(".opportunity-panel")).toBeVisible();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Archive opportunity" }).click();
+    await expect(page.locator(".opportunity-panel")).toHaveCount(0);
+
+    await page.getByRole("button", { name: /Archive\s+1/ }).click();
+    await expect(page.getByRole("heading", { name: "Archived opportunities" })).toBeVisible();
+    await expect(page.locator(".archive-list article")).toHaveCount(1);
+  });
+
   test("pulls the pipeline sideways from empty board space", async ({ page }) => {
     await page.goto("/pipeline");
     const viewport = page.locator(".board-viewport");

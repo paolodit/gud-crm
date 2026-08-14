@@ -19,6 +19,7 @@ import { startTransition, useMemo, useState } from "react";
 import { completeTaskAction } from "@/app/actions/crm";
 import type { BoardSnapshot, OpportunitySummary, StageSummary, TaskSummary } from "@/lib/domain/types";
 import { getEdition } from "@/lib/editions";
+import { getActiveOpportunities } from "@/lib/data/board-selectors";
 
 type WorkItem = { task: TaskSummary; opportunity: OpportunitySummary };
 
@@ -36,9 +37,10 @@ export function MyWork({
   const availableOffers = initialSnapshot.offers.filter((offer) => offer.active).sort((a, b) => a.position - b.position);
   const [offerFilter, setOfferFilter] = useState("all");
   const opportunities = useMemo(
-    () => offerFilter === "all"
-      ? initialSnapshot.opportunities
-      : initialSnapshot.opportunities.filter((opportunity) => opportunity.offer?.id === offerFilter),
+    () => {
+      const active = getActiveOpportunities(initialSnapshot.opportunities);
+      return offerFilter === "all" ? active : active.filter((opportunity) => opportunity.offer?.id === offerFilter);
+    },
     [initialSnapshot.opportunities, offerFilter],
   );
   const now = useMemo(() => new Date(initialSnapshot.generatedAt), [initialSnapshot.generatedAt]);

@@ -2,6 +2,7 @@ import { ResearchHub } from "@/components/research-hub";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import { getCurrentMember } from "@/lib/session";
+import { env } from "@/lib/env";
 
 export default async function TargetsPage() {
   const member = await getCurrentMember();
@@ -10,5 +11,5 @@ export default async function TargetsPage() {
     getBoardSnapshot(member.organisationId),
     getFreeMaxStatus(member.organisationId, member.storageMode),
   ]);
-  return <ResearchHub snapshot={snapshot} freeMaxStatus={freeMaxStatus} view="accounts" canManage={member.role === "admin"} />;
+  return <ResearchHub snapshot={snapshot} freeMaxStatus={freeMaxStatus} view="accounts" canManage={member.role === "admin"} voiceAiConfigured={env.aiEnabled && env.AI_PROVIDER === "openai" && Boolean(env.OPENAI_API_KEY)} />;
 }

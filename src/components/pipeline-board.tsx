@@ -22,6 +22,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   AlertCircle,
+  Archive,
+  ArchiveRestore,
   CalendarClock,
   Check,
   ChevronLeft,
@@ -65,6 +67,7 @@ import {
 } from "react";
 
 import {
+  archiveOpportunityAction,
   completeTaskAction,
   logActivityAction,
   reorderOpportunityAction,
@@ -81,6 +84,7 @@ import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
+import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type {
   ActivitySummary,
@@ -96,7 +100,7 @@ import type {
 
 type DueState = "overdue" | "soon" | "future" | "missing";
 
-export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnapshot: BoardSnapshot; currentUserId: string }) {
+export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigured }: { initialSnapshot: BoardSnapshot; currentUserId: string; voiceAiConfigured: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [opportunities, setOpportunities] = useState(initialSnapshot.opportunities);
@@ -111,6 +115,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
     : "all");
   const [attentionOnly, setAttentionOnly] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -130,10 +135,13 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
   const selectedId = searchParams.get("opportunity");
   const selected = opportunities.find((item) => item.id === selectedId) ?? null;
   const now = initialSnapshot.generatedAt;
+  const activeCount = getActiveOpportunities(opportunities).length;
+  const archivedCount = getArchivedOpportunities(opportunities).length;
 
   const filtered = useMemo(() => {
     const normalisedQuery = query.trim().toLowerCase();
-    return opportunities.filter((item) => {
+    const records = showArchived ? getArchivedOpportunities(opportunities) : getActiveOpportunities(opportunities);
+    return records.filter((item) => {
       const matchesText =
         !normalisedQuery ||
         item.company.name.toLowerCase().includes(normalisedQuery) ||
@@ -145,7 +153,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
       const needsAttention = state === "overdue" || state === "missing" || item.temperature === "at_risk";
       return matchesText && matchesOwner && matchesOffer && (!attentionOnly || needsAttention);
     });
-  }, [attentionOnly, now, offerFilter, opportunities, owner, query]);
+  }, [attentionOnly, now, offerFilter, opportunities, owner, query, showArchived]);
 
   function openOpportunity(id: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -162,6 +170,15 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
 
   function updateOpportunity(next: OpportunitySummary) {
     setOpportunities((items) => items.map((item) => (item.id === next.id ? next : item)));
+  }
+
+  async function restoreArchivedOpportunity(opportunity: OpportunitySummary) {
+    const result = await archiveOpportunityAction({ opportunityId: opportunity.id, archived: false });
+    if (!result.ok) return showToast(result.error);
+    setOpportunities((items) => items.map((item) => item.id === opportunity.id
+      ? { ...item, archivedAt: null, company: { ...item.company, archivedAt: null } }
+      : item.company.id === opportunity.company.id ? { ...item, company: { ...item.company, archivedAt: null } } : item));
+    showToast(`${opportunity.company.name} restored to ${initialSnapshot.stages.find((stage) => stage.id === opportunity.stageId)?.name ?? "the pipeline"}`);
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -280,7 +297,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
       <header className="page-header pipeline-page-header">
         <div className="page-title">
           <h1>{initialSnapshot.pipeline.name}</h1>
-          <p>{opportunities.length} opportunities · Updated {formatTime(now)}</p>
+          <p>{activeCount} active opportunities{archivedCount ? ` · ${archivedCount} archived` : ""} · Updated {formatTime(now)}</p>
         </div>
         <div className="header-actions">
           <button className="btn btn-primary" type="button" onClick={() => setCreating(true)} aria-label="Create a new opportunity">
@@ -332,6 +349,9 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
           <span className="filter-chip" aria-label={`${filtered.length} shown`}>
             <Filter size={14} /> {filtered.length} shown
           </span>
+          <button className="filter-chip" type="button" data-active={showArchived} onClick={() => setShowArchived((value) => !value)}>
+            {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />} {showArchived ? "Back to pipeline" : `Archive${archivedCount ? ` ${archivedCount}` : ""}`}
+          </button>
           <div className="view-toggle" role="group" aria-label="Pipeline card density">
             <button type="button" aria-pressed={!compact} onClick={() => setCompact(false)} title="Comfortable cards"><Columns3 size={14} />Comfortable</button>
             <button type="button" aria-pressed={compact} onClick={() => setCompact(true)} title="Compact cards"><Rows3 size={14} />Compact</button>
@@ -351,8 +371,8 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
             onPointerCancel={endBoardPan}
             onClickCapture={blockClickAfterPan}
           >
-            <div className="board">
-              {initialSnapshot.stages.map((stage) => (
+            <div className="board" data-archive-view={showArchived}>
+              {showArchived ? <ArchivedOpportunityBrowser opportunities={filtered} stages={initialSnapshot.stages} onOpen={openOpportunity} onRestore={restoreArchivedOpportunity} /> : initialSnapshot.stages.map((stage) => (
                 <BoardColumn
                   key={stage.id}
                   stage={stage}
@@ -382,12 +402,21 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
           onClose={closeOpportunity}
           onUpdate={updateOpportunity}
           onToast={showToast}
+          voiceAiConfigured={voiceAiConfigured}
+          onArchiveChange={(next, archived, companyWide = false) => {
+            setOpportunities((items) => items.map((item) => companyWide && item.company.id === next.company.id
+              ? { ...item, archivedAt: archived ? next.archivedAt : null, company: { ...item.company, archivedAt: archived ? next.company.archivedAt : null } }
+              : item.id === next.id ? next : item));
+            showToast(archived ? "Opportunity archived" : "Opportunity restored");
+            if (archived) closeOpportunity();
+          }}
         />
       ) : null}
       {creating ? (
         <CreateOpportunityDialog
           snapshot={{ ...initialSnapshot, opportunities }}
           currentUserId={currentUserId}
+          voiceAiConfigured={voiceAiConfigured}
           onClose={() => setCreating(false)}
           onCreated={opportunityCreated}
         />
@@ -395,6 +424,33 @@ export function PipelineBoard({ initialSnapshot, currentUserId }: { initialSnaps
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </>
   );
+}
+
+function ArchivedOpportunityBrowser({ opportunities, stages, onOpen, onRestore }: {
+  opportunities: OpportunitySummary[];
+  stages: StageSummary[];
+  onOpen: (id: string) => void;
+  onRestore: (opportunity: OpportunitySummary) => Promise<void>;
+}) {
+  return <section className="archive-browser" aria-label="Archived opportunities">
+    <header><div><span className="eyebrow">Out of the live pipeline</span><h2>Archived opportunities</h2><p>History stays intact. Restore a record to return it to its previous stage.</p></div><span className="badge">{opportunities.length}</span></header>
+    <div className="archive-list">
+      {opportunities.map((opportunity) => {
+        const stage = stages.find((item) => item.id === opportunity.stageId);
+        return <article key={opportunity.id}>
+          <button type="button" className="archive-record-main" onClick={() => onOpen(opportunity.id)}>
+            <span className="company-logo">{initials(opportunity.company.name)}</span>
+            <span><strong>{opportunity.company.name}</strong><small>{opportunity.title}</small></span>
+            {opportunity.offer ? <span className="offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
+            <span className="archive-stage"><i style={{ background: stage?.colour ?? "#98a2b3" }} />{stage?.name ?? "Previous stage"}</span>
+            <time>{opportunity.archivedAt ? `Archived ${format(new Date(opportunity.archivedAt), "d MMM yyyy")}` : "Organisation archived"}</time>
+          </button>
+          <button className="btn btn-quiet btn-compact" type="button" onClick={() => void onRestore(opportunity)}><ArchiveRestore size={14} />Restore</button>
+        </article>;
+      })}
+      {!opportunities.length ? <div className="empty-state"><Archive size={22} /><strong>Nothing archived</strong><span>Completed records can leave the live board without losing their history.</span></div> : null}
+    </div>
+  </section>;
 }
 
 function OpportunityDragPreview({ opportunity, stages }: { opportunity: OpportunitySummary | null; stages: StageSummary[] }) {
@@ -552,6 +608,8 @@ function OpportunityPanel({
   onClose,
   onUpdate,
   onToast,
+  voiceAiConfigured,
+  onArchiveChange,
 }: {
   opportunity: OpportunitySummary;
   snapshot: BoardSnapshot;
@@ -559,6 +617,8 @@ function OpportunityPanel({
   onClose: () => void;
   onUpdate: (opportunity: OpportunitySummary) => void;
   onToast: (message: string) => void;
+  voiceAiConfigured: boolean;
+  onArchiveChange: (opportunity: OpportunitySummary, archived: boolean, companyWide?: boolean) => void;
 }) {
   const openTasks = opportunity.tasks.filter((task) => task.status === "open");
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
@@ -566,8 +626,24 @@ function OpportunityPanel({
   const [companyEditor, setCompanyEditor] = useState(false);
   const [opportunityEditor, setOpportunityEditor] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [archivePending, setArchivePending] = useState(false);
+  const archived = isArchivedOpportunity(opportunity);
   const companyWebsiteUrl = safeExternalUrl(opportunity.company.websiteUrl);
   const companyLinkedinUrl = safeExternalUrl(opportunity.company.linkedinUrl);
+
+  async function toggleArchive() {
+    const nextArchived = !archived;
+    if (nextArchived && !window.confirm(`Archive ${opportunity.title}? Its history stays safe and it can be restored later.`)) return;
+    setArchivePending(true);
+    const result = await archiveOpportunityAction({ opportunityId: opportunity.id, archived: nextArchived });
+    setArchivePending(false);
+    if (!result.ok) return onToast(result.error);
+    onArchiveChange({
+      ...opportunity,
+      archivedAt: nextArchived ? new Date().toISOString() : null,
+      company: nextArchived ? opportunity.company : { ...opportunity.company, archivedAt: null },
+    }, nextArchived);
+  }
 
   function completeTask(task: TaskSummary) {
     const next = {
@@ -613,10 +689,12 @@ function OpportunityPanel({
             </a>
           ) : null}
           <button className="icon-button panel-expand" type="button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace width" : "Expand workspace"} title={expanded ? "Restore width" : "Expand workspace"}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
+          <button className="icon-button" type="button" onClick={toggleArchive} disabled={archivePending} aria-label={archived ? "Restore opportunity" : "Archive opportunity"} title={archived ? "Restore opportunity" : "Archive opportunity"}>{archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}</button>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Close panel"><X size={18} /></button>
         </header>
 
         <div className="panel-body">
+          {archived ? <div className="archive-notice"><Archive size={16} /><span><strong>Archived opportunity</strong><small>Its stage, contacts, activity and next actions are preserved.</small></span><button className="btn btn-quiet btn-compact" type="button" onClick={toggleArchive} disabled={archivePending}><ArchiveRestore size={14} />Restore</button></div> : null}
           <div className="panel-grid">
             <div className="panel-stack">
               <section className="surface relationship-overview">
@@ -672,6 +750,7 @@ function OpportunityPanel({
                 snapshot={snapshot}
                 onUpdate={onUpdate}
                 onToast={onToast}
+                voiceAiConfigured={voiceAiConfigured}
               />
             </div>
 
@@ -737,7 +816,7 @@ function OpportunityPanel({
             </div>
           </div>
         </div>
-        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} onClose={() => setCompanyEditor(false)} onSaved={(company) => { onUpdate({ ...opportunity, company }); setCompanyEditor(false); onToast(`${company.name} updated`); }} /> : null}
+        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setCompanyEditor(false)} onSaved={(company) => { onUpdate({ ...opportunity, company }); setCompanyEditor(false); onToast(`${company.name} updated`); }} onArchiveChange={(company, companyArchived) => { const archivedAt = companyArchived ? new Date().toISOString() : null; onArchiveChange({ ...opportunity, company: { ...company, archivedAt }, archivedAt }, companyArchived, true); setCompanyEditor(false); }} /> : null}
         {opportunityEditor ? <OpportunityEditor opportunity={opportunity} snapshot={snapshot} onClose={() => setOpportunityEditor(false)} onSaved={(next) => { onUpdate(next); setOpportunityEditor(false); onToast("Opportunity updated"); }} /> : null}
       </aside>
     </>
@@ -997,11 +1076,13 @@ function QuickActivityComposer({
   snapshot,
   onUpdate,
   onToast,
+  voiceAiConfigured,
 }: {
   opportunity: OpportunitySummary;
   snapshot: BoardSnapshot;
   onUpdate: (opportunity: OpportunitySummary) => void;
   onToast: (message: string) => void;
+  voiceAiConfigured: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [typeId, setTypeId] = useState(snapshot.activityTypes[0]?.id ?? "");
@@ -1104,7 +1185,7 @@ function QuickActivityComposer({
     <section className="surface compact-composer" data-open={open}>
       <header className="surface-header">
         <div><h3>Log an activity</h3><small>Record every attempt, channel and outcome</small></div>
-        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
+        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
       </header>
       {open ? <form className="surface-content composer-fields" onSubmit={submit}>
         <div className="three-fields">

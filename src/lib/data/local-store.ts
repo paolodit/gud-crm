@@ -15,7 +15,7 @@ import { createInitialSnapshot } from "@/lib/editions/bootstrap";
 import { isEditionKey, normaliseEditionKey } from "@/lib/editions";
 
 const workspaceId = "default";
-const snapshotVersion = 14;
+const snapshotVersion = 15;
 const globalForSqlite = globalThis as unknown as { gudLocalDb?: Database.Database };
 
 function database() {
@@ -101,7 +101,7 @@ function migrateLocalSnapshot(db: Database.Database) {
   const engagedStage = snapshot.stages.find((stage) => stage.name === "Engaged");
   const researchHoldingStage = snapshot.stages.find((stage) => stage.name === "Research holding");
   const demoById = new Map(demoBoard.opportunities.map((opportunity) => [opportunity.id, opportunity]));
-  const lostExample = demoBoard.opportunities.find((opportunity) => opportunity.company.name.startsWith("DEMO ·"));
+  const lostExample = demoBoard.opportunities.find((opportunity) => opportunity.stageId === "10000000-0000-4000-8000-000000000010");
   if (lostExample && !snapshot.opportunities.some((opportunity) => opportunity.id === lostExample.id)) {
     snapshot.opportunities.push(structuredClone(lostExample));
   }
@@ -174,6 +174,12 @@ function migrateLocalSnapshot(db: Database.Database) {
   }
   if (currentVersion < 13) snapshot.researchThemes = [];
   if (currentVersion < 14) simplifyPipelineStages(snapshot);
+  if (currentVersion < 15) {
+    for (const opportunity of snapshot.opportunities) {
+      opportunity.archivedAt ??= null;
+      opportunity.company.archivedAt ??= null;
+    }
+  }
   const now = new Date().toISOString();
   db.prepare("UPDATE local_workspaces SET snapshot_json = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(snapshot), now, workspaceId);
   db.prepare("INSERT INTO local_settings (key, value, updated_at) VALUES ('snapshot_version', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").run(String(snapshotVersion), now);
