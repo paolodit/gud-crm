@@ -87,8 +87,15 @@ Live multi-user workspaces use PostgreSQL, Better Auth and HTTPS. Every organisa
 
 | Route | Use it when | Guide and tooling |
 | --- | --- | --- |
+| **Render + Neon** | You want the easiest free personal/evaluation deployment and accept sleep/wake delays | [`render.yaml`](render.yaml), [free-hosting guide](docs/FREE-HOSTING.md) |
 | **Docker Compose** | You control a Linux server or want a production-like local stack | [`docker-compose.yml`](docker-compose.yml), [`Dockerfile`](Dockerfile), [Docker guide](docs/DOCKER.md) |
 | **CapRover** | You want simple app deployment, domains and TLS on a VPS | [`captain-definition`](captain-definition), [CapRover guide](docs/CAPROVER.md) |
+
+The quickest hosted trial uses a free Render web service and a separate Neon PostgreSQL database:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fpaolodit%2Fgud-crm)
+
+Create the Neon database first, then the button asks for its connection string and your initial administrator details. Render supplies the public HTTPS origin automatically. Free services sleep, can start slowly and are not a substitute for a backed-up production host; the [free-hosting guide](docs/FREE-HOSTING.md) makes those limits explicit.
 
 The production image:
 
@@ -172,6 +179,7 @@ Before proposing a change, run the quality commands above and keep the interface
 ## Documentation
 
 - [Getting started](docs/GETTING-STARTED.md)
+- [Free hosting with Render and Neon](docs/FREE-HOSTING.md)
 - [Docker installation](docs/DOCKER.md)
 - [CapRover installation](docs/CAPROVER.md)
 - [Operations and backups](docs/OPERATIONS.md)

@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: gud-crm
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: PORT
+        value: "3000"
+      - key: DATA_BACKEND
+        value: postgres
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: GUD_DEFAULT_MODEL
+        value: service
+      - key: GUD_INSTANCE_NAME
+        value: GUD Sales
+      - key: GUD_BOOTSTRAP
+        value: if-empty
+      - key: SEED_ORGANISATION_NAME
+        value: GUD Sales
+      - key: SEED_ADMIN_NAME
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: AI_ENABLED
+        value: "true"
+      - key: AI_PROVIDER
+        value: local
+      - key: MCP_ENABLED
+        value: "false"
