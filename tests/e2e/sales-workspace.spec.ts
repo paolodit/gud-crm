@@ -54,6 +54,31 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.locator(".research-inspector")).toHaveCount(0);
   });
 
+  test("keeps research contact imports in merge mode unless replacement is explicitly confirmed", async ({ page }) => {
+    await page.goto("/targets");
+    await page.getByRole("button", { name: "Research with AI" }).click();
+
+    await expect(page.getByRole("radio", { name: /Merge contacts/ })).toBeChecked();
+    await page.getByRole("radio", { name: /Replace contacts/ }).check();
+    await expect(page.getByText("Omitted contacts will be unlinked after confirmation.")).toBeVisible();
+
+    const input = page.locator('input[type="file"][accept*="json"]');
+    await input.setInputFiles({
+      name: "ambiguous-results.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({ targets: [{ name: "Example target" }] })),
+    });
+    await expect(page.getByRole("status")).toContainText("must include an explicit \"contacts\" array");
+
+    await input.setInputFiles({
+      name: "authoritative-results.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({ targets: [{ name: "Example target", contacts: [] }] })),
+    });
+    await expect(page.getByRole("alertdialog")).toContainText("Replace contacts for 1 target?");
+    await expect(page.getByRole("alertdialog")).toContainText("shared contact records, activities and audit history are not deleted");
+  });
+
   test("presents the sales guide as a simple first-use path", async ({ page }) => {
     await page.goto("/playbook");
     await expect(page.getByRole("heading", { name: "Sales guide" })).toBeVisible();
