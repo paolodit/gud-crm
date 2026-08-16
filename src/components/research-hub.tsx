@@ -58,6 +58,7 @@ import { activeOffers } from "@/lib/domain/offers";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type { BoardSnapshot, ContactSummary, OpportunitySummary, Priority, ResearchThemeSummary, Temperature } from "@/lib/domain/types";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
+import { firstTargetMissingExplicitContacts, type ResearchContactImportMode } from "@/lib/import/research-contacts";
 
 const statusCopy: Record<ResearchReadiness, { label: string; detail: string }> = {
   ready: { label: "Ready to review", detail: "Evidence and a contact route are present" },
@@ -98,6 +99,8 @@ export function ResearchHub({
   const [editingOpportunity, setEditingOpportunity] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [contactImportMode, setContactImportMode] = useState<ResearchContactImportMode>("merge");
+  const [pendingReplaceImport, setPendingReplaceImport] = useState<{ payload: unknown; fileName: string; targetCount: number } | null>(null);
 
   const decorated = useMemo(() => targets.map((opportunity) => {
     const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
@@ -179,23 +182,48 @@ export function ResearchHub({
     router.refresh();
   }
 
+  async function performImport(payload: unknown, mode: ResearchContactImportMode) {
+    setPendingAction("import");
+    setNotice(null);
+    try {
+      const input = withContactImportMode(payload, mode);
+      const result = await importResearchResultsAction(input);
+      if (!result.ok) return setNotice(result.error);
+      const modeLabel = result.contactMode === "replace" ? "Replace contacts" : "Merge contacts";
+      setNotice(`Research updated · ${modeLabel}: ${result.targetsCreated} new targets, ${result.targetsUpdated} matched; ${result.contactsCreated} contacts created, ${result.contactsUpdated} updated, ${result.contactsUnlinked} unlinked.`);
+      setPendingReplaceImport(null);
+      setShowHandoff(false);
+      router.refresh();
+    } catch {
+      setNotice("The research results could not be imported. Nothing was changed.");
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   async function importFile(file: File | undefined) {
     if (!file) return;
     setPendingAction("import");
     setNotice(null);
     try {
       const payload = JSON.parse(await file.text()) as unknown;
-      const result = await importResearchResultsAction(payload);
-      if (!result.ok) setNotice(result.error);
-      else {
-        setNotice(`Research updated: ${result.targetsCreated} new, ${result.targetsUpdated} matched, ${result.contactsCreated} contacts added.`);
-        setShowHandoff(false);
-        router.refresh();
+      if (contactImportMode === "replace") {
+        const importedTargets = importTargetsFromPayload(payload);
+        const missingExplicitContacts = importedTargets ? firstTargetMissingExplicitContacts(importedTargets) : -1;
+        if (!importedTargets || missingExplicitContacts >= 0) {
+          setNotice(missingExplicitContacts >= 0
+            ? `Replace contacts was not started: target ${missingExplicitContacts + 1} must include an explicit \"contacts\" array. Use [] to clear its contacts.`
+            : "Replace contacts was not started because the file does not contain a targets array.");
+          return;
+        }
+        setPendingReplaceImport({ payload, fileName: file.name, targetCount: importedTargets.length });
+      } else {
+        await performImport(payload, "merge");
       }
     } catch {
       setNotice("That file is not valid JSON. Use the downloaded research pack as the starting format.");
     } finally {
-      setPendingAction(null);
+      if (contactImportMode === "replace") setPendingAction(null);
       if (fileInput.current) fileInput.current.value = "";
     }
   }
@@ -365,15 +393,18 @@ export function ResearchHub({
           <section className="dialog-card research-handoff" role="dialog" aria-modal="true" aria-labelledby="research-handoff-title">
             <header className="dialog-header research-desk-header"><div><span className="eyebrow">Your external research workspace</span><h2 id="research-handoff-title">AI research desk</h2><p>Take a clean brief to Codex, Cowork or another browser-capable assistant, then bring only cited findings back.</p></div><button className="icon-button" type="button" onClick={() => setShowHandoff(false)} aria-label="Close AI research desk"><X size={17} /></button></header>
             <ol className="research-desk-flow"><li><b>1</b><span><strong>Take the brief</strong><small>GUD includes what you know and the exact gaps to investigate.</small></span></li><li><b>2</b><span><strong>Research in the browser</strong><small>Find dated evidence, named people and source URLs—never guessed private data.</small></span></li><li><b>3</b><span><strong>Bring it back</strong><small>Review the return in GUD before anything reaches the sales pipeline.</small></span></li></ol>
+            {researchView === "accounts" ? <fieldset className="research-import-mode"><legend>When returned contacts are imported</legend><div role="radiogroup" aria-label="Contact import mode"><label data-selected={contactImportMode === "merge"}><input type="radio" name="contactImportMode" value="merge" checked={contactImportMode === "merge"} onChange={() => setContactImportMode("merge")} /><span><strong>Merge contacts</strong><small>Safe default. Update matches and add new people; keep contacts omitted from the file.</small></span></label><label data-selected={contactImportMode === "replace"}><input type="radio" name="contactImportMode" value="replace" checked={contactImportMode === "replace"} onChange={() => setContactImportMode("replace")} /><span><strong>Replace contacts</strong><small>Authoritative per included opportunity. Omitted contacts will be unlinked after confirmation.</small></span></label></div>{contactImportMode === "replace" ? <p><ShieldCheck size={15} /><span>Every imported target must include <code>{'"contacts": [...]'}</code>. An explicit empty array clears that opportunity’s contact links; shared records and history are never deleted.</span></p> : null}</fieldset> : null}
             <div className="research-handoff-steps">
               <button type="button" onClick={copyBrief}><span><Clipboard size={20} /></span><strong>Copy focused brief</strong><small>Paste into Codex or Cowork for one selected record.</small></button>
               <button type="button" onClick={downloadPack}><span><Download size={20} /></span><strong>Download research pack</strong><small>Best for batches or a repeatable research run.</small></button>
-              {researchView === "accounts" ? <><button type="button" onClick={() => fileInput.current?.click()} disabled={pendingAction === "import"}><span>{pendingAction === "import" ? <LoaderCircle className="spin" size={20} /> : <FileUp size={20} />}</span><strong>Review returned results</strong><small>Match companies, merge evidence and add contacts safely.</small></button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => importFile(event.target.files?.[0])} /></> : null}
+              {researchView === "accounts" ? <><button type="button" onClick={() => fileInput.current?.click()} disabled={pendingAction === "import"}><span>{pendingAction === "import" ? <LoaderCircle className="spin" size={20} /> : <FileUp size={20} />}</span><strong>Review returned results</strong><small>{contactImportMode === "replace" ? "Replace mode selected · review the unlink warning before import." : "Merge mode selected · existing omitted contacts stay linked."}</small></button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={(event) => importFile(event.target.files?.[0])} /></> : null}
             </div>
             <div className="research-handoff-rule"><Sparkles size={17} /><span><strong>Nothing is promoted automatically.</strong> {researchView === "themes" ? "Use the returned evidence to sharpen the theme, then add only credible account targets." : "Imported findings remain in research until a person chooses otherwise."}</span></div>
           </section>
         </div>
       ) : null}
+
+      {pendingReplaceImport ? <div className="dialog-backdrop dialog-backdrop-raised" role="presentation"><section className="dialog-card replace-contacts-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="replace-contacts-title" aria-describedby="replace-contacts-description"><header><span><ShieldCheck size={22} /></span><div><span className="eyebrow">Authoritative contact import</span><h2 id="replace-contacts-title">Replace contacts for {pendingReplaceImport.targetCount} {pendingReplaceImport.targetCount === 1 ? "target" : "targets"}?</h2></div></header><div id="replace-contacts-description"><p>For each opportunity included in <strong>{pendingReplaceImport.fileName}</strong>, the explicit <code>contacts</code> array will become its complete contact list.</p><ul><li>Matching people are updated and new people are created.</li><li>Existing contacts omitted from that opportunity are unlinked.</li><li><code>{'"contacts": []'}</code> clears all of that opportunity’s contact links.</li><li>Other opportunities, shared contact records, activities and audit history are not deleted.</li></ul></div><div className="dialog-actions"><button className="btn btn-quiet" type="button" disabled={pendingAction === "import"} onClick={() => setPendingReplaceImport(null)}>Cancel</button><button className="btn btn-danger" type="button" disabled={pendingAction === "import"} onClick={() => performImport(pendingReplaceImport.payload, "replace")}>{pendingAction === "import" ? <LoaderCircle className="spin" size={15} /> : <Users size={15} />}{pendingAction === "import" ? "Importing…" : "Replace contacts & import"}</button></div></section></div> : null}
 
       {showEnrichment ? <div className="dialog-backdrop" role="presentation"><section className="dialog-card enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title"><header className="dialog-header enrichment-dialog-header"><div><span className="eyebrow">FreeMax your allowances</span><h2 id="enrichment-dialog-title">Find verified work emails</h2><p>Connect Hunter or Voila Norbert once, choose which goes first, and spend free credits only after a real person has been identified.</p></div><button className="icon-button" type="button" onClick={() => setShowEnrichment(false)} aria-label="Close email enrichment"><X size={17} /></button></header><div className="enrichment-dialog-body"><div className="enrichment-principle"><ShieldCheck size={19} /><span><strong>A named person and company domain come first.</strong><small>GUD never invents a private address. It uses your provider keys server-side and records only successful lookups against the safety cap.</small></span></div><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" initiallyOpen /></div></section></div> : null}
 
@@ -557,6 +588,21 @@ function ResearchContactDialog({ opportunity, contact, onClose, onSaved }: { opp
       </section>
     </div>
   );
+}
+
+function withContactImportMode(payload: unknown, contactMode: ResearchContactImportMode) {
+  if (Array.isArray(payload)) return { targets: payload, contactMode };
+  if (isObject(payload)) return { ...payload, contactMode };
+  return payload;
+}
+
+function importTargetsFromPayload(payload: unknown): unknown[] | null {
+  if (Array.isArray(payload)) return payload;
+  return isObject(payload) && Array.isArray(payload.targets) ? payload.targets : null;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function buildResearchPack(targets: OpportunitySummary[], generatedAt: string) {

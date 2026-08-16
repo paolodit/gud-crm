@@ -23,56 +23,19 @@ import { getFreeMaxStatus, recordLocalFreeMaxSuccess } from "@/lib/enrichment/us
 import { getFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
 import type { CompanySummary, ContactSummary, OfferSummary, ResearchThemeSummary } from "@/lib/domain/types";
+import {
+  reconcileResearchContacts,
+  type ResearchContactAssociation,
+  type ResearchContactImportMode,
+  type ResearchContactRecord,
+} from "@/lib/import/research-contacts";
+import { parseResearchImport, type ResearchTargetInput } from "@/lib/import/research-import";
 import { getCurrentMember } from "@/lib/session";
 
 const httpUrl = z.url().refine(isSafeHttpUrl, "Only HTTP and HTTPS source links are allowed.");
 
-const optionalUrl = z.string().trim().max(2_000).refine(
-  (value) => !value || isSafeHttpUrl(value),
-  "Source and profile links must be complete URLs.",
-).optional().default("");
-
-const researchContactSchema = z.object({
-  name: z.string().trim().min(2).max(220),
-  title: z.string().trim().max(255).optional().default(""),
-  email: z.union([z.literal(""), z.email()]).optional().default(""),
-  phone: z.string().trim().max(80).optional().default(""),
-  linkedinUrl: optionalUrl,
-  preferredChannel: z.enum(["linkedin", "email", "phone", "meeting", "physical", "note"]).nullable().optional(),
-  sourceUrls: z.array(httpUrl).max(30).optional().default([]),
-});
-
-const researchEvidenceSchema = z.object({
-  claim: z.string().trim().min(2).max(2_000),
-  url: httpUrl,
-  observedAt: z.string().trim().max(80).optional().default(""),
-});
-
-const researchTargetSchema = z.object({
-  opportunityId: z.uuid().optional(),
-  companyId: z.uuid().optional(),
-  offerId: z.uuid().nullable().optional(),
-  offerName: z.string().trim().max(160).optional().default(""),
-  name: z.string().trim().min(2).max(220),
-  websiteUrl: optionalUrl,
-  linkedinUrl: optionalUrl,
-  sector: z.string().trim().max(160).optional().default(""),
-  fitScore: z.number().int().min(1).max(5).nullable().optional(),
-  scaleNote: z.string().trim().max(2_000).optional().default(""),
-  researchNote: z.string().trim().max(10_000).optional().default(""),
-  sourceUrls: z.array(httpUrl).max(100).optional().default([]),
-  evidence: z.array(researchEvidenceSchema).max(100).optional().default([]),
-  contacts: z.array(researchContactSchema).max(20).optional().default([]),
-});
-
-const researchImportSchema = z.object({
-  schemaVersion: z.number().int().optional(),
-  targets: z.array(researchTargetSchema).min(1).max(500),
-});
-
-type ResearchTargetInput = z.infer<typeof researchTargetSchema>;
 type ResearchImportResult =
-  | { ok: true; targetsCreated: number; targetsUpdated: number; contactsCreated: number }
+  | { ok: true; contactMode: ResearchContactImportMode; targetsCreated: number; targetsUpdated: number; contactsCreated: number; contactsUpdated: number; contactsUnlinked: number }
   | { ok: false; error: string };
 
 type EnrichContactResult =
@@ -301,8 +264,7 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
 }
 
 export async function importResearchResultsAction(input: unknown): Promise<ResearchImportResult> {
-  const normalisedInput = Array.isArray(input) ? { targets: input } : input;
-  const parsed = researchImportSchema.safeParse(normalisedInput);
+  const parsed = parseResearchImport(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "The research file is not valid." };
   }
@@ -313,21 +275,21 @@ export async function importResearchResultsAction(input: unknown): Promise<Resea
 
   try {
     const report = member.storageMode === "sqlite"
-      ? importIntoLocalSnapshot(parsed.data.targets, member.id)
-      : await importIntoPostgres(parsed.data.targets, member.organisationId, member.id);
+      ? importIntoLocalSnapshot(parsed.data.targets, parsed.data.contactMode, member.id)
+      : await importIntoPostgres(parsed.data.targets, parsed.data.contactMode, member.organisationId, member.id);
 
     recordLocalAuditEventIfNeeded(member.storageMode, {
       actorId: member.id,
-      detail: { ...report, suppliedTargets: parsed.data.targets.length },
+      detail: { contactMode: parsed.data.contactMode, ...report, suppliedTargets: parsed.data.targets.length },
     });
     revalidateResearchPaths();
-    return { ok: true, ...report };
+    return { ok: true, contactMode: parsed.data.contactMode, ...report };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "The research results could not be imported.") };
   }
 }
 
-function importIntoLocalSnapshot(targets: ResearchTargetInput[], actorId: string) {
+function importIntoLocalSnapshot(targets: ResearchTargetInput[], contactMode: ResearchContactImportMode, actorId: string) {
   return updateLocalBoardSnapshot((snapshot) => {
     const researchStage = snapshot.stages.find((stage) => stage.name === "Researching");
     if (!researchStage) throw new Error("The Researching stage is not configured.");
@@ -335,6 +297,8 @@ function importIntoLocalSnapshot(targets: ResearchTargetInput[], actorId: string
     let targetsCreated = 0;
     let targetsUpdated = 0;
     let contactsCreated = 0;
+    let contactsUpdated = 0;
+    let contactsUnlinked = 0;
 
     for (const result of targets) {
       const resolvedOffer = resolveImportedOffer(snapshot.offers, result.offerId, result.offerName);
@@ -387,38 +351,26 @@ function importIntoLocalSnapshot(targets: ResearchTargetInput[], actorId: string
         targetsUpdated += 1;
       }
 
-      for (const incoming of result.contacts) {
-        const contact = opportunity.contacts.find((item) => contactMatches(item, incoming));
-        if (contact) {
-          contact.title = incoming.title || contact.title;
-          contact.email = incoming.email || contact.email;
-          contact.phone = incoming.phone || contact.phone;
-          contact.linkedinUrl = incoming.linkedinUrl || contact.linkedinUrl;
-          contact.preferredChannel = incoming.preferredChannel ?? contact.preferredChannel;
-          contact.sourceUrls = uniqueUrls(contact.sourceUrls, incoming.sourceUrls);
-        } else {
-          opportunity.contacts.push({
-            id: crypto.randomUUID(),
-            name: incoming.name,
-            title: incoming.title || null,
-            email: incoming.email || null,
-            phone: incoming.phone || null,
-            linkedinUrl: incoming.linkedinUrl || null,
-            primary: opportunity.contacts.length === 0,
-            preferredChannel: incoming.preferredChannel ?? preferredChannelFor(incoming),
-            doNotContact: false,
-            sourceUrls: incoming.sourceUrls,
-          });
-          contactsCreated += 1;
-        }
-      }
+      const companyOpportunities = snapshot.opportunities.filter((item) => item.company.id === opportunity.company.id);
+      const companyContactRecords = uniqueLocalContactRecords(companyOpportunities.flatMap((item) => item.contacts));
+      const reconciled = reconcileResearchContacts({
+        records: companyContactRecords,
+        associations: opportunity.contacts.map((contact) => ({ contactId: contact.id, primary: contact.primary })),
+        incoming: result.contacts ?? [],
+        mode: contactMode,
+        createId: () => crypto.randomUUID(),
+      });
+      applyLocalContactReconciliation(companyOpportunities, opportunity.id, reconciled.records, reconciled.associations);
+      contactsCreated += reconciled.createdIds.length;
+      contactsUpdated += reconciled.updatedIds.length;
+      contactsUnlinked += reconciled.unlinkedIds.length;
     }
 
-    return { targetsCreated, targetsUpdated, contactsCreated };
+    return { targetsCreated, targetsUpdated, contactsCreated, contactsUpdated, contactsUnlinked };
   });
 }
 
-async function importIntoPostgres(targets: ResearchTargetInput[], organisationId: string, actorId: string) {
+async function importIntoPostgres(targets: ResearchTargetInput[], contactMode: ResearchContactImportMode, organisationId: string, actorId: string) {
   return db.transaction(async (tx) => {
     const [pipeline] = await tx.select().from(pipelines).where(and(
       eq(pipelines.organisationId, organisationId),
@@ -439,6 +391,8 @@ async function importIntoPostgres(targets: ResearchTargetInput[], organisationId
     let targetsCreated = 0;
     let targetsUpdated = 0;
     let contactsCreated = 0;
+    let contactsUpdated = 0;
+    let contactsUnlinked = 0;
 
     for (const result of targets) {
       const resolvedOffer = resolveImportedOffer(offerRows.map((offer) => ({
@@ -544,48 +498,79 @@ async function importIntoPostgres(targets: ResearchTargetInput[], organisationId
           .where(eq(opportunities.id, opportunity.id)).returning();
       }
 
-      for (const incoming of result.contacts) {
-        const contactCondition = incoming.email
-          ? or(eq(contacts.email, incoming.email), eq(contacts.normalisedName, normaliseName(incoming.name)))
-          : eq(contacts.normalisedName, normaliseName(incoming.name));
-        let [contact] = await tx.select().from(contacts).where(and(
-          eq(contacts.organisationId, organisationId),
-          eq(contacts.companyId, company.id),
-          contactCondition,
-        )).limit(1);
-        if (contact) {
-          [contact] = await tx.update(contacts).set({
-            title: incoming.title || contact.title,
-            email: incoming.email || contact.email,
-            phone: incoming.phone || contact.phone,
-            linkedinUrl: incoming.linkedinUrl || contact.linkedinUrl,
-            preferredChannel: incoming.preferredChannel ?? contact.preferredChannel,
-            sourceUrls: uniqueUrls(contact.sourceUrls, incoming.sourceUrls),
-            updatedAt: new Date(),
-          }).where(eq(contacts.id, contact.id)).returning();
-        } else {
-          [contact] = await tx.insert(contacts).values({
-            organisationId,
-            companyId: company.id,
-            name: incoming.name,
-            normalisedName: normaliseName(incoming.name),
-            title: incoming.title || null,
-            email: incoming.email || null,
-            phone: incoming.phone || null,
-            linkedinUrl: incoming.linkedinUrl || null,
-            preferredChannel: incoming.preferredChannel ?? preferredChannelFor(incoming),
-            sourceUrls: incoming.sourceUrls,
-            source: "research_pack",
-            importMetadata: { source: "research_pack" },
-          }).returning();
-          contactsCreated += 1;
-        }
+      const companyContactRows = await tx.select().from(contacts).where(and(
+        eq(contacts.organisationId, organisationId),
+        eq(contacts.companyId, company.id),
+      ));
+      const existingAssociations = await tx.select({
+        contactId: opportunityContacts.contactId,
+        primary: opportunityContacts.primary,
+      }).from(opportunityContacts).where(eq(opportunityContacts.opportunityId, opportunity.id));
+      const reconciled = reconcileResearchContacts({
+        records: companyContactRows.map(toResearchContactRecord),
+        associations: existingAssociations,
+        incoming: result.contacts ?? [],
+        mode: contactMode,
+        createId: () => crypto.randomUUID(),
+      });
+
+      for (const contactId of reconciled.updatedIds) {
+        const contact = reconciled.records.find((item) => item.id === contactId)!;
+        await tx.update(contacts).set({
+          name: contact.name,
+          normalisedName: normaliseName(contact.name),
+          title: contact.title,
+          email: contact.email,
+          phone: contact.phone,
+          linkedinUrl: contact.linkedinUrl,
+          preferredChannel: contact.preferredChannel,
+          sourceUrls: contact.sourceUrls ?? [],
+          updatedAt: new Date(),
+        }).where(and(eq(contacts.id, contact.id), eq(contacts.organisationId, organisationId)));
+      }
+      for (const contactId of reconciled.createdIds) {
+        const contact = reconciled.records.find((item) => item.id === contactId)!;
+        await tx.insert(contacts).values({
+          id: contact.id,
+          organisationId,
+          companyId: company.id,
+          name: contact.name,
+          normalisedName: normaliseName(contact.name),
+          title: contact.title,
+          email: contact.email,
+          phone: contact.phone,
+          linkedinUrl: contact.linkedinUrl,
+          preferredChannel: contact.preferredChannel,
+          doNotContact: contact.doNotContact,
+          sourceUrls: contact.sourceUrls ?? [],
+          source: "research_pack",
+          importMetadata: { source: "research_pack" },
+        });
+      }
+      for (const association of reconciled.associations) {
         await tx.insert(opportunityContacts).values({
           opportunityId: opportunity.id,
-          contactId: contact.id,
+          contactId: association.contactId,
           primary: false,
         }).onConflictDoNothing();
       }
+      for (const contactId of reconciled.unlinkedIds) {
+        await tx.delete(opportunityContacts).where(and(
+          eq(opportunityContacts.opportunityId, opportunity.id),
+          eq(opportunityContacts.contactId, contactId),
+        ));
+      }
+      await tx.update(opportunityContacts).set({ primary: false })
+        .where(eq(opportunityContacts.opportunityId, opportunity.id));
+      if (reconciled.primaryContactId) {
+        await tx.update(opportunityContacts).set({ primary: true }).where(and(
+          eq(opportunityContacts.opportunityId, opportunity.id),
+          eq(opportunityContacts.contactId, reconciled.primaryContactId),
+        ));
+      }
+      contactsCreated += reconciled.createdIds.length;
+      contactsUpdated += reconciled.updatedIds.length;
+      contactsUnlinked += reconciled.unlinkedIds.length;
 
       await tx.insert(auditEvents).values({
         organisationId,
@@ -593,11 +578,29 @@ async function importIntoPostgres(targets: ResearchTargetInput[], organisationId
         action: "research.imported",
         entityType: "opportunity",
         entityId: opportunity.id,
-        after: { companyId: company.id, offerId: resolvedOffer?.id ?? null, contacts: result.contacts.length, sources: result.sourceUrls.length + result.evidence.length },
+        after: {
+          companyId: company.id,
+          offerId: resolvedOffer?.id ?? null,
+          contactMode,
+          contactsSupplied: result.contacts?.length ?? 0,
+          contactsCreated: reconciled.createdIds.length,
+          contactsUpdated: reconciled.updatedIds.length,
+          contactsUnlinked: reconciled.unlinkedIds.length,
+          sources: result.sourceUrls.length + result.evidence.length,
+        },
       });
     }
 
-    return { targetsCreated, targetsUpdated, contactsCreated };
+    const report = { targetsCreated, targetsUpdated, contactsCreated, contactsUpdated, contactsUnlinked };
+    await tx.insert(auditEvents).values({
+      organisationId,
+      actorId,
+      action: "research.imported",
+      entityType: "research_batch",
+      entityId: crypto.randomUUID(),
+      after: { contactMode, ...report, suppliedTargets: targets.length },
+    });
+    return report;
   });
 }
 
@@ -634,19 +637,70 @@ function mergeCompany(existing: CompanySummary | null, result: ResearchTargetInp
   };
 }
 
-function contactMatches(existing: ContactSummary, incoming: z.infer<typeof researchContactSchema>) {
-  return Boolean(
-    (incoming.email && existing.email?.toLowerCase() === incoming.email.toLowerCase()) ||
-    (incoming.linkedinUrl && existing.linkedinUrl === incoming.linkedinUrl) ||
-    normaliseName(existing.name) === normaliseName(incoming.name),
-  );
+function uniqueLocalContactRecords(localContacts: ContactSummary[]): ResearchContactRecord[] {
+  const records = new Map<string, ResearchContactRecord>();
+  for (const contact of localContacts) {
+    const existing = records.get(contact.id);
+    const next = toResearchContactRecord(contact);
+    records.set(contact.id, existing ? {
+      ...existing,
+      name: next.name || existing.name,
+      title: next.title || existing.title,
+      email: next.email || existing.email,
+      phone: next.phone || existing.phone,
+      linkedinUrl: next.linkedinUrl || existing.linkedinUrl,
+      preferredChannel: next.preferredChannel ?? existing.preferredChannel,
+      doNotContact: existing.doNotContact || next.doNotContact,
+      sourceUrls: uniqueUrls(existing.sourceUrls, next.sourceUrls),
+    } : next);
+  }
+  return [...records.values()];
 }
 
-function preferredChannelFor(contact: z.infer<typeof researchContactSchema>) {
-  if (contact.email) return "email" as const;
-  if (contact.phone) return "phone" as const;
-  if (contact.linkedinUrl) return "linkedin" as const;
-  return null;
+function applyLocalContactReconciliation(
+  companyOpportunities: Array<{ id: string; contacts: ContactSummary[] }>,
+  targetOpportunityId: string,
+  records: ResearchContactRecord[],
+  associations: ResearchContactAssociation[],
+) {
+  const recordsById = new Map(records.map((contact) => [contact.id, contact]));
+  for (const opportunity of companyOpportunities) {
+    if (opportunity.id === targetOpportunityId) {
+      opportunity.contacts = associations.map((association) => ({
+        ...recordsById.get(association.contactId)!,
+        primary: association.primary,
+      }));
+      continue;
+    }
+    opportunity.contacts = opportunity.contacts.map((contact) => {
+      const updated = recordsById.get(contact.id);
+      return updated ? { ...updated, primary: contact.primary } : contact;
+    });
+  }
+}
+
+function toResearchContactRecord(contact: {
+  id: string;
+  name: string;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
+  preferredChannel?: ContactSummary["preferredChannel"];
+  doNotContact: boolean;
+  sourceUrls?: string[];
+}): ResearchContactRecord {
+  return {
+    id: contact.id,
+    name: contact.name,
+    title: contact.title,
+    email: contact.email,
+    phone: contact.phone,
+    linkedinUrl: contact.linkedinUrl,
+    preferredChannel: contact.preferredChannel,
+    doNotContact: contact.doNotContact,
+    sourceUrls: contact.sourceUrls ?? [],
+  };
 }
 
 function uniqueUrls(...collections: Array<string[] | undefined>) {
