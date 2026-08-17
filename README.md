@@ -14,6 +14,12 @@
   Made with care by <a href="https://www.refreshcreative.com">Refresh</a>.
 </p>
 
+## Watch GUD CRM in action
+
+[![Watch the GUD CRM video walkthrough](https://img.youtube.com/vi/HaV0UPhr-kQ/hqdefault.jpg)](https://youtu.be/HaV0UPhr-kQ)
+
+**[Watch the short video walkthrough →](https://youtu.be/HaV0UPhr-kQ)**
+
 GUD CRM is for small sales teams, agencies, consultancies, SaaS companies and independent specialists who want useful sales discipline without traditional CRM sprawl.
 
 It keeps ideas, targets and live opportunities distinct; makes the whole pipeline readable at a glance; and gives every active relationship an owner, context and a next action. AI is available as an optional research and coaching layer, never an automatic salesperson.
