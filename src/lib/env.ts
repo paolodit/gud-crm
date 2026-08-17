@@ -19,6 +19,9 @@ const environmentSchema = z.object({
   AI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(120_000).default(30_000),
   AI_RATE_LIMIT: z.coerce.number().int().min(1).max(30).default(6),
   OPENAI_API_KEY: z.string().optional(),
+  // Compatibility for early self-hosted installs that used the shortened name.
+  // OPENAI_API_KEY remains the documented and preferred variable.
+  OPEN_API_KEY: z.string().optional(),
   HUNTER_API_KEY: z.string().optional(),
   VOILA_NORBERT_API_KEY: z.string().optional(),
   HUNTER_FREE_MONTHLY_LIMIT: z.coerce.number().int().min(0).max(100_000).default(50),
@@ -40,6 +43,7 @@ if (!parsed.success) {
 }
 
 const values = parsed.data;
+const openAiApiKey = resolveOpenAiApiKey(values);
 const storageMode = values.DATA_BACKEND ??
   (values.DEMO_MODE === "true" ? "demo" : values.DATABASE_URL ? "postgres" : "sqlite");
 
@@ -68,6 +72,7 @@ if (values.NODE_ENV === "production" && storageMode === "postgres") {
 
 export const env = {
   ...values,
+  OPENAI_API_KEY: openAiApiKey,
   storageMode,
   demoMode: storageMode === "demo",
   sqliteMode: storageMode === "sqlite",
@@ -88,3 +93,7 @@ export const env = {
   googleMapsConfigured: Boolean(values.GOOGLE_MAPS_API_KEY),
   authUsesHttps: new URL(values.BETTER_AUTH_URL ?? values.NEXT_PUBLIC_APP_URL).protocol === "https:",
 };
+
+export function resolveOpenAiApiKey(values: { OPENAI_API_KEY?: string; OPEN_API_KEY?: string }) {
+  return values.OPENAI_API_KEY?.trim() || values.OPEN_API_KEY?.trim() || undefined;
+}

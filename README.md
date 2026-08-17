@@ -141,7 +141,7 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 
 All three integrations are off or local-first by default:
 
-- The built-in deterministic coach needs no API key. Voice-to-fields and model-generated coaching require `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to the in-app setup guide when that connection is missing.
+- The built-in deterministic coach needs no API key. Voice-to-fields and model-generated coaching require `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to the in-app setup guide when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name.
 - Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 

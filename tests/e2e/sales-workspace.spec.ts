@@ -106,6 +106,24 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.getByRole("heading", { name: "DEMO · Optional Website Studio" })).toBeVisible();
   });
 
+  test("keeps the voice capture guidance readable in a narrower workspace", async ({ page }) => {
+    await page.setViewportSize({ width: 1049, height: 900 });
+    await page.goto("/pipeline");
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+
+    const layout = await page.locator(".opportunity-capture").evaluate((capture) => {
+      const copy = capture.querySelector<HTMLElement>(".capture-copy");
+      const items = [...capture.querySelectorAll<HTMLElement>(".capture-copy li")];
+      return {
+        copyWidth: copy?.getBoundingClientRect().width ?? 0,
+        narrowestPrompt: Math.min(...items.map((item) => item.getBoundingClientRect().width)),
+      };
+    });
+
+    expect(layout.copyWidth).toBeGreaterThan(600);
+    expect(layout.narrowestPrompt).toBeGreaterThan(250);
+  });
+
   test("creates an opportunity with optional commercial context", async ({ page }) => {
     await page.goto("/pipeline");
     await page.getByRole("button", { name: "Create a new opportunity" }).click();
