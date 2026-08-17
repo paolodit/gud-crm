@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/gud-crm-logo.png" width="128" alt="GUD CRM logo" />
+  <img src="https://raw.githubusercontent.com/paolodit/gud-crm/main/public/gud-crm-logo.png" width="128" alt="GUD CRM logo" />
 </p>
 
 <h1 align="center">GUD CRM</h1>
