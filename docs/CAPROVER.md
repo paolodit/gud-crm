@@ -111,8 +111,10 @@ Set these separately on each application:
 | `MCP_ENABLED` | `true` to allow AI coworker connections | `true` to allow AI coworker connections |
 | `AI_PROVIDER` | `local` initially | `local` initially |
 | `AI_ENABLED` | `true` | `true` |
+| `AI_MODEL` | Model name when using OpenAI | Model name when using OpenAI |
+| `OPENAI_API_KEY` | Optional server-side project key | Optional server-side project key |
 
-`BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` must have exactly the same HTTPS origin. Use URL-encoded database passwords in `DATABASE_URL`. Optional OpenAI, Hunter, Norbert, Companies House, Google Maps and Resend credentials remain server-only and should be added only when the corresponding feature is ready.
+`BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` must have exactly the same HTTPS origin. Use URL-encoded database passwords in `DATABASE_URL`. Optional OpenAI, Hunter, Norbert, Companies House, Google Maps and Resend credentials remain server-only and should be added only when the corresponding feature is ready. Older GUD installs that used `OPEN_API_KEY` are recognised for compatibility; rename it to the canonical `OPENAI_API_KEY` when convenient.
 
 `MCP_ENABLED` is deliberately off unless set to `true`. Enable it only after the canonical HTTPS domain and migrations are healthy. Settings then shows the instance-specific `/mcp` endpoint that each user can connect to once with their own GUD login and revocable OAuth grant.
 
