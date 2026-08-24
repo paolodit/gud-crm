@@ -5,6 +5,7 @@ import { McpConsentCard } from "@/components/mcp-consent-card";
 import { db } from "@/db";
 import { oauthApplications } from "@/db/schema";
 import { env } from "@/lib/env";
+import { requestedMcpScopes } from "@/lib/mcp/scopes";
 import { getCurrentMember } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export default async function McpConsentPage({
   const params = await searchParams;
   const clientId = single(params.client_id);
   const consentCode = single(params.consent_code);
-  const requestedScopes = single(params.scope)?.split(/\s+/).filter(Boolean) ?? [];
+  const requestedScopes = requestedMcpScopes(single(params.scope));
   if (!clientId || clientId.length > 200 || !consentCode || consentCode.length > 200) notFound();
 
   const [client] = await db.select({

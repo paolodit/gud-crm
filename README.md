@@ -33,7 +33,7 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
 - **AI is bounded and reviewable.** Draft outreach, explore angles, prepare research and ask for a next move without auto-sending anything.
-- **Your existing AI workspace can connect.** The optional MCP endpoint lets authorised Codex, ChatGPT and compatible clients read or update GUD through a narrow, auditable tool surface.
+- **Your existing AI workspace can connect.** The optional MCP endpoint lets authorised Codex, ChatGPT and compatible clients review the pipeline, maintain organisations and contacts, log confirmed work, manage next actions and archive/restore records through a narrow, auditable tool surface.
 - **Free enrichment goes further.** Optional Hunter and Voila Norbert integrations use a visible, free-first provider order for one-contact-at-a-time email discovery.
 
 GUD stops at a clean client handoff. It is not trying to become project management, invoicing, service delivery or support software.
@@ -148,7 +148,7 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 All three integrations are off or local-first by default:
 
 - The built-in deterministic coach needs no API key. Voice-to-fields and model-generated coaching require `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to the in-app setup guide when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name.
-- Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`.
+- Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`. Follow the [ChatGPT, Codex and MCP setup guide](docs/MCP.md) for the supported read/write actions, consent model and example requests.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 
 Nothing is auto-sent, auto-scheduled or silently promoted into the pipeline. External research is treated as untrusted evidence and remains subject to human review.

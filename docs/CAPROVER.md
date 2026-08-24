@@ -116,7 +116,7 @@ Set these separately on each application:
 
 `BETTER_AUTH_URL` and `NEXT_PUBLIC_APP_URL` must have exactly the same HTTPS origin. Use URL-encoded database passwords in `DATABASE_URL`. Optional OpenAI, Hunter, Norbert, Companies House, Google Maps and Resend credentials remain server-only and should be added only when the corresponding feature is ready. Older GUD installs that used `OPEN_API_KEY` are recognised for compatibility; rename it to the canonical `OPENAI_API_KEY` when convenient.
 
-`MCP_ENABLED` is deliberately off unless set to `true`. Enable it only after the canonical HTTPS domain and migrations are healthy. Settings then shows the instance-specific `/mcp` endpoint that each user can connect to once with their own GUD login and revocable OAuth grant.
+`MCP_ENABLED` is deliberately off unless set to `true`. Enable it only after the canonical HTTPS domain and migrations are healthy. Settings then shows the instance-specific `/mcp` endpoint that each user can connect to with their own GUD login and revocable OAuth grant. Follow [MCP connections](MCP.md) for the ChatGPT/Codex setup, read/write consent and action-refresh process.
 
 Keep actual domains, database URLs, administrator addresses and secrets in CapRover. If a local deployment worksheet is useful, name it `config/caprover.local.*`; that pattern is ignored by Git.
 

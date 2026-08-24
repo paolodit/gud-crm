@@ -1,4 +1,4 @@
-import { and, asc, eq, ilike, isNull, max, or } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, max, ne, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -71,6 +71,35 @@ export type UpdateOpportunityInput = {
   expectedCloseDate?: Date | null;
   outreachAngle?: string;
   confirmTerminalMove?: boolean;
+};
+
+export type UpdateCompanyInput = {
+  companyId: string;
+  name?: string;
+  websiteUrl?: string | null;
+  linkedinUrl?: string | null;
+  sector?: string | null;
+  fitScore?: number | null;
+  scaleNote?: string | null;
+  researchNoteAppend?: string;
+  sourceUrls?: string[];
+  doNotContact?: boolean;
+  confirmRemoveDoNotContact?: boolean;
+};
+
+export type SaveContactInput = {
+  opportunityId: string;
+  contactId?: string;
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedinUrl?: string | null;
+  preferredChannel?: "linkedin" | "email" | "phone" | "meeting" | "physical" | "note" | null;
+  doNotContact?: boolean;
+  confirmRemoveDoNotContact?: boolean;
+  primary?: boolean;
+  sourceUrls?: string[];
 };
 
 export type LogActivityInput = {
@@ -175,6 +204,7 @@ export async function listOpportunities(
     ownerId?: string;
     offerId?: string;
     needsAttention?: boolean;
+    includeArchived?: boolean;
     limit?: number;
   },
 ) {
@@ -188,7 +218,7 @@ export async function listOpportunities(
   const now = Date.now();
   return snapshot.opportunities
     .filter((opportunity) => {
-      if (opportunity.archivedAt || opportunity.company.archivedAt) return false;
+      if (!filters.includeArchived && (opportunity.archivedAt || opportunity.company.archivedAt)) return false;
       if (query && ![
         opportunity.company.name,
         opportunity.title,
@@ -228,7 +258,7 @@ export async function getOpportunity(actor: McpActor, opportunityId: string) {
   };
 }
 
-export async function searchCompanies(actor: McpActor, query: string, limit = 25) {
+export async function searchCompanies(actor: McpActor, query: string, limit = 25, includeArchived = false) {
   const needle = query.trim();
   const pattern = `%${needle.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
   return db.select({
@@ -242,9 +272,10 @@ export async function searchCompanies(actor: McpActor, query: string, limit = 25
     researchNote: companies.researchNote,
     sourceUrls: companies.sourceUrls,
     doNotContact: companies.doNotContact,
+    archivedAt: companies.archivedAt,
   }).from(companies).where(and(
     eq(companies.organisationId, actor.organisationId),
-    isNull(companies.archivedAt),
+    includeArchived ? undefined : isNull(companies.archivedAt),
     needle ? or(
       ilike(companies.name, pattern),
       ilike(companies.domain, pattern),
@@ -252,6 +283,219 @@ export async function searchCompanies(actor: McpActor, query: string, limit = 25
       ilike(companies.researchNote, pattern),
     ) : undefined,
   )).orderBy(asc(companies.name)).limit(limit);
+}
+
+export async function updateCompany(actor: McpActor, input: UpdateCompanyInput) {
+  if (![
+    input.name,
+    input.websiteUrl,
+    input.linkedinUrl,
+    input.sector,
+    input.fitScore,
+    input.scaleNote,
+    input.researchNoteAppend,
+    input.sourceUrls,
+    input.doNotContact,
+  ].some((value) => value !== undefined)) {
+    throw new Error("Provide at least one organisation field to update.");
+  }
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(companies).where(and(
+      eq(companies.id, input.companyId),
+      eq(companies.organisationId, actor.organisationId),
+    )).limit(1);
+    if (!current) throw new Error("Organisation not found in this workspace.");
+    if (current.archivedAt) throw new Error("Restore this organisation before updating it.");
+    if (current.doNotContact && input.doNotContact === false && !input.confirmRemoveDoNotContact) {
+      throw new Error("Removing do-not-contact protection is consequential. Retry with confirmRemoveDoNotContact=true after explicit user confirmation.");
+    }
+
+    const patch: Partial<typeof companies.$inferInsert> = { updatedAt: new Date() };
+    if (input.name !== undefined) {
+      const normalisedName = normaliseName(input.name);
+      const [duplicate] = await tx.select({ id: companies.id }).from(companies).where(and(
+        eq(companies.organisationId, actor.organisationId),
+        eq(companies.normalisedName, normalisedName),
+        ne(companies.id, current.id),
+      )).limit(1);
+      if (duplicate) throw new Error("Another organisation already uses that name.");
+      patch.name = input.name;
+      patch.normalisedName = normalisedName;
+    }
+    if (input.websiteUrl !== undefined) {
+      const domain = extractDomain(input.websiteUrl ?? "");
+      if (domain) {
+        const [duplicate] = await tx.select({ id: companies.id }).from(companies).where(and(
+          eq(companies.organisationId, actor.organisationId),
+          eq(companies.normalisedDomain, domain),
+          ne(companies.id, current.id),
+        )).limit(1);
+        if (duplicate) throw new Error("Another organisation already uses that website domain.");
+      }
+      patch.websiteUrl = input.websiteUrl || null;
+      patch.domain = domain || null;
+      patch.normalisedDomain = domain || null;
+    }
+    if (input.linkedinUrl !== undefined) patch.linkedinUrl = input.linkedinUrl || null;
+    if (input.sector !== undefined) patch.sector = input.sector || null;
+    if (input.fitScore !== undefined) patch.fitScore = input.fitScore;
+    if (input.scaleNote !== undefined) patch.scaleNote = input.scaleNote || null;
+    if (input.researchNoteAppend !== undefined) {
+      patch.researchNote = mergeText(current.researchNote, input.researchNoteAppend);
+    }
+    if (input.sourceUrls !== undefined) patch.sourceUrls = uniqueUrls(current.sourceUrls, input.sourceUrls);
+    if (input.doNotContact !== undefined) patch.doNotContact = input.doNotContact;
+
+    const [saved] = await tx.update(companies).set(patch).where(and(
+      eq(companies.id, current.id),
+      eq(companies.organisationId, actor.organisationId),
+    )).returning();
+    if (!saved) throw new Error("Organisation could not be updated.");
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.company.updated",
+      entityType: "company",
+      entityId: saved.id,
+      before: auditCompany(current),
+      after: auditCompany(saved),
+    });
+    return companyResult(saved);
+  });
+}
+
+export async function saveContact(actor: McpActor, input: SaveContactInput) {
+  await db.transaction(async (tx) => {
+    const [record] = await tx.select({
+      opportunity: opportunities,
+      company: companies,
+    }).from(opportunities)
+      .innerJoin(companies, eq(opportunities.companyId, companies.id))
+      .where(and(
+        eq(opportunities.id, input.opportunityId),
+        eq(opportunities.organisationId, actor.organisationId),
+      )).limit(1);
+    if (!record) throw new Error("Opportunity not found in this workspace.");
+    if (record.opportunity.archivedAt || record.company.archivedAt) {
+      throw new Error("Restore this record before changing its contacts.");
+    }
+
+    let current: typeof contacts.$inferSelect | undefined;
+    if (input.contactId) {
+      [current] = await tx.select({ contact: contacts }).from(opportunityContacts)
+        .innerJoin(contacts, eq(opportunityContacts.contactId, contacts.id))
+        .where(and(
+          eq(opportunityContacts.opportunityId, record.opportunity.id),
+          eq(contacts.id, input.contactId),
+          eq(contacts.organisationId, actor.organisationId),
+        )).limit(1).then((rows) => rows.map((row) => row.contact));
+      if (!current) throw new Error("Contact not found on this opportunity.");
+    } else {
+      const matchingContacts = await tx.select().from(contacts).where(and(
+        eq(contacts.organisationId, actor.organisationId),
+        or(
+          input.email ? eq(contacts.email, input.email) : undefined,
+          input.linkedinUrl ? eq(contacts.linkedinUrl, input.linkedinUrl) : undefined,
+          and(
+            eq(contacts.companyId, record.company.id),
+            eq(contacts.normalisedName, normaliseName(input.name)),
+          ),
+        ),
+      )).limit(2);
+      current = matchingContacts[0];
+      if (current && current.companyId !== record.company.id) {
+        throw new Error("That email or LinkedIn profile belongs to a contact at another organisation. Review the existing record instead of moving it automatically.");
+      }
+    }
+    if (current?.doNotContact && input.doNotContact === false && !input.confirmRemoveDoNotContact) {
+      throw new Error("Removing do-not-contact protection is consequential. Retry with confirmRemoveDoNotContact=true after explicit user confirmation.");
+    }
+    if (input.email || input.linkedinUrl) {
+      const [duplicate] = await tx.select({ id: contacts.id }).from(contacts).where(and(
+        eq(contacts.organisationId, actor.organisationId),
+        current ? ne(contacts.id, current.id) : undefined,
+        or(
+          input.email ? eq(contacts.email, input.email) : undefined,
+          input.linkedinUrl ? eq(contacts.linkedinUrl, input.linkedinUrl) : undefined,
+        ),
+      )).limit(1);
+      if (duplicate) throw new Error("Another contact already uses that email address or LinkedIn profile.");
+    }
+
+    let saved: typeof contacts.$inferSelect;
+    if (current) {
+      [saved] = await tx.update(contacts).set({
+        name: input.name,
+        normalisedName: normaliseName(input.name),
+        title: input.title === undefined ? current.title : input.title || null,
+        email: input.email === undefined ? current.email : input.email || null,
+        phone: input.phone === undefined ? current.phone : input.phone || null,
+        linkedinUrl: input.linkedinUrl === undefined ? current.linkedinUrl : input.linkedinUrl || null,
+        preferredChannel: input.preferredChannel === undefined ? current.preferredChannel : input.preferredChannel,
+        doNotContact: input.doNotContact ?? current.doNotContact,
+        sourceUrls: uniqueUrls(current.sourceUrls, input.sourceUrls),
+        updatedAt: new Date(),
+      }).where(and(
+        eq(contacts.id, current.id),
+        eq(contacts.organisationId, actor.organisationId),
+      )).returning();
+    } else {
+      [saved] = await tx.insert(contacts).values({
+        organisationId: actor.organisationId,
+        companyId: record.company.id,
+        name: input.name,
+        normalisedName: normaliseName(input.name),
+        title: input.title || null,
+        email: input.email || null,
+        phone: input.phone || null,
+        linkedinUrl: input.linkedinUrl || null,
+        preferredChannel: input.preferredChannel ?? null,
+        doNotContact: input.doNotContact ?? false,
+        sourceUrls: input.sourceUrls ?? [],
+        source: "mcp",
+        importMetadata: { source: "mcp" },
+      }).returning();
+    }
+
+    const [existingLink] = await tx.select({ primary: opportunityContacts.primary }).from(opportunityContacts).where(and(
+      eq(opportunityContacts.opportunityId, record.opportunity.id),
+      eq(opportunityContacts.contactId, saved.id),
+    )).limit(1);
+    const linksBefore = await tx.select({ contactId: opportunityContacts.contactId }).from(opportunityContacts)
+      .where(eq(opportunityContacts.opportunityId, record.opportunity.id));
+    const hasAnotherContact = linksBefore.some((link) => link.contactId !== saved.id);
+    const shouldBePrimary = hasAnotherContact
+      ? input.primary ?? existingLink?.primary ?? false
+      : true;
+    if (!existingLink) {
+      await tx.insert(opportunityContacts).values({
+        opportunityId: record.opportunity.id,
+        contactId: saved.id,
+        primary: shouldBePrimary,
+      });
+    }
+    if (shouldBePrimary) {
+      await tx.update(opportunityContacts).set({ primary: false })
+        .where(eq(opportunityContacts.opportunityId, record.opportunity.id));
+    }
+    if (existingLink || shouldBePrimary) {
+      await tx.update(opportunityContacts).set({ primary: shouldBePrimary }).where(and(
+        eq(opportunityContacts.opportunityId, record.opportunity.id),
+        eq(opportunityContacts.contactId, saved.id),
+      ));
+    }
+    await ensurePrimaryContact(tx, record.opportunity.id);
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: current ? "mcp.contact.updated" : "mcp.contact.created",
+      entityType: "contact",
+      entityId: saved.id,
+      before: current ? auditContact(current) : undefined,
+      after: { ...auditContact(saved), opportunityId: record.opportunity.id, primary: shouldBePrimary },
+    });
+  });
+  return getOpportunity(actor, input.opportunityId);
 }
 
 export async function createOpportunity(actor: McpActor, input: CreateOpportunityInput) {
@@ -404,6 +648,22 @@ export async function createOpportunity(actor: McpActor, input: CreateOpportunit
 }
 
 export async function updateOpportunity(actor: McpActor, input: UpdateOpportunityInput) {
+  if (![
+    input.title,
+    input.offerId,
+    input.offerName,
+    input.stageId,
+    input.stageName,
+    input.ownerId,
+    input.priority,
+    input.temperature,
+    input.expectedValue,
+    input.probability,
+    input.expectedCloseDate,
+    input.outreachAngle,
+  ].some((value) => value !== undefined)) {
+    throw new Error("Provide at least one opportunity field to update.");
+  }
   await db.transaction(async (tx) => {
     const [current] = await tx.select().from(opportunities).where(and(
       eq(opportunities.id, input.opportunityId),
@@ -436,6 +696,18 @@ export async function updateOpportunity(actor: McpActor, input: UpdateOpportunit
         }
       }
       patch.stageId = targetStage.id;
+      if (targetStage.id !== current.stageId) {
+        const [{ highestPosition }] = await tx.select({ highestPosition: max(opportunities.position) })
+          .from(opportunities)
+          .where(and(eq(opportunities.pipelineId, current.pipelineId), eq(opportunities.stageId, targetStage.id)));
+        patch.position = (highestPosition ?? 0) + 1000;
+      }
+      if (targetStage.terminalType === "won" || targetStage.terminalType === "lost") {
+        patch.closedAt = current.closedAt ?? new Date();
+      } else {
+        patch.closedAt = null;
+        patch.closedReason = null;
+      }
     }
 
     await tx.update(opportunities).set(patch).where(eq(opportunities.id, current.id));
@@ -460,6 +732,150 @@ export async function updateOpportunity(actor: McpActor, input: UpdateOpportunit
   return getOpportunity(actor, input.opportunityId);
 }
 
+export async function archiveOpportunity(actor: McpActor, opportunityId: string, confirmArchive: boolean) {
+  if (!confirmArchive) {
+    throw new Error("Archiving removes the opportunity from active views. Retry with confirmArchive=true after explicit user confirmation.");
+  }
+  const archivedAt = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(opportunities).where(and(
+      eq(opportunities.id, opportunityId),
+      eq(opportunities.organisationId, actor.organisationId),
+    )).limit(1);
+    if (!current) throw new Error("Opportunity not found in this workspace.");
+    if (current.archivedAt) throw new Error("Restore this opportunity before updating it.");
+    if (current.archivedAt) return current.archivedAt;
+    const timestamp = new Date();
+    await tx.update(opportunities).set({ archivedAt: timestamp, updatedAt: timestamp }).where(and(
+      eq(opportunities.id, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.opportunity.archived",
+      entityType: "opportunity",
+      entityId: current.id,
+      before: { archivedAt: null },
+      after: { archivedAt: timestamp.toISOString(), companyId: current.companyId },
+    });
+    return timestamp;
+  });
+  return { opportunityId, archivedAt: archivedAt.toISOString() };
+}
+
+export async function restoreOpportunity(actor: McpActor, opportunityId: string) {
+  await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(opportunities).where(and(
+      eq(opportunities.id, opportunityId),
+      eq(opportunities.organisationId, actor.organisationId),
+    )).limit(1);
+    if (!current) throw new Error("Opportunity not found in this workspace.");
+    if (!current.archivedAt) {
+      await tx.update(companies).set({ archivedAt: null, updatedAt: new Date() }).where(and(
+        eq(companies.id, current.companyId),
+        eq(companies.organisationId, actor.organisationId),
+      ));
+      return;
+    }
+    await tx.update(opportunities).set({ archivedAt: null, updatedAt: new Date() }).where(and(
+      eq(opportunities.id, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    await tx.update(companies).set({ archivedAt: null, updatedAt: new Date() }).where(and(
+      eq(companies.id, current.companyId),
+      eq(companies.organisationId, actor.organisationId),
+    ));
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.opportunity.restored",
+      entityType: "opportunity",
+      entityId: current.id,
+      before: { archivedAt: current.archivedAt.toISOString() },
+      after: { archivedAt: null, companyId: current.companyId },
+    });
+  });
+  return getOpportunity(actor, opportunityId);
+}
+
+export async function archiveCompany(actor: McpActor, companyId: string, confirmArchive: boolean) {
+  if (!confirmArchive) {
+    throw new Error("Archiving an organisation also archives all of its opportunities. Retry with confirmArchive=true after explicit user confirmation.");
+  }
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(companies).where(and(
+      eq(companies.id, companyId),
+      eq(companies.organisationId, actor.organisationId),
+    )).limit(1);
+    if (!current) throw new Error("Organisation not found in this workspace.");
+    const linkedOpportunities = await tx.select({ id: opportunities.id }).from(opportunities).where(and(
+      eq(opportunities.companyId, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    if (current.archivedAt) {
+      return { companyId, archivedAt: current.archivedAt.toISOString(), affectedOpportunities: linkedOpportunities.length };
+    }
+    const timestamp = new Date();
+    await tx.update(companies).set({ archivedAt: timestamp, updatedAt: timestamp }).where(and(
+      eq(companies.id, current.id),
+      eq(companies.organisationId, actor.organisationId),
+    ));
+    await tx.update(opportunities).set({ archivedAt: timestamp, updatedAt: timestamp }).where(and(
+      eq(opportunities.companyId, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.company.archived",
+      entityType: "company",
+      entityId: current.id,
+      before: { archivedAt: null },
+      after: { archivedAt: timestamp.toISOString(), affectedOpportunities: linkedOpportunities.length },
+    });
+    return { companyId, archivedAt: timestamp.toISOString(), affectedOpportunities: linkedOpportunities.length };
+  });
+}
+
+export async function restoreCompany(actor: McpActor, companyId: string) {
+  return db.transaction(async (tx) => {
+    const [current] = await tx.select().from(companies).where(and(
+      eq(companies.id, companyId),
+      eq(companies.organisationId, actor.organisationId),
+    )).limit(1);
+    if (!current) throw new Error("Organisation not found in this workspace.");
+    const linkedOpportunities = await tx.select({ id: opportunities.id }).from(opportunities).where(and(
+      eq(opportunities.companyId, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    if (!current.archivedAt) {
+      return { company: companyResult(current), restoredOpportunities: 0 };
+    }
+    const timestamp = new Date();
+    await tx.update(companies).set({ archivedAt: null, updatedAt: timestamp }).where(and(
+      eq(companies.id, current.id),
+      eq(companies.organisationId, actor.organisationId),
+    ));
+    await tx.update(opportunities).set({ archivedAt: null, updatedAt: timestamp }).where(and(
+      eq(opportunities.companyId, current.id),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.company.restored",
+      entityType: "company",
+      entityId: current.id,
+      before: { archivedAt: current.archivedAt.toISOString() },
+      after: { archivedAt: null, restoredOpportunities: linkedOpportunities.length },
+    });
+    return {
+      company: companyResult({ ...current, archivedAt: null, updatedAt: timestamp }),
+      restoredOpportunities: linkedOpportunities.length,
+    };
+  });
+}
+
 export async function setNextAction(
   actor: McpActor,
   input: { opportunityId: string; title: string; dueAt: Date; contactId?: string | null },
@@ -470,6 +886,7 @@ export async function setNextAction(
       eq(opportunities.organisationId, actor.organisationId),
     )).limit(1);
     if (!opportunity) throw new Error("Opportunity not found in this workspace.");
+    if (opportunity.archivedAt) throw new Error("Restore this opportunity before setting a next action.");
     if (input.contactId) await assertOpportunityContact(tx, opportunity.id, input.contactId);
     const [task] = await tx.insert(tasks).values({
       organisationId: actor.organisationId,
@@ -498,6 +915,55 @@ export async function setNextAction(
   return { taskId, opportunity: await getOpportunity(actor, input.opportunityId) };
 }
 
+export async function completeTask(actor: McpActor, opportunityId: string, taskId: string) {
+  await db.transaction(async (tx) => {
+    const [task] = await tx.select({
+      task: tasks,
+      opportunity: opportunities,
+    }).from(tasks)
+      .innerJoin(opportunities, eq(tasks.opportunityId, opportunities.id))
+      .where(and(
+        eq(tasks.id, taskId),
+        eq(tasks.opportunityId, opportunityId),
+        eq(tasks.organisationId, actor.organisationId),
+        eq(opportunities.organisationId, actor.organisationId),
+      )).limit(1);
+    if (!task) throw new Error("Next action not found on this opportunity.");
+    if (task.opportunity.archivedAt) throw new Error("Restore this opportunity before completing a next action.");
+    if (task.task.status === "completed") return;
+    if (task.task.status !== "open") throw new Error("Only an open next action can be completed.");
+
+    const completedAt = new Date();
+    await tx.update(tasks).set({ status: "completed", completedAt, updatedAt: completedAt }).where(and(
+      eq(tasks.id, task.task.id),
+      eq(tasks.organisationId, actor.organisationId),
+    ));
+    const [nextOpenTask] = await tx.select({ dueAt: tasks.dueAt }).from(tasks).where(and(
+      eq(tasks.opportunityId, opportunityId),
+      eq(tasks.organisationId, actor.organisationId),
+      eq(tasks.status, "open"),
+    )).orderBy(asc(tasks.dueAt)).limit(1);
+    await tx.update(opportunities).set({
+      nextActionAt: nextOpenTask?.dueAt ?? null,
+      noNextActionReason: nextOpenTask ? null : "Previous action completed through MCP; add the next move",
+      updatedAt: completedAt,
+    }).where(and(
+      eq(opportunities.id, opportunityId),
+      eq(opportunities.organisationId, actor.organisationId),
+    ));
+    await tx.insert(auditEvents).values({
+      organisationId: actor.organisationId,
+      actorId: actor.id,
+      action: "mcp.task.completed",
+      entityType: "task",
+      entityId: task.task.id,
+      before: { status: task.task.status, completedAt: task.task.completedAt?.toISOString() ?? null },
+      after: { status: "completed", completedAt: completedAt.toISOString(), opportunityId },
+    });
+  });
+  return getOpportunity(actor, opportunityId);
+}
+
 export async function logActivity(actor: McpActor, input: LogActivityInput) {
   const activityId = await db.transaction(async (tx) => {
     const [opportunity] = await tx.select().from(opportunities).where(and(
@@ -505,6 +971,7 @@ export async function logActivity(actor: McpActor, input: LogActivityInput) {
       eq(opportunities.organisationId, actor.organisationId),
     )).limit(1);
     if (!opportunity) throw new Error("Opportunity not found in this workspace.");
+    if (opportunity.archivedAt) throw new Error("Restore this opportunity before logging activity.");
     const activityType = await resolveActivityType(tx, actor.organisationId, input.activityTypeId, input.activityTypeName);
     if (input.contactId) await assertOpportunityContact(tx, opportunity.id, input.contactId);
     const [activity] = await tx.insert(activities).values({
@@ -566,6 +1033,7 @@ export async function enrichContactEmail(
   const [record] = await db.select({
     company: companies,
     contact: contacts,
+    opportunityArchivedAt: opportunities.archivedAt,
   }).from(opportunities)
     .innerJoin(companies, eq(opportunities.companyId, companies.id))
     .innerJoin(opportunityContacts, eq(opportunityContacts.opportunityId, opportunities.id))
@@ -576,6 +1044,7 @@ export async function enrichContactEmail(
       eq(contacts.id, input.contactId),
     )).limit(1);
   if (!record) throw new Error("Contact not found on this opportunity.");
+  if (record.company.archivedAt || record.opportunityArchivedAt) throw new Error("Restore this record before enriching a contact.");
   if (record.company.doNotContact || record.contact.doNotContact) throw new Error("This record is marked do not contact.");
   if (record.contact.email) {
     return { email: record.contact.email, score: null, provider: "Existing record" };
@@ -858,6 +1327,19 @@ async function assertOpportunityContact(tx: Transaction, opportunityId: string, 
   if (!link) throw new Error("That contact is not linked to this opportunity.");
 }
 
+async function ensurePrimaryContact(tx: Transaction, opportunityId: string) {
+  const links = await tx.select({
+    contactId: opportunityContacts.contactId,
+    primary: opportunityContacts.primary,
+  }).from(opportunityContacts).where(eq(opportunityContacts.opportunityId, opportunityId))
+    .orderBy(asc(opportunityContacts.createdAt));
+  if (!links.length || links.some((link) => link.primary)) return;
+  await tx.update(opportunityContacts).set({ primary: true }).where(and(
+    eq(opportunityContacts.opportunityId, opportunityId),
+    eq(opportunityContacts.contactId, links[0].contactId),
+  ));
+}
+
 function opportunityListItem(
   opportunity: Awaited<ReturnType<typeof getBoardSnapshot>>["opportunities"][number],
   stageRows: Awaited<ReturnType<typeof getBoardSnapshot>>["stages"],
@@ -871,6 +1353,8 @@ function opportunityListItem(
     owner: opportunity.owner ? { id: opportunity.owner.id, name: opportunity.owner.name } : null,
     priority: opportunity.priority,
     temperature: opportunity.temperature,
+    archivedAt: opportunity.archivedAt,
+    companyArchivedAt: opportunity.company.archivedAt,
     nextActionAt: opportunity.nextActionAt,
     lastActivityAt: opportunity.lastActivityAt,
     contactCount: opportunity.contacts.length,
@@ -888,6 +1372,51 @@ function auditOpportunity(opportunity: Partial<typeof opportunities.$inferSelect
     value: opportunity.value,
     probability: opportunity.probability,
     expectedCloseDate: opportunity.expectedCloseDate?.toISOString() ?? null,
+  };
+}
+
+function auditCompany(company: Partial<typeof companies.$inferSelect>) {
+  return {
+    name: company.name,
+    websiteUrl: company.websiteUrl,
+    linkedinUrl: company.linkedinUrl,
+    sector: company.sector,
+    fitScore: company.fitScore,
+    scaleNote: company.scaleNote,
+    researchNote: company.researchNote,
+    sourceUrls: company.sourceUrls,
+    doNotContact: company.doNotContact,
+    archivedAt: company.archivedAt?.toISOString() ?? null,
+  };
+}
+
+function auditContact(contact: Partial<typeof contacts.$inferSelect>) {
+  return {
+    name: contact.name,
+    title: contact.title,
+    email: contact.email,
+    phone: contact.phone,
+    linkedinUrl: contact.linkedinUrl,
+    preferredChannel: contact.preferredChannel,
+    doNotContact: contact.doNotContact,
+    sourceUrls: contact.sourceUrls,
+  };
+}
+
+function companyResult(company: typeof companies.$inferSelect) {
+  return {
+    id: company.id,
+    name: company.name,
+    domain: company.domain,
+    websiteUrl: company.websiteUrl,
+    linkedinUrl: company.linkedinUrl,
+    sector: company.sector,
+    fitScore: company.fitScore,
+    scaleNote: company.scaleNote,
+    researchNote: company.researchNote,
+    sourceUrls: company.sourceUrls,
+    doNotContact: company.doNotContact,
+    archivedAt: company.archivedAt,
   };
 }
 
