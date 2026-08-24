@@ -4,15 +4,22 @@ import { z } from "zod";
 import { isSafeHttpUrl } from "@/lib/domain/normalise";
 import type { McpActor } from "@/lib/mcp/service";
 import {
+  archiveCompany,
+  archiveOpportunity,
+  completeTask,
   createOpportunity,
   describeWorkspace,
   enrichContactEmail,
   getOpportunity,
   listOpportunities,
   logActivity,
+  restoreCompany,
+  restoreOpportunity,
+  saveContact,
   searchCompanies,
   setNextAction,
   submitResearchResults,
+  updateCompany,
   updateOpportunity,
 } from "@/lib/mcp/service";
 
@@ -21,6 +28,7 @@ const optionalSafeUrl = z.union([z.literal(""), safeUrl]).optional();
 const dateTime = z.iso.datetime({ offset: true });
 const priority = z.enum(["low", "medium", "high", "critical"]);
 const temperature = z.enum(["cold", "warm", "hot", "at_risk", "unresponsive"]);
+const preferredChannel = z.enum(["linkedin", "email", "phone", "meeting", "physical", "note"]);
 const nextAction = z.object({
   title: z.string().trim().min(2).max(240),
   dueAt: dateTime,
@@ -41,9 +49,16 @@ export const GUD_MCP_TOOL_NAMES = [
   "search_companies",
   "submit_research_results",
   "create_opportunity",
+  "update_company",
+  "save_contact",
   "update_opportunity",
   "set_next_action",
+  "complete_task",
   "log_activity",
+  "archive_opportunity",
+  "restore_opportunity",
+  "archive_company",
+  "restore_company",
   "find_work_email",
 ] as const;
 
@@ -53,10 +68,10 @@ export function createGudMcpServer(context: {
   clientId: string;
 }) {
   const server = new McpServer(
-    { name: "gud-crm", version: "0.1.0" },
+    { name: "gud-crm", version: "0.2.0" },
     {
       instructions:
-        "GUD is the sales system of record. Read before writing. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, delete records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
+        "GUD is the sales system of record. Read the relevant company or opportunity before writing. After a write, report exactly what changed and the returned record ID. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, remove do-not-contact protection, archive records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
     },
   );
 
@@ -83,6 +98,7 @@ export function createGudMcpServer(context: {
         ownerId: z.string().trim().max(220).optional(),
         offerId: z.uuid().optional(),
         needsAttention: z.boolean().optional(),
+        includeArchived: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(50),
       },
       annotations: readAnnotations,
@@ -108,11 +124,12 @@ export function createGudMcpServer(context: {
       description: "Search existing organisations before creating research or an opportunity, reducing duplicate records.",
       inputSchema: {
         query: z.string().trim().max(220).default(""),
+        includeArchived: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(25),
       },
       annotations: readAnnotations,
     },
-    async ({ query, limit }) => toolResult(() => searchCompanies(context.actor, query, limit)),
+    async ({ query, limit, includeArchived }) => toolResult(() => searchCompanies(context.actor, query, limit, includeArchived)),
   );
 
   server.registerTool(
@@ -205,6 +222,59 @@ export function createGudMcpServer(context: {
   );
 
   server.registerTool(
+    "update_company",
+    {
+      title: "Update organisation",
+      description: "Update a known organisation after finding it with search_companies or get_opportunity. Research notes and source URLs are appended; clearing do-not-contact protection requires explicit confirmation.",
+      inputSchema: {
+        companyId: z.uuid(),
+        name: z.string().trim().min(2).max(220).optional(),
+        websiteUrl: z.union([safeUrl, z.null()]).optional(),
+        linkedinUrl: z.union([safeUrl, z.null()]).optional(),
+        sector: z.string().trim().max(160).nullable().optional(),
+        fitScore: z.number().int().min(1).max(5).nullable().optional(),
+        scaleNote: z.string().trim().max(2_000).nullable().optional(),
+        researchNoteAppend: z.string().trim().min(2).max(10_000).optional(),
+        sourceUrls: z.array(safeUrl).max(100).optional(),
+        doNotContact: z.boolean().optional(),
+        confirmRemoveDoNotContact: z.boolean().default(false),
+      },
+      annotations: destructiveWriteAnnotations,
+    },
+    async (input) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return updateCompany(context.actor, input);
+    }),
+  );
+
+  server.registerTool(
+    "save_contact",
+    {
+      title: "Add or update contact",
+      description: "Add a person to an opportunity or update a contact already linked to it. Read the opportunity first and supply contactId when updating; existing provenance and do-not-contact metadata are preserved unless explicitly changed.",
+      inputSchema: {
+        opportunityId: z.uuid(),
+        contactId: z.uuid().optional(),
+        name: z.string().trim().min(2).max(220),
+        title: z.string().trim().max(255).nullable().optional(),
+        email: z.union([z.email(), z.null()]).optional(),
+        phone: z.string().trim().max(80).nullable().optional(),
+        linkedinUrl: z.union([safeUrl, z.null()]).optional(),
+        preferredChannel: preferredChannel.nullable().optional(),
+        doNotContact: z.boolean().optional(),
+        confirmRemoveDoNotContact: z.boolean().default(false),
+        primary: z.boolean().optional(),
+        sourceUrls: z.array(safeUrl).max(30).optional(),
+      },
+      annotations: destructiveWriteAnnotations,
+    },
+    async (input) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return saveContact(context.actor, input);
+    }),
+  );
+
+  server.registerTool(
     "update_opportunity",
     {
       title: "Update opportunity",
@@ -225,7 +295,7 @@ export function createGudMcpServer(context: {
         outreachAngle: z.string().trim().max(10_000).optional(),
         confirmTerminalMove: z.boolean().default(false),
       },
-      annotations: writeAnnotations,
+      annotations: destructiveWriteAnnotations,
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -256,6 +326,23 @@ export function createGudMcpServer(context: {
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
       return setNextAction(context.actor, { ...input, dueAt: new Date(input.dueAt) });
+    }),
+  );
+
+  server.registerTool(
+    "complete_task",
+    {
+      title: "Complete next action",
+      description: "Mark one open task from get_opportunity as completed. This never invents a replacement action; if none remains, the opportunity returns to needs-attention state.",
+      inputSchema: {
+        opportunityId: z.uuid(),
+        taskId: z.uuid(),
+      },
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({ opportunityId, taskId }) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return completeTask(context.actor, opportunityId, taskId);
     }),
   );
 
@@ -291,6 +378,68 @@ export function createGudMcpServer(context: {
           dueAt: new Date(input.nextAction.dueAt),
         } : undefined,
       });
+    }),
+  );
+
+  server.registerTool(
+    "archive_opportunity",
+    {
+      title: "Archive opportunity",
+      description: "Hide one opportunity from active views without deleting its contacts, tasks, activities or audit history. Call only after the user explicitly asks to archive that exact record.",
+      inputSchema: {
+        opportunityId: z.uuid(),
+        confirmArchive: z.literal(true),
+      },
+      annotations: destructiveIdempotentWriteAnnotations,
+    },
+    async ({ opportunityId, confirmArchive }) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return archiveOpportunity(context.actor, opportunityId, confirmArchive);
+    }),
+  );
+
+  server.registerTool(
+    "restore_opportunity",
+    {
+      title: "Restore opportunity",
+      description: "Return an archived opportunity to active views, preserving its existing stage and history.",
+      inputSchema: { opportunityId: z.uuid() },
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({ opportunityId }) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return restoreOpportunity(context.actor, opportunityId);
+    }),
+  );
+
+  server.registerTool(
+    "archive_company",
+    {
+      title: "Archive organisation",
+      description: "Hide an organisation and all of its opportunities from active views without deleting history. Call only after the user explicitly confirms the organisation-wide impact.",
+      inputSchema: {
+        companyId: z.uuid(),
+        confirmArchive: z.literal(true),
+      },
+      annotations: destructiveIdempotentWriteAnnotations,
+    },
+    async ({ companyId, confirmArchive }) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return archiveCompany(context.actor, companyId, confirmArchive);
+    }),
+  );
+
+  server.registerTool(
+    "restore_company",
+    {
+      title: "Restore organisation",
+      description: "Return an archived organisation and its opportunities to active views, preserving their stages and history.",
+      inputSchema: { companyId: z.uuid() },
+      annotations: idempotentWriteAnnotations,
+    },
+    async ({ companyId }) => toolResult(async () => {
+      requireWriteScope(context.scopes);
+      return restoreCompany(context.actor, companyId);
     }),
   );
 
@@ -367,6 +516,26 @@ const readAnnotations = {
 const writeAnnotations = {
   readOnlyHint: false,
   destructiveHint: false,
+  openWorldHint: false,
+} as const;
+
+const destructiveWriteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  openWorldHint: false,
+} as const;
+
+const idempotentWriteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const destructiveIdempotentWriteAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
   openWorldHint: false,
 } as const;
 

@@ -53,15 +53,15 @@ export function McpConsentCard({
         </div>
         <div className="mcp-permission-list">
           <span><Eye size={18} /><span><strong>Read the sales workspace</strong><small>Companies, contacts, pipeline context, tasks and activity history.</small></span><Check size={17} /></span>
-          {canWrite ? <span><PencilLine size={18} /><span><strong>Make bounded CRM updates</strong><small>Add research, opportunities, next actions and confirmed activity. No deletes or outreach sending.</small></span><Check size={17} /></span> : null}
-          <span><ShieldCheck size={18} /><span><strong>Keep human control</strong><small>Research stays in review, terminal moves need confirmation, and every mutation is audit logged.</small></span><Check size={17} /></span>
+          {canWrite ? <span><PencilLine size={18} /><span><strong>Make bounded CRM updates</strong><small>Create and update opportunities, organisations, contacts, next actions and confirmed activity. No raw database access or outreach sending.</small></span><Check size={17} /></span> : null}
+          <span><ShieldCheck size={18} /><span><strong>Keep human control</strong><small>Research stays in review; terminal moves, archives and removal of do-not-contact protection require confirmation; every mutation is audit logged.</small></span><Check size={17} /></span>
         </div>
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <footer>
           <button className="btn btn-quiet" type="button" disabled={pending !== null} onClick={() => decide(false)}>{pending === "deny" ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}Deny</button>
           <button className="btn btn-primary" type="button" disabled={pending !== null} onClick={() => decide(true)}>{pending === "accept" ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}Allow {canWrite ? "read & write" : "read-only"} access</button>
         </footer>
-        <small className="mcp-consent-note">Access tokens expire after one hour. The client can renew the connection for up to 30 days without asking for your password.</small>
+        <small className="mcp-consent-note">Access tokens expire after one hour. The client can renew the connection for up to 30 days without asking for your password. You can disconnect it at any time in Settings.</small>
       </section>
     </main>
   );

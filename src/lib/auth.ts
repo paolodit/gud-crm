@@ -6,6 +6,7 @@ import { admin, mcp } from "better-auth/plugins";
 import { db } from "@/db";
 import { authSchema } from "@/db/schema";
 import { env } from "@/lib/env";
+import { GUD_MCP_DEFAULT_SCOPE, GUD_MCP_DEFAULT_SCOPES } from "@/lib/mcp/scopes";
 
 export const auth = betterAuth({
   appName: "GUD CRM",
@@ -80,17 +81,10 @@ export const auth = betterAuth({
         allowPlainCodeChallengeMethod: false,
         accessTokenExpiresIn: 60 * 60,
         refreshTokenExpiresIn: 60 * 60 * 24 * 30,
-        defaultScope: "openid profile email offline_access gud:read",
+        defaultScope: GUD_MCP_DEFAULT_SCOPE,
         scopes: ["gud:read", "gud:write"],
         metadata: {
-          scopes_supported: [
-            "openid",
-            "profile",
-            "email",
-            "offline_access",
-            "gud:read",
-            "gud:write",
-          ],
+          scopes_supported: [...GUD_MCP_DEFAULT_SCOPES],
         },
       },
     }),

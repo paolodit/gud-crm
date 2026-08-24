@@ -26,12 +26,14 @@ This document records the implemented controls and known limits. It is an engine
 - Remote MCP is disabled by default and is available only when `MCP_ENABLED=true` on a PostgreSQL deployment.
 - Better Auth provides OAuth 2.1 authorization-code flow with S256 PKCE, one-hour access tokens, renewable refresh tokens and dynamic public-client registration.
 - MCP access resolves the token's user against the current active GUD user and organisation before constructing any tool.
-- `gud:read` and `gud:write` are separate scopes. Read-only is the default; write tools activate only when the user has explicitly approved a stored `gud:write` consent grant, even if a client requests a broader token.
-- Tool inputs are bounded with Zod, writes are allowlisted and every MCP mutation creates an audit event attributed to the connected GUD user.
-- The endpoint exposes no delete tool, no arbitrary SQL or generic record patch. Won/Lost moves require an explicit confirmation flag after user confirmation.
+- `gud:read` and `gud:write` are separate scopes. New connections request both so ChatGPT can update GUD, but clients may request read-only access. Existing read-only grants do not expand silently. Write tools activate only when the token and the stored consent grant both include `gud:write`.
+- Tool inputs are bounded with Zod, writes are allowlisted and every MCP mutation creates an audit event attributed to the connected GUD user. Update, archive and external-provider tools advertise their actual MCP safety annotations so the host can frame confirmation appropriately.
+- The endpoint exposes no delete tool, arbitrary SQL, generic record patch, team administration or pipeline-configuration tool. Won/Lost moves, archives and removal of do-not-contact protection require explicit confirmation after the user understands the impact.
 - Research tools accept only HTTP(S) evidence URLs, never initiate outreach and leave newly discovered targets in Researching for human review.
 - The endpoint validates the canonical forwarded host, sends no-store responses and exposes only the CORS headers required by remote MCP clients.
 - OAuth application, consent and token records stay in the instance database. Database backups therefore contain connector grants and require the same encryption and access controls as CRM data.
+
+The supported action inventory, reconnection behavior and client setup are documented in [MCP connections](MCP.md).
 
 ## XSS, injection and unsafe links
 
