@@ -495,9 +495,9 @@ function BoardColumn({
           <button
             className="column-expand"
             type="button"
-            aria-label={expanded ? `Return ${stage.name} to one lane` : `Spread ${stage.name} across two lanes`}
+            aria-label={expanded ? `Return ${stage.name} to one lane` : `Spread ${stage.name} across three lanes`}
             aria-pressed={expanded}
-            title={expanded ? "Return to one lane" : "Spread cards across two lanes"}
+            title={expanded ? "Return to one lane" : "Spread cards across three lanes"}
             onClick={onToggleExpanded}
           >
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}

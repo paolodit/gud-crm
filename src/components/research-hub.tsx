@@ -19,6 +19,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowRight,
+  Archive,
   Bot,
   Building2,
   Check,
@@ -48,7 +49,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
-import { saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
+import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
@@ -97,6 +98,7 @@ export function ResearchHub({
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
   const [editingContact, setEditingContact] = useState<ContactSummary | "new" | null>(null);
   const [editingOpportunity, setEditingOpportunity] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [contactImportMode, setContactImportMode] = useState<ResearchContactImportMode>("merge");
@@ -199,6 +201,18 @@ export function ResearchHub({
     } finally {
       setPendingAction(null);
     }
+  }
+
+  async function archiveSelectedTarget() {
+    if (!selected) return;
+    setPendingAction("archive-target");
+    const result = await archiveOpportunityAction({ opportunityId: selected.id, archived: true });
+    setPendingAction(null);
+    if (!result.ok) return setNotice(result.error);
+    setConfirmingArchive(false);
+    setNotice(`${selected.company.name} archived. Its company, contacts, research and history are preserved.`);
+    closeTarget();
+    router.refresh();
   }
 
   async function importFile(file: File | undefined) {
@@ -325,7 +339,7 @@ export function ResearchHub({
               <header className="research-inspector-head">
                 <div className="research-company-icon">{initials(selected.company.name)}</div>
                 <div><ResearchStatus status={selectedReadiness} /><h2>{selected.company.name}</h2><p>{selected.company.sector || "Sector not set"}</p></div>
-                <div className="research-inspector-actions"><button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={closeTarget} aria-label="Close target details"><X size={17} /></button></div>
+                <div className="research-inspector-actions"><button className="btn btn-quiet btn-compact target-archive-action" type="button" onClick={() => setConfirmingArchive(true)} aria-label={`Archive ${selected.company.name} target`}><Archive size={14} />Archive</button><button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={closeTarget} aria-label="Close target details"><X size={17} /></button></div>
               </header>
 
               <div className="research-fit-strip">
@@ -405,6 +419,8 @@ export function ResearchHub({
       ) : null}
 
       {pendingReplaceImport ? <div className="dialog-backdrop dialog-backdrop-raised" role="presentation"><section className="dialog-card replace-contacts-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="replace-contacts-title" aria-describedby="replace-contacts-description"><header><span><ShieldCheck size={22} /></span><div><span className="eyebrow">Authoritative contact import</span><h2 id="replace-contacts-title">Replace contacts for {pendingReplaceImport.targetCount} {pendingReplaceImport.targetCount === 1 ? "target" : "targets"}?</h2></div></header><div id="replace-contacts-description"><p>For each opportunity included in <strong>{pendingReplaceImport.fileName}</strong>, the explicit <code>contacts</code> array will become its complete contact list.</p><ul><li>Matching people are updated and new people are created.</li><li>Existing contacts omitted from that opportunity are unlinked.</li><li><code>{'"contacts": []'}</code> clears all of that opportunity’s contact links.</li><li>Other opportunities, shared contact records, activities and audit history are not deleted.</li></ul></div><div className="dialog-actions"><button className="btn btn-quiet" type="button" disabled={pendingAction === "import"} onClick={() => setPendingReplaceImport(null)}>Cancel</button><button className="btn btn-danger" type="button" disabled={pendingAction === "import"} onClick={() => performImport(pendingReplaceImport.payload, "replace")}>{pendingAction === "import" ? <LoaderCircle className="spin" size={15} /> : <Users size={15} />}{pendingAction === "import" ? "Importing…" : "Replace contacts & import"}</button></div></section></div> : null}
+
+      {confirmingArchive && selected ? <div className="dialog-backdrop dialog-backdrop-raised" role="presentation"><section className="dialog-card archive-target-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="archive-target-title" aria-describedby="archive-target-description"><header><span><Archive size={22} /></span><div><span className="eyebrow">Leave the active workspace</span><h2 id="archive-target-title">Archive {selected.company.name}?</h2></div></header><div id="archive-target-description"><p>This target will leave Targets and the live pipeline. Nothing is deleted.</p><ul><li>The organisation and contact records stay intact.</li><li>Research, activity, tasks and audit history are preserved.</li><li>You can restore the opportunity later from the pipeline Archive view.</li></ul></div><div className="dialog-actions"><button className="btn btn-quiet" type="button" disabled={pendingAction === "archive-target"} onClick={() => setConfirmingArchive(false)}>Keep target</button><button className="btn btn-danger" type="button" disabled={pendingAction === "archive-target"} onClick={archiveSelectedTarget}>{pendingAction === "archive-target" ? <LoaderCircle className="spin" size={15} /> : <Archive size={15} />}{pendingAction === "archive-target" ? "Archiving…" : "Archive target"}</button></div></section></div> : null}
 
       {showEnrichment ? <div className="dialog-backdrop" role="presentation"><section className="dialog-card enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title"><header className="dialog-header enrichment-dialog-header"><div><span className="eyebrow">FreeMax your allowances</span><h2 id="enrichment-dialog-title">Find verified work emails</h2><p>Connect Hunter or Voila Norbert once, choose which goes first, and spend free credits only after a real person has been identified.</p></div><button className="icon-button" type="button" onClick={() => setShowEnrichment(false)} aria-label="Close email enrichment"><X size={17} /></button></header><div className="enrichment-dialog-body"><div className="enrichment-principle"><ShieldCheck size={19} /><span><strong>A named person and company domain come first.</strong><small>GUD never invents a private address. It uses your provider keys server-side and records only successful lookups against the safety cap.</small></span></div><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" initiallyOpen /></div></section></div> : null}
 
