@@ -19,6 +19,15 @@ describe("GUD MCP server", () => {
     const result = await client.listTools();
 
     expect(result.tools.map((tool) => tool.name)).toEqual(GUD_MCP_TOOL_NAMES);
+    expect(result.tools.every((tool) => Boolean(tool.outputSchema))).toBe(true);
+    expect(result.tools.find((tool) => tool.name === "get_sales_brief")).toEqual(expect.objectContaining({
+      title: "Get my sales brief",
+      annotations: expect.objectContaining({ readOnlyHint: true, destructiveHint: false }),
+      _meta: expect.objectContaining({
+        "openai/toolInvocation/invoking": "Preparing your sales brief…",
+        "openai/toolInvocation/invoked": "Sales brief ready",
+      }),
+    }));
     expect(result.tools.find((tool) => tool.name === "list_opportunities")?.annotations?.readOnlyHint).toBe(true);
     expect(result.tools.find((tool) => tool.name === "update_opportunity")?.annotations?.readOnlyHint).toBe(false);
     expect(result.tools.find((tool) => tool.name === "update_opportunity")?.annotations?.destructiveHint).toBe(true);
@@ -32,6 +41,22 @@ describe("GUD MCP server", () => {
     expect(result.tools.find((tool) => tool.name === "complete_task")?.annotations?.idempotentHint).toBe(true);
     expect(result.tools.find((tool) => tool.name === "find_work_email")?.annotations?.openWorldHint).toBe(true);
     expect(result.tools.filter((tool) => tool.annotations?.readOnlyHint === false)).toHaveLength(13);
+  });
+
+  it("publishes read-first workflows for common sales jobs", async () => {
+    const { client } = await connectedServer(["gud:read", "gud:write"]);
+    const prompts = await client.listPrompts();
+    const resources = await client.listResources();
+
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(expect.arrayContaining([
+      "review_my_sales",
+      "capture_sales_update",
+      "research_for_gud",
+    ]));
+    expect(resources.resources.map((resource) => resource.uri)).toEqual(expect.arrayContaining([
+      "gud://workspace/context",
+      "gud://workspace/workflows",
+    ]));
   });
 
   it("blocks write tools when OAuth granted read-only access", async () => {

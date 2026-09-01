@@ -11,6 +11,7 @@ import {
   describeWorkspace,
   enrichContactEmail,
   getOpportunity,
+  getSalesBrief,
   listOpportunities,
   logActivity,
   restoreCompany,
@@ -41,9 +42,52 @@ const contact = z.object({
   linkedinUrl: optionalSafeUrl,
   sourceUrls: z.array(safeUrl).max(30).optional(),
 });
+const salesBriefRecord = z.object({
+  opportunityId: z.uuid(),
+  title: z.string(),
+  company: z.object({ id: z.uuid(), name: z.string() }),
+  stage: z.object({ id: z.uuid(), name: z.string() }),
+  offer: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  priority,
+  temperature,
+  expectedValue: z.number().nullable(),
+  probability: z.number().int().nullable(),
+});
+const salesBriefOutput = z.object({
+  generatedAt: z.string(),
+  scope: z.enum(["owner", "team"]),
+  owner: z.object({ id: z.string(), name: z.string() }).nullable(),
+  horizonDays: z.number().int(),
+  totals: z.object({
+    activeOpportunities: z.number().int(),
+    pipelineValue: z.number(),
+    weightedPipelineValue: z.number(),
+    needsAttention: z.number().int(),
+    upcomingActions: z.number().int(),
+  }),
+  stageBreakdown: z.array(z.object({
+    stageId: z.uuid(),
+    stageName: z.string(),
+    count: z.number().int(),
+    value: z.number(),
+    weightedValue: z.number(),
+  })),
+  needsAttention: z.array(salesBriefRecord.extend({
+    reasons: z.array(z.string()),
+    nextAction: z.object({ id: z.uuid(), title: z.string(), dueAt: z.string() }).nullable(),
+  })),
+  upcomingActions: z.array(salesBriefRecord.extend({
+    taskId: z.uuid(),
+    action: z.string(),
+    dueAt: z.string(),
+  })),
+  suggestedStart: z.string(),
+});
+const genericToolOutputSchema = { result: z.unknown() } as const;
 
 export const GUD_MCP_TOOL_NAMES = [
   "describe_workspace",
+  "get_sales_brief",
   "list_opportunities",
   "get_opportunity",
   "search_companies",
@@ -68,10 +112,10 @@ export function createGudMcpServer(context: {
   clientId: string;
 }) {
   const server = new McpServer(
-    { name: "gud-crm", version: "0.2.0" },
+    { name: "gud-crm", version: "0.3.0" },
     {
       instructions:
-        "GUD is the sales system of record. Read the relevant company or opportunity before writing. After a write, report exactly what changed and the returned record ID. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, remove do-not-contact protection, archive records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
+        "GUD is the sales system of record. Start with get_sales_brief for an at-a-glance view, then read the exact opportunity before writing. After a write, report exactly what changed, the returned record ID and the sensible next step. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, remove do-not-contact protection, archive records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
     },
   );
 
@@ -81,9 +125,28 @@ export function createGudMcpServer(context: {
       title: "Describe GUD workspace",
       description: "Use first to learn this workspace's edition, offers, stages, activity taxonomy and guardrails.",
       inputSchema: {},
+      outputSchema: genericToolOutputSchema,
       annotations: readAnnotations,
     },
     async () => toolResult(() => describeWorkspace(context.actor)),
+  );
+
+  server.registerTool(
+    "get_sales_brief",
+    {
+      title: "Get my sales brief",
+      description: "Use at the start of a session or when the user asks what needs attention. Returns a personal, selected-owner or team view of active pipeline value, stage balance, overdue or missing next actions, and work due soon. It never changes CRM data.",
+      inputSchema: {
+        scope: z.enum(["mine", "team"]).default("mine").describe("Use mine for the signed-in person's work or team for the whole active pipeline."),
+        ownerId: z.string().trim().max(220).optional().describe("Workspace member ID. Defaults to the signed-in person."),
+        horizonDays: z.number().int().min(1).max(30).default(7).describe("How far ahead to include upcoming actions."),
+        limit: z.number().int().min(1).max(25).default(10).describe("Maximum attention and upcoming-action records per section."),
+      },
+      outputSchema: { result: salesBriefOutput },
+      annotations: readAnnotations,
+      _meta: toolStatus("Preparing your sales brief…", "Sales brief ready"),
+    },
+    async (input) => toolResult(() => getSalesBrief(context.actor, input)),
   );
 
   server.registerTool(
@@ -101,6 +164,7 @@ export function createGudMcpServer(context: {
         includeArchived: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(50),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: readAnnotations,
     },
     async (input) => toolResult(() => listOpportunities(context.actor, input)),
@@ -112,6 +176,7 @@ export function createGudMcpServer(context: {
       title: "Get opportunity",
       description: "Read one opportunity with its company, contacts, open tasks and recent activity before suggesting or making a change.",
       inputSchema: { opportunityId: z.uuid() },
+      outputSchema: genericToolOutputSchema,
       annotations: readAnnotations,
     },
     async ({ opportunityId }) => toolResult(() => getOpportunity(context.actor, opportunityId)),
@@ -127,6 +192,7 @@ export function createGudMcpServer(context: {
         includeArchived: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(25),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: readAnnotations,
     },
     async ({ query, limit, includeArchived }) => toolResult(() => searchCompanies(context.actor, query, limit, includeArchived)),
@@ -154,7 +220,9 @@ export function createGudMcpServer(context: {
         sourceUrls: z.array(safeUrl).max(100).optional(),
         contacts: z.array(contact).max(20).optional(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: writeAnnotations,
+      _meta: toolStatus("Saving research for review…", "Research saved for review"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -196,7 +264,9 @@ export function createGudMcpServer(context: {
         contact: contact.optional(),
         nextAction: nextAction.optional(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: writeAnnotations,
+      _meta: toolStatus("Creating the opportunity…", "Opportunity created"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -239,7 +309,9 @@ export function createGudMcpServer(context: {
         doNotContact: z.boolean().optional(),
         confirmRemoveDoNotContact: z.boolean().default(false),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: destructiveWriteAnnotations,
+      _meta: toolStatus("Updating the organisation…", "Organisation updated"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -266,7 +338,9 @@ export function createGudMcpServer(context: {
         primary: z.boolean().optional(),
         sourceUrls: z.array(safeUrl).max(30).optional(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: destructiveWriteAnnotations,
+      _meta: toolStatus("Saving the contact…", "Contact saved"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -295,7 +369,9 @@ export function createGudMcpServer(context: {
         outreachAngle: z.string().trim().max(10_000).optional(),
         confirmTerminalMove: z.boolean().default(false),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: destructiveWriteAnnotations,
+      _meta: toolStatus("Updating the opportunity…", "Opportunity updated"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -321,7 +397,9 @@ export function createGudMcpServer(context: {
         dueAt: dateTime,
         contactId: z.uuid().nullable().optional(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: writeAnnotations,
+      _meta: toolStatus("Setting the next action…", "Next action set"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -338,7 +416,9 @@ export function createGudMcpServer(context: {
         opportunityId: z.uuid(),
         taskId: z.uuid(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: idempotentWriteAnnotations,
+      _meta: toolStatus("Completing the action…", "Action completed"),
     },
     async ({ opportunityId, taskId }) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -361,7 +441,9 @@ export function createGudMcpServer(context: {
         occurredAt: dateTime,
         nextAction: nextAction.optional(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: writeAnnotations,
+      _meta: toolStatus("Logging the sales activity…", "Sales activity logged"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -390,7 +472,9 @@ export function createGudMcpServer(context: {
         opportunityId: z.uuid(),
         confirmArchive: z.literal(true),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: destructiveIdempotentWriteAnnotations,
+      _meta: toolStatus("Archiving the opportunity…", "Opportunity archived"),
     },
     async ({ opportunityId, confirmArchive }) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -404,7 +488,9 @@ export function createGudMcpServer(context: {
       title: "Restore opportunity",
       description: "Return an archived opportunity to active views, preserving its existing stage and history.",
       inputSchema: { opportunityId: z.uuid() },
+      outputSchema: genericToolOutputSchema,
       annotations: idempotentWriteAnnotations,
+      _meta: toolStatus("Restoring the opportunity…", "Opportunity restored"),
     },
     async ({ opportunityId }) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -421,7 +507,9 @@ export function createGudMcpServer(context: {
         companyId: z.uuid(),
         confirmArchive: z.literal(true),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: destructiveIdempotentWriteAnnotations,
+      _meta: toolStatus("Archiving the organisation…", "Organisation archived"),
     },
     async ({ companyId, confirmArchive }) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -435,7 +523,9 @@ export function createGudMcpServer(context: {
       title: "Restore organisation",
       description: "Return an archived organisation and its opportunities to active views, preserving their stages and history.",
       inputSchema: { companyId: z.uuid() },
+      outputSchema: genericToolOutputSchema,
       annotations: idempotentWriteAnnotations,
+      _meta: toolStatus("Restoring the organisation…", "Organisation restored"),
     },
     async ({ companyId }) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -452,7 +542,9 @@ export function createGudMcpServer(context: {
         opportunityId: z.uuid(),
         contactId: z.uuid(),
       },
+      outputSchema: genericToolOutputSchema,
       annotations: externalWriteAnnotations,
+      _meta: toolStatus("Checking FreeMax providers…", "Work email lookup complete"),
     },
     async (input) => toolResult(async () => {
       requireWriteScope(context.scopes);
@@ -473,6 +565,34 @@ export function createGudMcpServer(context: {
         uri: uri.href,
         mimeType: "application/json",
         text: JSON.stringify(await describeWorkspace(context.actor), null, 2),
+      }],
+    }),
+  );
+
+  server.registerResource(
+    "gud-coworker-workflows",
+    "gud://workspace/workflows",
+    {
+      title: "GUD coworker workflows",
+      description: "Practical read-first patterns for reviewing sales work, capturing an update and returning researched targets safely.",
+      mimeType: "application/json",
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.href,
+        mimeType: "application/json",
+        text: JSON.stringify({
+          review: ["get_sales_brief", "get_opportunity", "set_next_action"],
+          captureUpdate: ["list_opportunities", "get_opportunity", "describe_workspace", "log_activity", "set_next_action"],
+          research: ["search_companies", "describe_workspace", "submit_research_results"],
+          enrich: ["get_opportunity", "find_work_email"],
+          rules: [
+            "Read the exact record before writing.",
+            "Do not invent activity, contact details, outcomes or private data.",
+            "Use public source URLs for research and keep it in human review.",
+            "Ask for explicit confirmation before terminal moves or archives.",
+          ],
+        }, null, 2),
       }],
     }),
   );
@@ -498,6 +618,52 @@ export function createGudMcpServer(context: {
             "Do not guess names, roles, email addresses, phone numbers or URLs.",
             "Include a public source URL and observation date for every material claim.",
             "Search GUD first to avoid duplicates, then use submit_research_results so a human can review the findings.",
+          ].join(" "),
+        },
+      }],
+    }),
+  );
+
+  server.registerPrompt(
+    "review_my_sales",
+    {
+      title: "Review my sales work",
+      description: "Give the signed-in user a concise start-of-session brief and help them choose one useful next move.",
+      argsSchema: {
+        horizonDays: z.string().trim().max(2).optional(),
+      },
+    },
+    async ({ horizonDays }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: `Use get_sales_brief for the signed-in user with a ${horizonDays || "7"}-day horizon. Present no more than three attention items, the weighted pipeline, and the single best place to start. Do not change anything until I choose a record.`,
+        },
+      }],
+    }),
+  );
+
+  server.registerPrompt(
+    "capture_sales_update",
+    {
+      title: "Capture a sales update",
+      description: "Turn a natural-language update into checked CRM activity and a sensible next action without guessing.",
+      argsSchema: {
+        update: z.string().trim().min(2).max(4_000),
+      },
+    },
+    async ({ update }) => ({
+      messages: [{
+        role: "user",
+        content: {
+          type: "text",
+          text: [
+            `Capture this sales update in GUD: ${update}`,
+            "Find the matching opportunity and read it first. If the record is ambiguous, stop and ask me to choose.",
+            "Use describe_workspace for the current activity taxonomy. Only log an activity that I clearly said happened.",
+            "Show the proposed activity, outcome, date and next action before writing; do not infer missing facts.",
+            "After saving, report the record ID and exactly what changed.",
           ].join(" "),
         },
       }],
@@ -549,12 +715,19 @@ function requireWriteScope(scopes: string[]) {
   if (!scopes.includes("gud:write")) throw new Error("This connection has read-only access. Reconnect GUD with write permission.");
 }
 
+function toolStatus(invoking: string, invoked: string) {
+  return {
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+  };
+}
+
 async function toolResult<T>(operation: () => Promise<T>) {
   try {
     const result = await operation();
     return {
       structuredContent: { result },
-      content: [{ type: "text" as const, text: JSON.stringify(result) }],
+      content: [{ type: "text" as const, text: `${summariseResult(result)}\n\n${JSON.stringify(result, null, 2)}` }],
     };
   } catch (error) {
     return {
@@ -565,4 +738,17 @@ async function toolResult<T>(operation: () => Promise<T>) {
       }],
     };
   }
+}
+
+function summariseResult(result: unknown) {
+  if (Array.isArray(result)) return `GUD returned ${result.length} ${result.length === 1 ? "record" : "records"}.`;
+  if (!result || typeof result !== "object") return "GUD completed the request.";
+  const value = result as Record<string, unknown>;
+  const totals = value.totals as Record<string, unknown> | undefined;
+  if (totals && typeof totals.activeOpportunities === "number") {
+    return `Sales brief ready: ${totals.activeOpportunities} active opportunities, ${totals.needsAttention ?? 0} needing attention and ${totals.upcomingActions ?? 0} actions due in the selected horizon.`;
+  }
+  const identity = [value.opportunityId, value.companyId, value.contactId, value.taskId, value.activityId, value.id]
+    .find((item) => typeof item === "string");
+  return identity ? `GUD completed the request. Saved record: ${identity}.` : "GUD completed the request successfully.";
 }

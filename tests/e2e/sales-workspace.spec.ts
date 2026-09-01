@@ -142,7 +142,7 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.getByText("30 Sep 2026", { exact: true })).toBeVisible();
   });
 
-  test("spreads a busy stage across two lanes", async ({ page }) => {
+  test("spreads a busy stage across three lanes", async ({ page }) => {
     await page.goto("/pipeline");
     await page.getByRole("button", { name: "Create a new opportunity" }).click();
     await page.getByLabel("Company name").fill("DEMO · Second Studio");
@@ -150,10 +150,11 @@ test.describe.serial("Service Sales workspace", () => {
     await page.getByRole("button", { name: "Create opportunity" }).click();
     await page.goto("/pipeline");
 
-    const spread = page.getByRole("button", { name: "Spread Outreach active across two lanes" });
+    const spread = page.getByRole("button", { name: "Spread Outreach active across three lanes" });
     await expect(spread).toBeVisible();
     await spread.click();
     await expect(page.getByRole("button", { name: "Return Outreach active to one lane" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('.board-column[data-expanded="true"] .column-cards')).toHaveCSS("grid-template-columns", /\S+ \S+ \S+/);
   });
 
   test("archives an opportunity without losing its record", async ({ page }) => {
@@ -168,6 +169,24 @@ test.describe.serial("Service Sales workspace", () => {
     await page.getByRole("button", { name: /Archive\s+1/ }).click();
     await expect(page.getByRole("heading", { name: "Archived opportunities" })).toBeVisible();
     await expect(page.locator(".archive-list article")).toHaveCount(1);
+  });
+
+  test("archives a target directly after a clear confirmation", async ({ page }) => {
+    await page.goto("/targets");
+    await page.getByRole("button", { name: "Add target" }).click();
+    await page.getByLabel("Company name").fill("DEMO · Archive Target Studio");
+    await page.getByLabel("Research note").fill("A fictional target created for the archive workflow test.");
+    await page.getByRole("button", { name: "Add company" }).click();
+    await expect(page.locator(".research-inspector")).toBeVisible();
+
+    await page.getByRole("button", { name: /Archive .* target/ }).click();
+    const confirmation = page.getByRole("alertdialog", { name: /Archive .*/ });
+    await expect(confirmation).toContainText("Nothing is deleted");
+    await expect(confirmation).toContainText("Research, activity, tasks and audit history are preserved");
+    await confirmation.getByRole("button", { name: "Archive target" }).click();
+
+    await expect(page).toHaveURL(/\/targets$/);
+    await expect(page.locator(".research-inspector")).toHaveCount(0);
   });
 
   test("pulls the pipeline sideways from empty board space", async ({ page }) => {

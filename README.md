@@ -33,7 +33,7 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
 - **AI is bounded and reviewable.** Draft outreach, explore angles, prepare research and ask for a next move without auto-sending anything.
-- **Your existing AI workspace can connect.** The optional MCP endpoint lets authorised Codex, ChatGPT and compatible clients review the pipeline, maintain organisations and contacts, log confirmed work, manage next actions and archive/restore records through a narrow, auditable tool surface.
+- **Your existing AI workspace can connect.** The optional MCP endpoint gives authorised Codex, ChatGPT and compatible clients an at-a-glance sales brief, sourced research and bounded CRM updates through a narrow, auditable tool surface. [Connect it in a few minutes](docs/MCP.md#the-five-minute-path).
 - **Free enrichment goes further.** Optional Hunter and Voila Norbert integrations use a visible, free-first provider order for one-contact-at-a-time email discovery.
 
 GUD stops at a clean client handoff. It is not trying to become project management, invoicing, service delivery or support software.

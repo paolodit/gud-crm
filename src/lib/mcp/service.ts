@@ -17,6 +17,7 @@ import {
   users,
 } from "@/db/schema";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
+import { isResearchStage } from "@/lib/data/board-selectors";
 import { extractDomain, normaliseName } from "@/lib/domain/normalise";
 
 export type McpActor = {
@@ -283,6 +284,105 @@ export async function searchCompanies(actor: McpActor, query: string, limit = 25
       ilike(companies.researchNote, pattern),
     ) : undefined,
   )).orderBy(asc(companies.name)).limit(limit);
+}
+
+export async function getSalesBrief(
+  actor: McpActor,
+  options: { scope?: "mine" | "team"; ownerId?: string; horizonDays?: number; limit?: number },
+) {
+  const snapshot = await getBoardSnapshot(actor.organisationId);
+  const generatedAt = new Date(snapshot.generatedAt);
+  const horizonAt = new Date(generatedAt.getTime() + (options.horizonDays ?? 7) * 86_400_000);
+  const scope = options.scope ?? "mine";
+  const ownerId = options.ownerId ?? (scope === "mine" ? actor.id : null);
+  const owner = ownerId ? snapshot.users.find((member) => member.id === ownerId) : null;
+  if (ownerId && !owner) throw new Error("Owner not found in this workspace.");
+
+  const stageById = new Map(snapshot.stages.map((stage) => [stage.id, stage]));
+  const active = snapshot.opportunities.filter((opportunity) => {
+    if (opportunity.archivedAt || opportunity.company.archivedAt) return false;
+    if (ownerId && opportunity.owner?.id !== ownerId) return false;
+    const stage = stageById.get(opportunity.stageId);
+    return Boolean(stage && stage.terminalType === "open" && !isResearchStage(stage));
+  });
+
+  const stageBreakdown = snapshot.stages
+    .filter((stage) => stage.terminalType === "open" && !isResearchStage(stage))
+    .map((stage) => {
+      const records = active.filter((opportunity) => opportunity.stageId === stage.id);
+      return {
+        stageId: stage.id,
+        stageName: stage.name,
+        count: records.length,
+        value: records.reduce((sum, opportunity) => sum + (opportunity.expectedValue ?? 0), 0),
+        weightedValue: Math.round(records.reduce((sum, opportunity) => sum + ((opportunity.expectedValue ?? 0) * (opportunity.probability ?? 0) / 100), 0)),
+      };
+    });
+
+  const allAttentionItems = active.map((opportunity) => {
+    const dueAt = opportunity.nextActionAt ? new Date(opportunity.nextActionAt) : null;
+    const reasons: string[] = [];
+    if (opportunity.temperature === "at_risk") reasons.push("at risk");
+    if (opportunity.temperature === "unresponsive") reasons.push("unresponsive");
+    if (!dueAt) reasons.push("no next action");
+    else if (dueAt < generatedAt) reasons.push("next action overdue");
+    if (!reasons.length) return null;
+    const nextTask = opportunity.tasks
+      .filter((task) => task.status === "open")
+      .sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime())[0];
+    return {
+      ...salesBriefOpportunity(opportunity, stageById.get(opportunity.stageId)?.name ?? "Unknown stage"),
+      reasons,
+      nextAction: nextTask ? { id: nextTask.id, title: nextTask.title, dueAt: nextTask.dueAt } : null,
+      attentionOrder: dueAt?.getTime() ?? Number.MAX_SAFE_INTEGER,
+    };
+  }).filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((left, right) => left.attentionOrder - right.attentionOrder);
+  const needsAttention = allAttentionItems
+    .slice(0, options.limit ?? 10)
+    .map(({ attentionOrder, ...item }) => {
+      void attentionOrder;
+      return item;
+    });
+
+  const allUpcomingActions = active.flatMap((opportunity) => opportunity.tasks
+    .filter((task) => task.status === "open")
+    .filter((task) => {
+      const dueAt = new Date(task.dueAt);
+      return dueAt >= generatedAt && dueAt <= horizonAt;
+    })
+    .map((task) => ({
+      ...salesBriefOpportunity(opportunity, stageById.get(opportunity.stageId)?.name ?? "Unknown stage"),
+      taskId: task.id,
+      action: task.title,
+      dueAt: task.dueAt,
+    })))
+    .sort((left, right) => new Date(left.dueAt).getTime() - new Date(right.dueAt).getTime());
+  const upcomingActions = allUpcomingActions.slice(0, options.limit ?? 10);
+
+  const pipelineValue = active.reduce((sum, opportunity) => sum + (opportunity.expectedValue ?? 0), 0);
+  const weightedPipelineValue = Math.round(active.reduce((sum, opportunity) => sum + ((opportunity.expectedValue ?? 0) * (opportunity.probability ?? 0) / 100), 0));
+  return {
+    generatedAt: generatedAt.toISOString(),
+    scope: owner ? "owner" as const : "team" as const,
+    owner: owner ? { id: owner.id, name: owner.name } : null,
+    horizonDays: options.horizonDays ?? 7,
+    totals: {
+      activeOpportunities: active.length,
+      pipelineValue,
+      weightedPipelineValue,
+      needsAttention: allAttentionItems.length,
+      upcomingActions: allUpcomingActions.length,
+    },
+    stageBreakdown,
+    needsAttention,
+    upcomingActions,
+    suggestedStart: needsAttention[0]
+      ? `Review ${needsAttention[0].company.name}: ${needsAttention[0].reasons.join(" and ")}.`
+      : upcomingActions[0]
+        ? `Prepare ${upcomingActions[0].action} for ${upcomingActions[0].company.name}.`
+        : "No urgent action is recorded. Review the pipeline before creating new work.",
+  };
 }
 
 export async function updateCompany(actor: McpActor, input: UpdateCompanyInput) {
@@ -1346,6 +1446,7 @@ function opportunityListItem(
 ) {
   return {
     id: opportunity.id,
+    recordPath: `/pipeline?opportunity=${opportunity.id}`,
     title: opportunity.title,
     company: { id: opportunity.company.id, name: opportunity.company.name },
     stage: stageRows.find((stage) => stage.id === opportunity.stageId) ?? null,
@@ -1372,6 +1473,23 @@ function auditOpportunity(opportunity: Partial<typeof opportunities.$inferSelect
     value: opportunity.value,
     probability: opportunity.probability,
     expectedCloseDate: opportunity.expectedCloseDate?.toISOString() ?? null,
+  };
+}
+
+function salesBriefOpportunity(
+  opportunity: Awaited<ReturnType<typeof getBoardSnapshot>>["opportunities"][number],
+  stageName: string,
+) {
+  return {
+    opportunityId: opportunity.id,
+    title: opportunity.title,
+    company: { id: opportunity.company.id, name: opportunity.company.name },
+    stage: { id: opportunity.stageId, name: stageName },
+    offer: opportunity.offer ? { id: opportunity.offer.id, name: opportunity.offer.name } : null,
+    priority: opportunity.priority,
+    temperature: opportunity.temperature,
+    expectedValue: opportunity.expectedValue ?? null,
+    probability: opportunity.probability ?? null,
   };
 }
 

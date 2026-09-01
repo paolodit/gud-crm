@@ -364,6 +364,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
   const [aiSetupOpen, setAiSetupOpen] = useState(false);
   const [aiConfigCopied, setAiConfigCopied] = useState(false);
   const [mcpEndpointCopied, setMcpEndpointCopied] = useState(false);
+  const [mcpPromptCopied, setMcpPromptCopied] = useState(false);
   const [mcpConnections, setMcpConnections] = useState(runtime.mcpConnections);
   const [mcpRevokePending, setMcpRevokePending] = useState<string | null>(null);
   const [mcpMessage, setMcpMessage] = useState<string | null>(null);
@@ -470,6 +471,12 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
     window.setTimeout(() => setMcpEndpointCopied(false), 1_800);
   }
 
+  async function copyMcpStarterPrompt() {
+    await navigator.clipboard.writeText("Review my GUD sales brief. Show the three opportunities that most need attention, explain why, and wait for me to choose before changing anything.");
+    setMcpPromptCopied(true);
+    window.setTimeout(() => setMcpPromptCopied(false), 1_800);
+  }
+
   async function revokeMcpConnection(clientId: string) {
     if (!window.confirm("Disconnect this AI coworker? Its current access and refresh tokens will stop working.")) return;
     setMcpRevokePending(clientId);
@@ -560,32 +567,33 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
 
         <article className="surface settings-card coworker-settings-card">
           <div className="settings-icon settings-icon-coworker"><Bot /></div>
-          <div><h2>AI coworker connection</h2><p>Let Codex, ChatGPT or another MCP client work with this pipeline</p></div>
+          <div><h2>Connect an AI coworker</h2><p>Review, research and safely update GUD from ChatGPT, Codex or another MCP client</p></div>
           <div className="status-list">
             <StatusRow label="Remote connector" value={runtime.mcpEnabled ? "Ready" : "Disabled by server"} good={runtime.mcpEnabled} />
-            <StatusRow label="Access" value="Your GUD login + consent" good={runtime.mcpEnabled} />
+            <StatusRow label="Sign-in" value="Your GUD account + consent" good={runtime.mcpEnabled} />
             <StatusRow label="CRM updates" value={mcpConnections.some((connection) => connection.scopes.includes("gud:write")) ? "Write connection active" : "Connect for write access"} good={mcpConnections.some((connection) => connection.scopes.includes("gud:write"))} />
             <StatusRow label="Research writes" value="Held for human review" good />
           </div>
+          <div className="coworker-capabilities" aria-label="AI coworker capabilities"><span><ListChecks size={15} /><strong>Know what needs attention</strong></span><span><MessageSquareText size={15} /><strong>Capture confirmed updates</strong></span><span><Compass size={15} /><strong>Return sourced research</strong></span></div>
           <div className="coworker-endpoint">
             <code>{runtime.mcpEndpoint}</code>
-            <button className="btn btn-quiet" type="button" disabled={!runtime.mcpEnabled} onClick={copyMcpEndpoint}>{mcpEndpointCopied ? <Check size={14} /> : <Copy size={14} />}{mcpEndpointCopied ? "Copied" : "Copy endpoint"}</button>
+            <div className="coworker-endpoint-actions"><button className="btn btn-primary" type="button" disabled={!runtime.mcpEnabled} onClick={copyMcpEndpoint}>{mcpEndpointCopied ? <Check size={14} /> : <Copy size={14} />}{mcpEndpointCopied ? "Endpoint copied" : "Copy endpoint"}</button><button className="btn btn-quiet" type="button" onClick={copyMcpStarterPrompt}>{mcpPromptCopied ? <Check size={14} /> : <Sparkles size={14} />}{mcpPromptCopied ? "Prompt copied" : "Copy first prompt"}</button></div>
           </div>
           <details className="coworker-setup-guide">
-            <summary>How to connect Codex or ChatGPT <ChevronDown size={15} /></summary>
+            <summary>Connect in a few minutes <ChevronDown size={15} /></summary>
             <div>
-              <section><b>1</b><span><strong>Codex desktop or IDE</strong><small>Open Settings → MCP servers → Add server. Choose Streamable HTTP, paste the endpoint, save and restart. Select Authenticate and approve the GUD connection.</small></span></section>
-              <section><b>2</b><span><strong>ChatGPT Work</strong><small>Enable developer mode, then use Settings → Apps → Create. Paste the endpoint, scan the tools and complete GUD’s sign-in and permission screen. Choose read & write when you want ChatGPT to make updates. Availability depends on your plan and workspace controls.</small></span></section>
-              <section><b>3</b><span><strong>Try one checked update</strong><small>Ask: “Show what needs attention, then set a next action for the opportunity I choose.” GUD makes the model read first and returns the updated record.</small></span></section>
-              <section><b>4</b><span><strong>Refresh after an upgrade</strong><small>In ChatGPT, refresh or rescan the app’s actions after GUD adds tools. Existing read-only grants must be disconnected here and reconnected before they can write.</small></span></section>
-              <p><ShieldCheck size={14} />Connect each GUD instance separately. New connections request bounded read & write access and show the exact impact before consent; a client may still request read-only access.</p>
+              <section><b>1</b><span><strong>Copy the endpoint above</strong><small>This is the only server address your coworker needs. MCP access uses your GUD login—no OpenAI API key is required for the connection.</small></span></section>
+              <section><b>2</b><span><strong>Add a remote MCP app</strong><small>In ChatGPT, enable developer mode and use Settings → Apps → Create; paste the endpoint and Scan Tools. In Codex or another client, add it as a Streamable HTTP MCP server.</small></span></section>
+              <section><b>3</b><span><strong>Sign in and approve</strong><small>Complete GUD’s sign-in and consent screen. Choose read & write when you want checked updates, or read-only for review.</small></span></section>
+              <section><b>4</b><span><strong>Use the first prompt</strong><small>GUD starts with a sales brief, reads the exact record before changing it, and returns a clear receipt after every write.</small></span></section>
+              <p><ShieldCheck size={14} />Connect each GUD instance separately. Refresh or rescan actions after an upgrade. Existing read-only grants must be disconnected and reconnected before they can write.</p>
             </div>
           </details>
           {mcpConnections.length ? <div className="coworker-connections">
             {mcpConnections.map((connection) => <span key={connection.clientId}><Bot size={16} /><span><strong>{connection.name}</strong><small>{connection.scopes.includes("gud:write") ? "Read & write" : "Read-only"} · connected {new Date(connection.createdAt).toLocaleDateString("en-GB")}</small></span><button className="btn btn-quiet btn-compact" type="button" disabled={mcpRevokePending !== null} onClick={() => revokeMcpConnection(connection.clientId)}>{mcpRevokePending === connection.clientId ? <LoaderCircle className="spin" size={13} /> : <X size={13} />}Disconnect</button></span>)}
           </div> : null}
           {mcpMessage ? <small className="settings-hint">{mcpMessage}</small> : null}
-          <p className="settings-hint">{runtime.mcpEnabled ? "Add this endpoint once, sign in here and approve the permission screen. GUD exposes named CRM actions—not raw database access—and records every write against your user." : runtime.storageMode === "postgres" ? "Set MCP_ENABLED=true in the private server environment, redeploy, then return here to copy the endpoint." : "Remote MCP stays off in local SQLite and demo workspaces. Use a PostgreSQL deployment for separate logins and revocable connections."}</p>
+          <p className="settings-hint">{runtime.mcpEnabled ? <>GUD exposes focused CRM actions—not raw database access—and audit-logs every write against your user. <a href="https://github.com/paolodit/gud-crm/blob/main/docs/MCP.md" target="_blank" rel="noreferrer">Open the complete setup and prompt guide <ExternalLink size={12} /></a></> : runtime.storageMode === "postgres" ? "Set MCP_ENABLED=true in the private server environment, redeploy, then return here to copy the endpoint." : "Remote MCP stays off in local SQLite and demo workspaces. Use a PostgreSQL deployment for separate logins and revocable connections."}</p>
         </article>
 
         <article className="surface settings-card ai-settings-card"><div className="settings-icon settings-icon-ai"><KeyRound /></div><div><h2>AI coach</h2><p>Provider, server-side key and workspace access</p></div><div className="status-list"><StatusRow label="Provider" value={runtime.aiProvider === "openai" ? "OpenAI Responses API" : "Local deterministic coach"} good={runtime.aiEnabled} /><StatusRow label="OpenAI key" value={runtime.aiKeyConfigured ? "Configured on server" : "Not configured"} good={runtime.aiKeyConfigured || runtime.aiProvider === "local"} /><StatusRow label="Model" value={runtime.aiProvider === "openai" ? runtime.aiModel : "No API model used"} good /><StatusRow label="Workspace AI" value={workspaceAiEnabled && runtime.aiEnabled ? "Enabled" : "Disabled"} good={workspaceAiEnabled && runtime.aiEnabled} /></div><div className="settings-ai-control"><button className="btn btn-quiet" type="button" disabled={aiPending || !runtime.aiEnabled || currentRole !== "admin"} onClick={toggleAi}><Sparkles size={14} />{aiPending ? "Saving..." : workspaceAiEnabled ? "Disable AI coach" : "Enable AI coach"}</button><button className="btn btn-primary" type="button" disabled={currentRole !== "admin"} onClick={() => setAiSetupOpen((value) => !value)}><KeyRound size={14} />{aiSetupOpen ? "Close setup" : "Configure OpenAI"}</button>{currentRole !== "admin" ? <small>Admin access is required to change AI settings.</small> : aiMessage ? <small>{aiMessage}</small> : null}</div>{aiSetupOpen && currentRole === "admin" ? <div className="ai-setup-panel"><div className="ai-setup-step"><b>1</b><span><strong>Create a project API key</strong><small>Use a dedicated project key with its own spend controls.</small></span><a className="btn btn-quiet" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Open API keys <ExternalLink size={13} /></a></div><div className="ai-setup-step"><b>2</b><span><strong>Add it to the server environment</strong><small>Use <code>.env.local</code> locally, or your VPS/CapRover secret variables in production.</small></span></div><code className="ai-env-block">AI_PROVIDER=openai{"\n"}AI_MODEL={runtime.aiModel}{"\n"}OPENAI_API_KEY=sk-proj-your-server-side-key</code><div className="ai-setup-actions"><button className="btn btn-quiet" type="button" onClick={copyAiConfiguration}>{aiConfigCopied ? <Check size={14} /> : <Copy size={14} />}{aiConfigCopied ? "Copied" : "Copy configuration"}</button><span><ShieldCheck size={14} />Never paste a live key into a browser form or commit it to Git. Restart the app after changing server variables.</span></div></div> : null}</article>
