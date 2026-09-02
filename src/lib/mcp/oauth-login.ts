@@ -9,11 +9,19 @@ export function requireMcpConsentPrompt(
   path: string,
   query: Record<string, unknown> | undefined,
 ) {
-  if (path !== "/mcp/authorize") return query;
+  if (!path.endsWith("/mcp/authorize")) return query;
   const prompt = typeof query?.prompt === "string" ? query.prompt : "";
   const prompts = new Set(prompt.split(/\s+/).filter(Boolean));
   prompts.add("consent");
   return { ...query, prompt: [...prompts].join(" ") };
+}
+
+export function mcpConsentHookContext(
+  path: string,
+  query: Record<string, unknown> | undefined,
+) {
+  const nextQuery = requireMcpConsentPrompt(path, query);
+  return nextQuery === query ? undefined : { context: { query: nextQuery } };
 }
 
 export function getMcpAuthorizationResumeUrl(search: string) {
@@ -22,6 +30,10 @@ export function getMcpAuthorizationResumeUrl(search: string) {
     return null;
   }
   if (REQUIRED_AUTHORIZATION_PARAMETERS.some((name) => !params.get(name))) return null;
+
+  const prompts = new Set((params.get("prompt") ?? "").split(/\s+/).filter(Boolean));
+  prompts.add("consent");
+  params.set("prompt", [...prompts].join(" "));
 
   return `/api/auth/mcp/authorize?${params.toString()}`;
 }
