@@ -153,6 +153,19 @@ All three integrations are off or local-first by default:
 
 Nothing is auto-sent, auto-scheduled or silently promoted into the pipeline. External research is treated as untrusted evidence and remains subject to human review.
 
+### Connect an AI assistant to your GUD
+
+Every installed GUD workspace exposes its own endpoint at `https://your-gud-domain.example/mcp`. Add that URL as a separate OAuth app in ChatGPT, Codex or another compatible MCP client and request these scopes:
+
+```text
+gud:read
+gud:write
+```
+
+One connection belongs to one GUD domain and database. If you run production, a second business workspace and a demo, create three clearly named connections; they use the same GUD code but cannot see one another's records. No custom source files are needed for each instance—only its own domain, PostgreSQL database, environment variables and user accounts.
+
+Colleagues can connect the same endpoint with their own GUD login and approve their own revocable access. On managed ChatGPT workspaces, an administrator may also need to make the app and its write actions available to the member's role. See [MCP connections: multiple instances and teams](docs/MCP.md#multiple-gud-instances-and-teams) for setup, sharing and upgrade guidance.
+
 Configuration examples live in [`.env.example`](.env.example). The fuller contracts are documented in [Security](docs/SECURITY.md) and the [CapRover MCP section](docs/CAPROVER.md#3-configure-runtime-variables).
 
 ## Development

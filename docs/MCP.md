@@ -76,7 +76,29 @@ OpenAI's current setup and availability notes are maintained in [Developer mode 
 
 Create a **Streamable HTTP** MCP server using the same `/mcp` endpoint. Save, authenticate in the browser and approve the GUD permission screen. The exact menu differs by client, but the OAuth flow and scopes are the same.
 
-Connect every GUD deployment separately. A connection to a demo instance cannot see or update a private production instance.
+## Multiple GUD instances and teams
+
+An MCP connection belongs to exactly one GUD origin and its database. Connect every deployment separately; a demo connection cannot see or update production.
+
+| Installation | Example endpoint | Suggested client name |
+| --- | --- | --- |
+| Main workspace | `https://crm.example.com/mcp` | `GUD — Main` |
+| Another business or product | `https://sales.example.net/mcp` | `GUD — Product team` |
+| Demo or training | `https://demo.example.com/mcp` | `GUD — Demo` |
+
+All installations run the same repository release. They do **not** need custom source files. Each one needs its own canonical domain, PostgreSQL database, environment variables and users; set `MCP_ENABLED=true` and deploy the current release to each server before connecting it.
+
+For another person on the same GUD installation:
+
+1. give them a normal GUD user account with the appropriate role;
+2. give them the instance's `/mcp` URL;
+3. have them create or connect the app and sign in with **their own** GUD account;
+4. have them approve the requested read/write scope; and
+5. enable the app and intended actions for their ChatGPT workspace role where managed-workspace controls apply.
+
+Do not share one person's OAuth grant. GUD resolves every request to the authenticated user and current organisation, and each user can revoke their own connection in Settings. In ChatGPT, app availability, allowed actions and the GUD OAuth identity are separate controls.
+
+When GUD is upgraded, deploy the same tested commit or image to every instance. Users normally only need to refresh the app's actions after tools change. Reconnect only when OAuth scopes or authorization behavior changed, or when the existing grant is stale. Set `GUD_VERSION` to the release or commit label so administrators can confirm the running version in GUD Settings.
 
 ## Built-in coworker workflows
 
