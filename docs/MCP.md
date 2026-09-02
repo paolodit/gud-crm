@@ -170,6 +170,10 @@ For deployment details, use [Docker](DOCKER.md), [CapRover](CAPROVER.md) or [VPS
 
 ## Troubleshooting
 
+**ChatGPT lists GUD tools but reports `Unknown tool` for a `gud.*` name**
+
+Deploy GUD MCP server version 0.3.1 or later, then press **Refresh** on the GUD app in ChatGPT. Current releases accept both GUD's canonical tool names (such as `update_opportunity`) and the namespaced forms some clients send back (such as `gud.update_opportunity`). Older releases could advertise a client-namespaced name that the dispatcher did not recognise.
+
 **The connection can read but cannot update**
 
 The current OAuth grant is read-only. Disconnect it in GUD Settings, reconnect, and approve read & write access.
