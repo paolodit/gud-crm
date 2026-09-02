@@ -1,8 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { getMcpAuthorizationResumeUrl } from "@/lib/mcp/oauth-login";
+import { getMcpAuthorizationResumeUrl, requireMcpConsentPrompt } from "@/lib/mcp/oauth-login";
 
 describe("MCP OAuth sign-in return", () => {
+  it("requires explicit consent for every MCP authorization grant", () => {
+    expect(requireMcpConsentPrompt("/mcp/authorize", {
+      scope: "gud:read gud:write",
+    })).toEqual({
+      scope: "gud:read gud:write",
+      prompt: "consent",
+    });
+    expect(requireMcpConsentPrompt("/mcp/authorize", {
+      prompt: "login",
+      scope: "gud:read gud:write",
+    })).toEqual({
+      prompt: "login consent",
+      scope: "gud:read gud:write",
+    });
+  });
+
+  it("does not alter non-MCP authentication requests", () => {
+    const query = { callbackURL: "/pipeline" };
+    expect(requireMcpConsentPrompt("/sign-in/email", query)).toBe(query);
+  });
+
   it("resumes the original PKCE authorization request after sign-in", () => {
     const destination = getMcpAuthorizationResumeUrl(
       "?response_type=code&client_id=chatgpt-client&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector%2Foauth%2Fcallback&scope=gud%3Aread+gud%3Awrite+openid+offline_access&code_challenge=challenge&code_challenge_method=S256&resource=https%3A%2F%2Fcrm.example.com%2Fmcp&state=oauth-state",
