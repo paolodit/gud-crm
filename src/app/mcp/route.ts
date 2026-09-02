@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { createGudMcpServer } from "@/lib/mcp/server";
 import { getMcpActor } from "@/lib/mcp/service";
+import { normaliseGudMcpRequest } from "@/lib/mcp/tool-names";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,8 @@ const authenticatedHandler = withMcpAuth(auth, async (request, session) => {
   });
   const server = createGudMcpServer({ actor, scopes, clientId: session.clientId });
   await server.connect(transport);
-  const response = await transport.handleRequest(request, {
+  const mcpRequest = await normaliseGudMcpRequest(request);
+  const response = await transport.handleRequest(mcpRequest, {
     authInfo: {
       token: session.accessToken,
       clientId: session.clientId,

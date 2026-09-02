@@ -85,26 +85,7 @@ const salesBriefOutput = z.object({
 });
 const genericToolOutputSchema = { result: z.unknown() } as const;
 
-export const GUD_MCP_TOOL_NAMES = [
-  "describe_workspace",
-  "get_sales_brief",
-  "list_opportunities",
-  "get_opportunity",
-  "search_companies",
-  "submit_research_results",
-  "create_opportunity",
-  "update_company",
-  "save_contact",
-  "update_opportunity",
-  "set_next_action",
-  "complete_task",
-  "log_activity",
-  "archive_opportunity",
-  "restore_opportunity",
-  "archive_company",
-  "restore_company",
-  "find_work_email",
-] as const;
+export { GUD_MCP_TOOL_NAMES } from "@/lib/mcp/tool-names";
 
 export function createGudMcpServer(context: {
   actor: McpActor;
@@ -112,7 +93,7 @@ export function createGudMcpServer(context: {
   clientId: string;
 }) {
   const server = new McpServer(
-    { name: "gud-crm", version: "0.3.0" },
+    { name: "gud-crm", version: "0.3.1" },
     {
       instructions:
         "GUD is the sales system of record. Start with get_sales_brief for an at-a-glance view, then read the exact opportunity before writing. After a write, report exactly what changed, the returned record ID and the sensible next step. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, remove do-not-contact protection, archive records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
