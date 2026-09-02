@@ -7,7 +7,7 @@ import { admin, mcp } from "better-auth/plugins";
 import { db } from "@/db";
 import { authSchema } from "@/db/schema";
 import { env } from "@/lib/env";
-import { requireMcpConsentPrompt } from "@/lib/mcp/oauth-login";
+import { mcpConsentHookContext } from "@/lib/mcp/oauth-login";
 import { GUD_MCP_DEFAULT_SCOPE, GUD_MCP_DEFAULT_SCOPES } from "@/lib/mcp/scopes";
 
 export const auth = betterAuth({
@@ -47,9 +47,7 @@ export const auth = betterAuth({
     },
   },
   hooks: {
-    before: createAuthMiddleware(async (context) => {
-      context.query = requireMcpConsentPrompt(context.path, context.query);
-    }),
+    before: createAuthMiddleware(async (context) => mcpConsentHookContext(context.path, context.query)),
   },
   user: {
     additionalFields: {
