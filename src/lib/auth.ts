@@ -1,4 +1,5 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
 import { nextCookies } from "better-auth/next-js";
 import { admin, mcp } from "better-auth/plugins";
@@ -6,6 +7,7 @@ import { admin, mcp } from "better-auth/plugins";
 import { db } from "@/db";
 import { authSchema } from "@/db/schema";
 import { env } from "@/lib/env";
+import { requireMcpConsentPrompt } from "@/lib/mcp/oauth-login";
 import { GUD_MCP_DEFAULT_SCOPE, GUD_MCP_DEFAULT_SCOPES } from "@/lib/mcp/scopes";
 
 export const auth = betterAuth({
@@ -43,6 +45,11 @@ export const auth = betterAuth({
       "/sign-in/email": { window: 60, max: 5 },
       "/request-password-reset": { window: 300, max: 3 },
     },
+  },
+  hooks: {
+    before: createAuthMiddleware(async (context) => {
+      context.query = requireMcpConsentPrompt(context.path, context.query);
+    }),
   },
   user: {
     additionalFields: {

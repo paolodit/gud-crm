@@ -58,10 +58,11 @@ It is deterministic and read-only. It does not use model credits and cannot alte
 
 1. In GUD, open **Settings → Connect an AI coworker** and copy the endpoint.
 2. In ChatGPT, enable developer mode for your supported Business, Enterprise or Edu workspace.
-3. Open **Settings → Apps → Create**, paste the endpoint and select **Scan Tools**.
-4. Sign in with your normal GUD account.
-5. Review GUD's permission screen and approve the connection.
-6. Try: `Review my pipeline, show what needs attention, and wait for me to choose a record before changing anything.`
+3. Open **Settings → Apps → Create**, paste the endpoint, choose OAuth and add these **Base scopes**, one per line: `gud:read` and `gud:write`.
+4. Click **Create**. ChatGPT discovers the OAuth endpoints and tools as part of creation; some interfaces do not show a separate **Scan Tools** button.
+5. Sign in with your normal GUD account, then approve **read & write** on GUD's permission screen.
+6. Set GUD's ChatGPT action permissions to **Allow all actions** (or approve individual actions when prompted).
+7. Try: `Review my pipeline, show what needs attention, and wait for me to choose a record before changing anything.`
 
 New connections request bounded read-and-write access so ChatGPT can perform the workflows above. A client can still request only `gud:read`. Existing read-only connections never silently gain write access: disconnect them in GUD Settings, reconnect and approve the new permission screen.
 
@@ -180,7 +181,7 @@ Deploy a release containing the OAuth sign-in continuation fix, then recreate th
 
 **The connection can read but cannot update**
 
-The current OAuth grant is read-only. Disconnect it in GUD Settings, reconnect, and approve read & write access.
+The current OAuth grant may predate GUD's explicit-consent enforcement. Deploy the current release, disconnect the app in GUD Settings, reconnect with both Base scopes (`gud:read` and `gud:write`), and approve **read & write** on GUD's permission screen. Settings should then show the connection as **Read & write**.
 
 **ChatGPT cannot see a newly deployed tool**
 
