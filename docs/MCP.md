@@ -174,6 +174,10 @@ For deployment details, use [Docker](DOCKER.md), [CapRover](CAPROVER.md) or [VPS
 
 Deploy GUD MCP server version 0.3.1 or later, then press **Refresh** on the GUD app in ChatGPT. Current releases accept both GUD's canonical tool names (such as `update_opportunity`) and the namespaced forms some clients send back (such as `gud.update_opportunity`). Older releases could advertise a client-namespaced name that the dispatcher did not recognise.
 
+**GUD returns to the sign-in screen instead of showing consent**
+
+Deploy a release containing the OAuth sign-in continuation fix, then recreate the ChatGPT app. GUD must retain ChatGPT's authorization and PKCE parameters across password sign-in so it can continue to the read/write consent screen.
+
 **The connection can read but cannot update**
 
 The current OAuth grant is read-only. Disconnect it in GUD Settings, reconnect, and approve read & write access.
