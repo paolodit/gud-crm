@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
 import { BrandLogo } from "@/components/brand-logo";
+import { getMcpAuthorizationResumeUrl } from "@/lib/mcp/oauth-login";
 
 export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demoMode: boolean; localMode: boolean; passwordResetEnabled: boolean }) {
   const router = useRouter();
@@ -36,6 +37,12 @@ export function SignInForm({ demoMode, localMode, passwordResetEnabled }: { demo
     if (result.error) {
       setError(result.error.message ?? "Sign-in failed.");
       setPending(false);
+      return;
+    }
+
+    const oauthDestination = getMcpAuthorizationResumeUrl(window.location.search);
+    if (oauthDestination) {
+      window.location.assign(oauthDestination);
       return;
     }
 
