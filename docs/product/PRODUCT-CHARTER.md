@@ -11,7 +11,7 @@ Private organisations are deployments, not source-code editions. Their company n
 
 ## Product boundary
 
-GUD begins with a potential prospect and ends with a won opportunity and a clear client handoff. It does not manage project delivery, invoicing, support, renewals or the wider customer lifecycle.
+GUD begins with a potential prospect and carries a won opportunity into a lightweight Live projects board. Delivery stage, next milestone, due date and handover notes remain attached to the same relationship. It does not replace detailed project scheduling, invoicing, support or renewal systems.
 
 > A focused sales workspace that helps businesses understand their prospects, choose the next action and turn opportunities into revenue—without the complexity of a traditional CRM.
 
@@ -29,6 +29,7 @@ Research, enrichment and AI support those answers. They are not the centre of th
 - Keep one company and its people connected to several possible pitches.
 - Treat the next action as first-class data.
 - Keep pipeline progress separate from activity history.
+- Keep delivery progress separate from sales status; never duplicate contacts or activity at handoff.
 - Show commercial value without pretending forecasts are facts.
 - Require human judgement before outreach, enrichment writes or AI-derived actions.
 - Preserve a clean export and client handoff at the end of the sales process.

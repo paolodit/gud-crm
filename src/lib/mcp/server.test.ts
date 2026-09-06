@@ -40,7 +40,7 @@ describe("GUD MCP server", () => {
     }));
     expect(result.tools.find((tool) => tool.name === "complete_task")?.annotations?.idempotentHint).toBe(true);
     expect(result.tools.find((tool) => tool.name === "find_work_email")?.annotations?.openWorldHint).toBe(true);
-    expect(result.tools.filter((tool) => tool.annotations?.readOnlyHint === false)).toHaveLength(13);
+    expect(result.tools.filter((tool) => tool.annotations?.readOnlyHint === false)).toHaveLength(14);
   });
 
   it("publishes read-first workflows for common sales jobs", async () => {
@@ -86,6 +86,15 @@ describe("GUD MCP server", () => {
       "manage_pipeline",
       "send_outreach",
     ]));
+  });
+
+  it("requires write scope for delivery updates as well as sales updates", async () => {
+    const { client } = await connectedServer(["gud:read"]);
+    const result = await client.callTool({ name: "update_live_project", arguments: {
+      opportunityId: "00000000-0000-4000-8000-000000000001", delivery: { stage: "client_review" },
+    } });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining("read-only access") })]));
   });
 });
 

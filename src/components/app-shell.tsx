@@ -7,6 +7,7 @@ import {
   ListChecks,
   LogOut,
   Heart,
+  Rocket,
   PanelLeftClose,
   PanelLeftOpen,
   Search,
@@ -24,6 +25,7 @@ import { BrandLogo } from "@/components/brand-logo";
 
 const coreNavItems = [
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
+  { href: "/live", label: "Live projects", icon: Rocket },
   { href: "/my-work", label: "Today", icon: ListChecks },
 ];
 
@@ -85,8 +87,8 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <span key={href} style={{ display: "contents" }}>
-                {index === 2 ? <span className="nav-spacer" aria-hidden="true" /> : null}
-                <Link href={href} aria-current={active ? "page" : undefined}>
+                {index === 3 ? <span className="nav-spacer" aria-hidden="true" /> : null}
+                <Link href={href} aria-label={label} title={sidebarCollapsed ? label : undefined} aria-current={active ? "page" : undefined}>
                   <Icon size={18} aria-hidden="true" />
                   <span>{label}</span>
                 </Link>
@@ -94,12 +96,12 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
             );
           })}
           <span className="nav-spacer" aria-hidden="true" />
-          <Link href="/playbook" aria-current={pathname === "/playbook" ? "page" : undefined}>
+          <Link href="/playbook" aria-label="Sales guide" title={sidebarCollapsed ? "Sales guide" : undefined} aria-current={pathname === "/playbook" ? "page" : undefined}>
             <Sparkles size={18} aria-hidden="true" />
             <span>Sales guide</span>
           </Link>
           {member.role === "admin" ? (
-            <Link href="/settings" aria-current={pathname === "/settings" ? "page" : undefined}>
+            <Link href="/settings" aria-label="Settings" title={sidebarCollapsed ? "Settings" : undefined} aria-current={pathname === "/settings" ? "page" : undefined}>
               <Settings size={18} aria-hidden="true" />
               <span>Settings</span>
             </Link>
@@ -127,7 +129,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
           </div>
         </div>
       </aside>
-      <main className="page-main">{children}</main>
+      <main id="main-content" className="page-main">{children}</main>
     </div>
   );
 }

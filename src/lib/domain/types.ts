@@ -133,6 +133,7 @@ export type TaskSummary = {
 
 export type OpportunitySummary = {
   id: string;
+  delivery?: import("./delivery").DeliveryDetails;
   isExample?: boolean;
   stageId: string;
   position: number;

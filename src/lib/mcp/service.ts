@@ -1,4 +1,6 @@
-import { and, asc, eq, ilike, isNull, max, ne, or } from "drizzle-orm";
+import { and, asc, eq, ilike, isNull, max, ne, or, sql, lt } from "drizzle-orm";
+import { deliveryDetails, deliveryStages } from "@/lib/domain/delivery";
+import { env } from "@/lib/env";
 
 import { db } from "@/db";
 import {
@@ -159,8 +161,9 @@ export async function getMcpActor(userId: string): Promise<McpActor | null> {
 }
 
 export async function describeWorkspace(actor: McpActor) {
-  const snapshot = await getBoardSnapshot(actor.organisationId);
+  const snapshot = await getBoardSnapshot(actor.organisationId, { opportunityIds: [], includeHistory: false });
   return {
+    deliveryStages,
     edition: snapshot.edition,
     pipeline: snapshot.pipeline,
     offers: snapshot.offers.filter((offer) => offer.active).map((offer) => ({
@@ -207,45 +210,52 @@ export async function listOpportunities(
     needsAttention?: boolean;
     includeArchived?: boolean;
     limit?: number;
+    offset?: number;
+    terminalType?: "won";
   },
 ) {
-  const snapshot = await getBoardSnapshot(actor.organisationId);
-  const query = filters.query?.trim().toLowerCase();
-  const stageId = filters.stageId
-    ?? snapshot.stages.find((stage) => stage.name.toLowerCase() === filters.stageName?.trim().toLowerCase())?.id;
-  if (filters.stageName && !stageId) {
-    throw new Error("That stage name is not available. Use describe_workspace to choose a current stage.");
-  }
-  const now = Date.now();
-  return snapshot.opportunities
-    .filter((opportunity) => {
-      if (!filters.includeArchived && (opportunity.archivedAt || opportunity.company.archivedAt)) return false;
-      if (query && ![
-        opportunity.company.name,
-        opportunity.title,
-        opportunity.offer?.name,
-        ...opportunity.contacts.flatMap((contact) => [contact.name, contact.title]),
-      ].some((value) => value?.toLowerCase().includes(query))) return false;
-      if (stageId && opportunity.stageId !== stageId) return false;
-      if (filters.ownerId && opportunity.owner?.id !== filters.ownerId) return false;
-      if (filters.offerId && opportunity.offer?.id !== filters.offerId) return false;
-      if (filters.needsAttention) {
-        const due = opportunity.nextActionAt ? new Date(opportunity.nextActionAt).getTime() : null;
-        if (!(due === null || due < now || opportunity.temperature === "at_risk")) return false;
-      }
-      return true;
-    })
-    .slice(0, filters.limit ?? 50)
-    .map((opportunity) => opportunityListItem(opportunity, snapshot.stages));
+  const needle = filters.query?.trim();
+  const pattern = `%${(needle ?? "").replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const rows = await db.select({ id: opportunities.id }).from(opportunities)
+    .innerJoin(companies, eq(opportunities.companyId, companies.id))
+    .innerJoin(stages, eq(opportunities.stageId, stages.id))
+    .innerJoin(pipelines, eq(opportunities.pipelineId, pipelines.id))
+    .leftJoin(offers, eq(opportunities.offerId, offers.id))
+    .where(and(
+      eq(opportunities.organisationId, actor.organisationId), eq(pipelines.active, true),
+      sql`${opportunities.pipelineId} = (select p.id from ${pipelines} p where p.organisation_id = ${actor.organisationId} and p.active = true order by p.created_at asc limit 1)`,
+      filters.includeArchived ? undefined : and(isNull(opportunities.archivedAt), isNull(companies.archivedAt)),
+      filters.stageId ? eq(stages.id, filters.stageId) : undefined,
+      filters.stageName ? sql`lower(${stages.name}) = ${filters.stageName.trim().toLowerCase()}` : undefined,
+      filters.terminalType ? eq(stages.terminalType, filters.terminalType) : undefined,
+      filters.ownerId ? eq(opportunities.ownerId, filters.ownerId) : undefined,
+      filters.offerId ? eq(opportunities.offerId, filters.offerId) : undefined,
+      filters.needsAttention ? or(isNull(opportunities.nextActionAt), lt(opportunities.nextActionAt, new Date()), eq(opportunities.temperature, "at_risk")) : undefined,
+      needle ? or(ilike(companies.name, pattern), ilike(opportunities.title, pattern), ilike(offers.name, pattern), sql`exists (select 1 from ${opportunityContacts} oc inner join ${contacts} c on c.id = oc.contact_id where oc.opportunity_id = ${opportunities.id} and c.organisation_id = ${actor.organisationId} and (c.name ilike ${pattern} or c.title ilike ${pattern}))`) : undefined,
+    )).orderBy(asc(opportunities.position), asc(opportunities.id)).limit(filters.limit ?? 50).offset(filters.offset ?? 0);
+  const snapshot = await getBoardSnapshot(actor.organisationId, { opportunityIds: rows.map((row) => row.id), includeHistory: false });
+  return rows.flatMap((row) => {
+    const opportunity = snapshot.opportunities.find((item) => item.id === row.id);
+    return opportunity ? [{ ...opportunityListItem(opportunity, snapshot.stages), delivery: deliveryDetails(opportunity.delivery), url: `${env.NEXT_PUBLIC_APP_URL}/pipeline?opportunity=${opportunity.id}` }] : [];
+  });
 }
 
 export async function getOpportunity(actor: McpActor, opportunityId: string) {
-  const snapshot = await getBoardSnapshot(actor.organisationId);
-  const opportunity = snapshot.opportunities.find((item) => item.id === opportunityId);
+  const result = await getOpportunities(actor, [opportunityId]);
+  const opportunity = result.records[0];
   if (!opportunity) throw new Error("Opportunity not found in this workspace.");
+  return opportunity;
+}
+
+export async function getOpportunities(actor: McpActor, opportunityIds: string[]) {
+  const ids = [...new Set(opportunityIds)].slice(0, 10);
+  const snapshot = await getBoardSnapshot(actor.organisationId, { opportunityIds: ids });
+  const records = snapshot.opportunities.map((opportunity) => {
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
   return {
     ...opportunityListItem(opportunity, snapshot.stages),
+    delivery: deliveryDetails(opportunity.delivery),
+    url: `${env.NEXT_PUBLIC_APP_URL}/pipeline?opportunity=${opportunity.id}`,
     company: opportunity.company,
     outreachAngle: opportunity.outreachAngle,
     expectedValue: opportunity.expectedValue ?? null,
@@ -257,6 +267,8 @@ export async function getOpportunity(actor: McpActor, opportunityId: string) {
     recentActivities: opportunity.activities.slice(0, 20),
     terminalType: stage?.terminalType ?? "open",
   };
+  });
+  return { records, missingIds: ids.filter((id) => !records.some((item) => item.id === id)) };
 }
 
 export async function searchCompanies(actor: McpActor, query: string, limit = 25, includeArchived = false) {
@@ -290,7 +302,7 @@ export async function getSalesBrief(
   actor: McpActor,
   options: { scope?: "mine" | "team"; ownerId?: string; horizonDays?: number; limit?: number },
 ) {
-  const snapshot = await getBoardSnapshot(actor.organisationId);
+  const snapshot = await getBoardSnapshot(actor.organisationId, { includeHistory: false });
   const generatedAt = new Date(snapshot.generatedAt);
   const horizonAt = new Date(generatedAt.getTime() + (options.horizonDays ?? 7) * 86_400_000);
   const scope = options.scope ?? "mine";

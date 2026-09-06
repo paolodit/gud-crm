@@ -344,6 +344,7 @@ export const opportunities = pgTable(
     closedReason: text("closed_reason"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    delivery: jsonb("delivery").$type<import("@/lib/domain/delivery").DeliveryDetails>(),
     importMetadata: jsonb("import_metadata").$type<Record<string, unknown>>(),
     ...timestamps,
   },

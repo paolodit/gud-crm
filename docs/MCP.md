@@ -32,6 +32,8 @@ There is no separate MCP package to install: the server ships inside GUD and use
 | Understand the workspace | Describe offers, stages, members and activity types |
 | Start the day | Get an owner-scoped sales brief with weighted value, stage balance, attention items and upcoming actions |
 | Review sales work | List and inspect opportunities; search organisations |
+| Review several records efficiently | Read up to ten known opportunities in one `get_opportunities` call |
+| Track delivery | List won work with `list_live_projects`; change its milestone, due date, notes or delivery stage with `update_live_project` |
 | Capture research | Submit cited account/contact research into the human-review target stage |
 | Create and shape work | Create opportunities; update opportunity and organisation details |
 | Maintain relationships | Add or update a contact while preserving provenance and do-not-contact metadata |
@@ -102,20 +104,57 @@ When GUD is upgraded, deploy the same tested commit or image to every instance. 
 
 ## Built-in coworker workflows
 
-Compatible clients can discover two reusable prompts and two resources:
+Compatible clients can discover three reusable prompts and two resources:
 
 | Item | Use |
 | --- | --- |
 | Prompt `review_my_sales` | Starts with the sales brief, limits the first view to three attention items and waits before writing |
 | Prompt `capture_sales_update` | Turns natural language into a checked activity and next action without guessing missing facts |
+| Prompt `research_for_gud` | Finds cited research and returns it for human review |
 | Resource `gud://workspace/context` | Current offers, stages, activity types, team and safety guardrails |
 | Resource `gud://workspace/workflows` | Recommended read-first sequences for review, updates, research and enrichment |
 
 Tool calls return both human-readable text and machine-readable structured content. Structured responses use stable record IDs; writes also return an explicit saved-record receipt. This makes chained requests reliable without exposing SQL or database credentials.
 
+### Efficient reads and live-project updates
+
+MCP server 0.4.0 adds bounded batch reads and delivery tools. Refresh the tool list after upgrading; these tools use the existing `gud:read` and `gud:write` permissions. OAuth consent is not broadened automatically.
+
+- `describe_workspace` loads configuration without opportunity histories. It includes the delivery stage IDs.
+- `list_opportunities` filters in PostgreSQL before loading the matching records. Use `query`, `stageId` / `stageName`, `ownerId`, `offerId` or `needsAttention`. `limit` defaults to 50 (maximum 100); `offset` starts at 0. Increase offset by the previous page size until fewer than `limit` records are returned. Lists and briefs skip activity and AI-history queries.
+- `get_opportunity` loads the requested record only. `get_opportunities` accepts `{ "opportunityIds": ["<uuid>", "<uuid>"] }` for up to ten records in one request. Its result contains `records` and `missingIds`, with contacts, open tasks, up to 20 recent activities, delivery details and record links. Unknown IDs do not reveal records from another workspace.
+- `list_live_projects` lists unarchived won opportunities, including their delivery details. It accepts `query`, `ownerId`, `limit` and `offset`.
+- `update_live_project` requires write access and an active won opportunity. It accepts a partial delivery object: omitted fields remain unchanged, `dueDate: null` clears the date, and an empty string clears milestone or notes. It never changes sales status or sends messages.
+
+Example delivery update after reading the record and confirming the user's intent:
+
+```json
+{
+  "opportunityId": "<uuid from GUD>",
+  "delivery": {
+    "stage": "client_review",
+    "nextMilestone": "Approve the homepage designs",
+    "dueDate": "2026-10-16"
+  }
+}
+```
+
+Valid delivery stage IDs: `kickoff`, `in_progress`, `client_review`, `on_hold`, `complete`. Due dates use `YYYY-MM-DD`. The saved response returns the opportunity ID and complete delivery details; all writes are audited. There is no response cache that could mix tenants or conceal a recent write. Request latency still depends on hosting, database size and network conditions.
+
 ## Useful requests
 
 Start with a read, then name the intended change:
+
+```text
+Review my live projects. Show what's waiting for client feedback and the next
+milestones. Read the three projects we choose in one batch. Don't change anything yet.
+```
+
+```text
+For the won project we just reviewed, move delivery to Client review and set
+the next milestone to “Approve designs” on 16 October 2026. Keep sales as Won
+and show me the saved delivery details.
+```
 
 ```text
 Give me my seven-day sales brief. Separate overdue work from actions due soon,

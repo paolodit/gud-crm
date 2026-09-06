@@ -1,162 +1,101 @@
 "use client";
 
-import { LoaderCircle, Mic, Square, Sparkles } from "lucide-react";
+import { LoaderCircle, Mic, Square, X, Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
-
 import { parseSpokenCrmDraftAction, type SpokenCrmDraft } from "@/app/actions/ai";
+import { useDialogFocus } from "./use-dialog-focus";
 
 type RecognitionResult = ArrayLike<{ transcript: string }> & { isFinal: boolean };
-type RecognitionEvent = { results: ArrayLike<RecognitionResult> };
 type Recognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: RecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
+  lang: string; continuous: boolean; interimResults: boolean;
+  onresult: ((event: { results: ArrayLike<RecognitionResult> }) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
+  start: () => void; stop: () => void; abort: () => void;
 };
 type RecognitionConstructor = new () => Recognition;
-
-const opportunityPrompts = [
-  "the opportunity and what you might offer",
-  "the organisation, its sector and why now",
-  "the contact and a sensible next move",
-  "how warm it is and its likely value",
-];
-
-const updatePrompts = [
-  "what happened and whether it was an email, call, meeting or reply",
-  "who you spoke to and the useful detail",
-  "the outcome or signal you received",
-  "the sensible next move and when it is due",
-];
-
-export function VoiceFillButton({
-  kind,
-  onDraft,
-  prominent = false,
-  aiConfigured = true,
-}: {
+type VoiceProps = {
   kind: "company" | "opportunity" | "activity_update";
   onDraft: (draft: SpokenCrmDraft) => number;
-  prominent?: boolean;
-  aiConfigured?: boolean;
-}) {
+  prominent?: boolean; aiConfigured?: boolean; opportunityId?: string; initiallyOpen?: boolean;
+};
+
+export function VoiceFillButton({ prominent = false, initiallyOpen = false, ...props }: VoiceProps) {
+  const [open, setOpen] = useState(initiallyOpen);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { queueMicrotask(() => setMounted(true)); }, []);
+  const [message, setMessage] = useState("");
+  return <div className="voice-fill" data-prominent={prominent}>
+    <button className="btn btn-voice" type="button" onClick={() => setOpen(true)}><Mic size={16} />{props.kind === "activity_update" ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}</button>
+    {message ? <span className="voice-fill-status" role="status">{message}</span> : null}
+    {open && mounted ? createPortal(<VoiceCapture {...props} onClose={() => setOpen(false)} onDraft={(draft) => { const count = props.onDraft(draft); setMessage(count ? `${count} fields prepared. Review before saving.` : "No fields matched. You can fill them manually."); setOpen(false); return count; }} />, document.body) : null}
+  </div>;
+}
+
+function VoiceCapture({ kind, onDraft, onClose, aiConfigured = true, opportunityId }: VoiceProps & { onClose: () => void }) {
+  const ref = useDialogFocus(onClose);
   const recognition = useRef<Recognition | null>(null);
-  const processing = useRef(false);
+  const active = useRef(true);
   const [supported, setSupported] = useState(false);
   const [state, setState] = useState<"idle" | "listening" | "thinking">("idle");
-  const [message, setMessage] = useState<string | null>(null);
-  const [heard, setHeard] = useState("");
-  const [promptIndex, setPromptIndex] = useState(0);
-  const [setupNeeded, setSetupNeeded] = useState(false);
-
-  function preflight() {
-    if (!aiConfigured) {
-      setSetupNeeded(true);
-      setMessage("Voice capture is ready, but OpenAI must be connected before GUD can structure your words into fields.");
-      return false;
-    }
-    const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
-    if (browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition) return true;
-    setMessage("Voice input is not available in this browser. You can still log the update manually.");
-    return false;
-  }
-
+  const [transcript, setTranscript] = useState("");
+  const [error, setError] = useState("");
+  const [hint, setHint] = useState(0);
+  const prompts = kind === "activity_update" ? ["What happened, and who was involved?", "Was it a call, an email, a meeting or a reply?", "What should happen next, and when?"] : ["What could you help them achieve?", "Who is the organisation and the contact?", "Why now? How warm is it, and what is it worth?", "What is the sensible next move?"];
   useEffect(() => {
-    const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
-    queueMicrotask(() => setSupported(Boolean(browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition)));
-    return () => recognition.current?.stop();
+    active.current = true;
+    const browser = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    queueMicrotask(() => setSupported(Boolean(browser.SpeechRecognition ?? browser.webkitSpeechRecognition)));
+    return () => {
+      active.current = false;
+      const current = recognition.current;
+      if (current) { current.onend = null; current.onresult = null; current.onerror = null; current.abort(); }
+      recognition.current = null;
+    };
   }, []);
-
   useEffect(() => {
-    if (state !== "listening" || kind === "company") return;
-    const prompts = kind === "activity_update" ? updatePrompts : opportunityPrompts;
-    const timer = window.setInterval(() => setPromptIndex((index) => (index + 1) % prompts.length), 3200);
+    if (state !== "listening") return;
+    const timer = window.setInterval(() => setHint((value) => (value + 1) % prompts.length), 5000);
     return () => window.clearInterval(timer);
-  }, [state, kind]);
-
-  async function start() {
-    if (state === "listening") {
-      setMessage("Finishing your note…");
-      recognition.current?.stop();
-      return;
-    }
-    const browserWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
-    const RecognitionApi = browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition;
-    if (!RecognitionApi) return setMessage("Voice input is not available in this browser.");
-    const next = new RecognitionApi();
-    recognition.current = next;
-    processing.current = false;
-    setHeard("");
-    setPromptIndex(0);
-    next.lang = "en-GB";
-    next.continuous = true;
-    next.interimResults = true;
-    let transcript = "";
-    let failed = false;
-    next.onerror = () => {
-      failed = true;
-      recognition.current = null;
+  }, [state, prompts.length]);
+  function start() {
+    const browser = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
+    const Api = browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
+    if (!Api) return;
+    const next = new Api(); recognition.current = next;
+    const before = transcript.trim();
+    next.lang = "en-GB"; next.continuous = true; next.interimResults = true;
+    next.onresult = (event) => { if (active.current) setTranscript([before, Array.from(event.results).map((item) => item[0]?.transcript ?? "").join(" ")].filter(Boolean).join(" ").slice(0, 12000)); };
+    next.onerror = (event) => {
+      if (!active.current) return;
       setState("idle");
-      setMessage("I could not hear that clearly. Nothing was saved.");
+      setError(event.error === "not-allowed" ? "Microphone access was blocked. Allow it in your browser, or type below." : "Recording stopped. Your words are still here; edit them or try again.");
     };
-    next.onresult = (event) => {
-      transcript = Array.from(event.results).map((result) => result[0]?.transcript ?? "").join(" ").trim();
-      setHeard(transcript);
-    };
-    next.onend = () => {
-      recognition.current = null;
-      if (failed || processing.current) return;
-      if (!transcript) {
-        setState("idle");
-        setMessage("I could not hear enough to fill the form.");
-        return;
-      }
-      void structureTranscript(transcript);
-    };
-    setMessage("Listening… speak naturally; nothing is saved until you review the form.");
-    setState("listening");
-    next.start();
+    next.onend = () => { recognition.current = null; if (active.current) setState("idle"); };
+    setError(""); setState("listening");
+    try { next.start(); } catch { recognition.current = null; setState("idle"); setError("Could not start the microphone. You can type your update below."); }
   }
-
-  async function structureTranscript(transcript: string) {
-    if (processing.current) return;
-    processing.current = true;
-    setState("thinking");
-    setMessage("Structuring your note…");
-    const result = await parseSpokenCrmDraftAction({ kind, transcript });
-    processing.current = false;
-    setState("idle");
-    if (!result.ok) {
-      if (/openai|ai is disabled|ai connection/i.test(result.error)) setSetupNeeded(true);
-      return setMessage(result.error);
-    }
-    setSetupNeeded(false);
-    const count = onDraft(result.draft);
-    setMessage(count ? `${count} ${count === 1 ? "field" : "fields"} filled. Review before saving.` : "I heard you, but found no new fields to add.");
+  async function prepare() {
+    if (!transcript.trim() || state !== "idle") return;
+    setState("thinking"); setError("");
+    try {
+      const result = await parseSpokenCrmDraftAction({ kind, transcript, opportunityId, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      if (!active.current) return;
+      if (!result.ok) { setError(result.error); setState("idle"); return; }
+      onDraft(result.draft);
+    } catch { if (active.current) { setError("Could not prepare that update. Your transcript is still here; try again."); setState("idle"); } }
   }
-
-  return (
-    <div className="voice-fill" data-prominent={prominent} data-state={state}>
-      <button className="btn btn-voice" type="button" onClick={() => { if (preflight()) void start(); }} disabled={state === "thinking"} title={!aiConfigured ? "Connect OpenAI in Settings to turn speech into structured fields" : supported ? "Talk through this record" : "Voice input needs a browser with speech recognition"}>
-        {state === "thinking" ? <LoaderCircle className="spin" size={16} /> : state === "listening" ? <Square size={15} /> : <Mic size={16} />}
-        {state === "listening" ? "Finish and fill" : state === "thinking" ? "Structuring…" : kind === "activity_update" ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}
-      </button>
-      {!aiConfigured && !message ? <Link className="voice-ai-needed" href="/settings">OpenAI setup needed</Link> : null}
-      {state === "listening" ? (
-        <span className="voice-live" role="status" aria-live="polite">
-          <span className="voice-live-label"><i />Listening now</span>
-          <span className="voice-levels" aria-hidden="true">{[0, 1, 2, 3, 4, 5, 6].map((bar) => <i key={bar} />)}</span>
-          <span className="voice-live-copy">{heard || (kind === "activity_update" ? `You could mention ${updatePrompts[promptIndex]}…` : kind === "opportunity" ? `You could mention ${opportunityPrompts[promptIndex]}…` : "Start speaking — your words will appear here.")}</span>
-        </span>
-      ) : null}
-      {message && state !== "listening" ? <span className="voice-fill-status" role="status" aria-live="polite"><Sparkles size={13} /><span>{message}{setupNeeded ? <Link href="/settings">Open AI setup</Link> : null}</span></span> : null}
-    </div>
-  );
+  return <div className="dialog-backdrop voice-dialog-backdrop"><section ref={ref} className="dialog-card voice-dialog" role="dialog" aria-modal="true" aria-labelledby="voice-title">
+    <header className="dialog-header"><div><span className="eyebrow">Say it. Shape it. Save it.</span><h2 id="voice-title">{kind === "activity_update" ? "What’s changed?" : "Tell us the story"}</h2><p>{kind === "activity_update" ? "Log a touchpoint and set a next action in one update." : "Turn a rough thought into a useful record."}</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Cancel voice input"><X size={18} /></button></header>
+    <div className="dialog-form"><div className="voice-capture-stage" data-listening={state === "listening"}><Mic size={28} /><strong>{state === "listening" ? "Listening to you…" : "Speak naturally, or write it down"}</strong><p>{prompts[hint]}</p>{supported ? <button type="button" className="btn btn-voice" disabled={state === "thinking"} onClick={() => state === "listening" ? recognition.current?.stop() : start()}>{state === "listening" ? <Square size={16} /> : <Mic size={16} />}{state === "listening" ? "Stop recording" : transcript ? "Add more by voice" : "Start recording"}</button> : <p>Speech recognition isn’t available here. Typing works just as well.</p>}</div>
+      <label className="field-label">Your words — editable<textarea data-autofocus className="field-textarea voice-transcript" value={transcript} onChange={(event) => setTranscript(event.target.value)} readOnly={state !== "idle"} maxLength={12000} rows={5} placeholder={kind === "activity_update" ? "I spoke to Jamie this morning. They liked the proposal. Follow up next Tuesday at 10am…" : "We could build a booking website for Northbank. Jamie is interested; about £8,000…"} /></label>
+      <p className="muted">Your browser handles speech recognition. Only the text you choose to prepare is sent to the workspace’s AI. Nothing is saved or sent to contacts automatically.</p>
+      {!aiConfigured ? <p className="voice-setup-notice">An administrator needs to connect OpenAI in <Link href="/settings">Settings → AI coach</Link> before GUD can prepare fields. You can still copy your words and enter them manually.</p> : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+    </div><footer className="dialog-actions"><button type="button" className="btn btn-quiet" onClick={() => setTranscript("")} disabled={state !== "idle" || !transcript}><RotateCcw size={14} />Clear</button><button type="button" className="btn btn-primary" disabled={!aiConfigured || transcript.trim().length < 2 || state !== "idle"} onClick={() => void prepare()}>{state === "thinking" ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}{state === "thinking" ? "Preparing…" : "Prepare for review"}</button></footer>
+    </section></div>;
 }
 
 export function applySpokenDraft(form: HTMLFormElement | null, values: Record<string, unknown>) {

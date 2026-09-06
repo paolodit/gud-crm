@@ -99,8 +99,8 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
 
   return (
     <WorkspaceFrame title={sentenceCase(edition.language.companies)} subtitle={`${companies.length} accounts · ${companies.reduce((sum, item) => sum + item.contacts.length, 0)} known ${edition.language.contacts}`}>
-      <section className="workspace-toolbar">
-        <label className="search-box search-box-grow"><Search size={16} /><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search company, sector, contact or role" /></label>
+      <section className="workspace-toolbar company-toolbar" aria-label="Company filters">
+        <label className="search-box search-box-grow"><Search size={16} /><input type="search" aria-label="Search companies and contacts" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search company, sector, contact or role" /></label>
         <label className="field-select compact-select"><span className="sr-only">Sector</span><select value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">All sectors</option>{sectors.map((item) => <option key={item}>{item}</option>)}</select></label>
         {availableOffers.length > 1 ? <label className="field-select compact-select"><span className="sr-only">Offer</span><select value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}{offer.active ? "" : " · Archived"}</option>)}</select></label> : null}
         <label className="field-select compact-select sort-select"><ArrowDownWideNarrow size={14} /><span className="sr-only">Sort companies</span><select value={sort} onChange={(event) => setSort(event.target.value)}><option value="fit-desc">Fit: highest first</option><option value="name">Name: A–Z</option><option value="contacts">Most contacts</option><option value="stage">Pipeline order</option></select></label>
@@ -178,7 +178,7 @@ export function GlobalSearch({ snapshot }: { snapshot: BoardSnapshot }) {
       <section className="search-hero">
         <Sparkles size={20} />
         <div><h2>Find the thread, not just the record</h2><p>Search names, roles, sectors, notes, outcomes and outreach angles.</p></div>
-        <label className="search-box search-box-hero"><Search size={18} /><input autoFocus type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try ‘operations’ or a contact name" /></label>
+        <label className="search-box search-box-hero"><Search size={18} /><input autoFocus type="search" aria-label="Search the workspace" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try ‘operations’ or a contact name" /></label>
       </section>
 
       {normalised.length < 2 ? (
