@@ -4,7 +4,7 @@
 
 <h1 align="center">GUD CRM</h1>
 
-<p align="center"><strong>A focused sales workspace for the work before a client says yes.</strong></p>
+<p align="center"><strong>A focused workspace to win the work and keep delivery moving.</strong></p>
 
 <p align="center">
   Understand the opportunity. Keep the relationship clear. Know the next move.
@@ -26,17 +26,18 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 
 ## Why GUD feels different
 
-- **The pipeline is the home screen.** See the whole book of work, spread a busy stage across two lanes and drag opportunities into the order that makes sense.
+- **The pipeline is the home screen.** Spread a busy stage across three lanes. Edit a card, talk through an update or change its stage directly from the board; dragging is optional.
 - **Research stays out of live sales.** Explore market ideas separately, build named targets before outreach, then promote only credible opportunities.
 - **One product or several services.** Focused Sales suits a single product or SaaS motion. Service Sales suits agencies and consultancies pitching different projects, retainers and advisory work.
-- **Updates are quick.** Type, use browser speech input, or log a touch and its follow-up together.
+- **Say it, review it, save it.** A focused voice desk keeps an editable transcript, recognises your workspace's activity types and prepares a touchpoint and follow-up—or a task on its own. Nothing is saved until you review and confirm.
+- **A win has somewhere to go.** Live projects puts won work into Kickoff, In progress, Client review, On hold or Complete. Keep a next milestone, due date and delivery notes without duplicating the opportunity. [How it works](docs/LIVE-PROJECTS.md).
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
 - **AI is bounded and reviewable.** Draft outreach, explore angles, prepare research and ask for a next move without auto-sending anything.
 - **Your existing AI workspace can connect.** The optional MCP endpoint gives authorised Codex, ChatGPT and compatible clients an at-a-glance sales brief, sourced research and bounded CRM updates through a narrow, auditable tool surface. [Connect it in a few minutes](docs/MCP.md#the-five-minute-path).
 - **Free enrichment goes further.** Optional Hunter and Voila Norbert integrations use a visible, free-first provider order for one-contact-at-a-time email discovery.
 
-GUD stops at a clean client handoff. It is not trying to become project management, invoicing, service delivery or support software.
+Live projects is deliberately lightweight: a delivery overview linked to the sales relationship, not an invoicing system, project scheduler or support desk.
 
 ## Choose your sales model
 
@@ -199,6 +200,8 @@ Before proposing a change, run the quality commands above and keep the interface
 ## Documentation
 
 - [Getting started](docs/GETTING-STARTED.md)
+- [Live projects and voice updates](docs/LIVE-PROJECTS.md)
+- [Connect an AI coworker with MCP](docs/MCP.md)
 - [Free hosting with Render and Neon](docs/FREE-HOSTING.md)
 - [Docker installation](docs/DOCKER.md)
 - [CapRover installation](docs/CAPROVER.md)

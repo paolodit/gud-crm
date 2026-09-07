@@ -1,6 +1,8 @@
 .git
 .next
 .next-e2e
+.next-*
+.local-audit-*
 node_modules
 .env
 .env.*

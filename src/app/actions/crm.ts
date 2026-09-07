@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/db";
+import { getBoardSnapshot } from "@/lib/data/crm-repository";
+import type { OpportunitySummary } from "@/lib/domain/types";
 import { publicActionError } from "@/lib/action-error";
 import {
   activities,
@@ -28,7 +30,7 @@ import { recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/loca
 import { getCurrentMember } from "@/lib/session";
 import type { ActivityTypeSummary, BoardSnapshot, CompanySummary, ContactSummary, OfferSummary } from "@/lib/domain/types";
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult = { ok: true; opportunity?: OpportunitySummary } | { ok: false; error: string };
 type CreateActionResult =
   | { ok: true; opportunityId: string; companyId: string }
   | { ok: false; error: string };
@@ -1203,9 +1205,43 @@ export async function reorderOpportunityAction(input: unknown): Promise<ActionRe
 }
 
 function revalidateCrmPaths() {
+  revalidatePath("/live");
   for (const path of ["/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) {
     revalidatePath(path);
   }
+}
+
+export async function createNextActionAction(input: unknown): Promise<ActionResult> {
+  const parsed = z.object({ opportunityId: z.uuid(), title: z.string().trim().min(2).max(240), dueAt: z.coerce.date() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Add a next action and a valid due date." };
+  try {
+    const member = await requireMember();
+    const data = parsed.data;
+    if (member.demoMode) return { ok: false, error: "Use a saved workspace to create tasks." };
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => {
+        const opportunity = snapshot.opportunities.find((item) => item.id === data.opportunityId && !item.archivedAt && !item.company.archivedAt);
+        if (!opportunity) throw new Error("Active opportunity not found.");
+        const dueAt = data.dueAt.toISOString();
+        opportunity.tasks.push({ id: crypto.randomUUID(), title: data.title, dueAt, status: "open", owner: opportunity.owner ?? snapshot.users.find((item) => item.id === member.id) ?? null, contactId: null });
+        opportunity.nextActionAt = opportunity.tasks.filter((item) => item.status === "open").map((item) => item.dueAt).sort()[0];
+        opportunity.noNextActionReason = null;
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "task.created", entityType: "opportunity", entityId: data.opportunityId, detail: { title: data.title, dueAt: data.dueAt.toISOString() } });
+    } else {
+      await db.transaction(async (tx) => {
+        const [record] = await tx.select({ opportunity: opportunities, companyArchived: companies.archivedAt }).from(opportunities).innerJoin(companies, eq(opportunities.companyId, companies.id)).where(and(eq(opportunities.id, data.opportunityId), eq(opportunities.organisationId, member.organisationId))).limit(1).for("update", { of: opportunities });
+        if (!record || record.opportunity.archivedAt || record.companyArchived) throw new Error("Active opportunity not found.");
+        const [task] = await tx.insert(tasks).values({ organisationId: member.organisationId, opportunityId: data.opportunityId, ownerId: record.opportunity.ownerId ?? member.id, title: data.title, dueAt: data.dueAt, source: "quick_action" }).returning();
+        const open = await tx.select({ dueAt: tasks.dueAt }).from(tasks).where(and(eq(tasks.opportunityId, data.opportunityId), eq(tasks.status, "open")));
+        const due = open.reduce((earliest, item) => item.dueAt < earliest ? item.dueAt : earliest, data.dueAt);
+        await tx.update(opportunities).set({ nextActionAt: due, noNextActionReason: null, updatedAt: new Date() }).where(eq(opportunities.id, data.opportunityId));
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "task.created", entityType: "task", entityId: task.id, after: { opportunityId: data.opportunityId, title: data.title, dueAt: data.dueAt.toISOString() } });
+      });
+    }
+    revalidateCrmPaths();
+    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [data.opportunityId] })).opportunities[0] };
+  } catch (error) { return { ok: false, error: publicActionError(error, "Task could not be saved.") }; }
 }
 
 export async function logActivityAction(input: unknown): Promise<ActionResult> {
@@ -1217,10 +1253,11 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
     const activityId = crypto.randomUUID();
     updateLocalBoardSnapshot((snapshot) => {
       const opportunity = snapshot.opportunities.find((item) => item.id === parsed.data.opportunityId);
-      if (!opportunity) throw new Error("Opportunity not found.");
+      if (!opportunity || opportunity.archivedAt || opportunity.company.archivedAt) throw new Error("Opportunity not found or archived.");
       const type = snapshot.activityTypes.find((item) => item.id === parsed.data.activityTypeId);
       if (!type) throw new Error("Activity type not found.");
       const contact = opportunity.contacts.find((item) => item.id === parsed.data.contactId);
+      if (parsed.data.contactId && !contact) throw new Error("Contact not found on this opportunity.");
       const occurredAt = parsed.data.occurredAt.toISOString();
       opportunity.activities.unshift({
         id: activityId,
@@ -1233,7 +1270,8 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
         createdAt: new Date().toISOString(),
         createdBy: member.name,
       });
-      opportunity.lastActivityAt = occurredAt;
+      opportunity.activities.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+      opportunity.lastActivityAt = opportunity.activities[0]?.occurredAt ?? occurredAt;
       opportunity.recentChannels = [type.channel, ...opportunity.recentChannels.filter((item) => item !== type.channel)].slice(0, 4);
       if (parsed.data.nextActionTitle && parsed.data.nextActionAt) {
         opportunity.tasks.push({
@@ -1244,14 +1282,14 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
           owner: opportunity.owner ?? snapshot.users.find((item) => item.id === member.id) ?? null,
           contactId: contact?.id ?? null,
         });
-        opportunity.nextActionAt = parsed.data.nextActionAt.toISOString();
+        opportunity.nextActionAt = opportunity.tasks.filter((task) => task.status === "open").map((task) => task.dueAt).sort()[0] ?? null;
         opportunity.noNextActionReason = null;
       }
     });
     recordLocalAuditEvent({ actorId: member.id, action: "activity.created", entityType: "activity", entityId: activityId, detail: { opportunityId: parsed.data.opportunityId } });
     revalidatePath("/pipeline");
     revalidatePath("/my-work");
-    return { ok: true };
+    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [parsed.data.opportunityId] })).opportunities[0] };
   }
   if (member.demoMode) return { ok: true };
 
@@ -1266,8 +1304,10 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
             eq(opportunities.organisationId, member.organisationId),
           ),
         )
-        .limit(1);
-      if (!opportunity) throw new Error("Opportunity not found.");
+        .limit(1).for("update");
+      if (!opportunity || opportunity.archivedAt) throw new Error("Opportunity not found or archived.");
+      const [company] = await tx.select({ archivedAt: companies.archivedAt }).from(companies).where(and(eq(companies.id, opportunity.companyId), eq(companies.organisationId, member.organisationId))).limit(1);
+      if (!company || company.archivedAt) throw new Error("Company not found or archived.");
 
       const [type] = await tx
         .select({ id: activityTypes.id })
@@ -1324,13 +1364,14 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
           dueAt: parsed.data.nextActionAt,
           source: "activity_follow_up",
         });
-        nextActionAt = parsed.data.nextActionAt;
+        const openTasks = await tx.select({ dueAt: tasks.dueAt }).from(tasks).where(and(eq(tasks.opportunityId, opportunity.id), eq(tasks.organisationId, member.organisationId), eq(tasks.status, "open")));
+        nextActionAt = openTasks.reduce((earliest, task) => task.dueAt < earliest ? task.dueAt : earliest, parsed.data.nextActionAt);
       }
 
       await tx
         .update(opportunities)
         .set({
-          lastActivityAt: parsed.data.occurredAt,
+          lastActivityAt: opportunity.lastActivityAt && opportunity.lastActivityAt > parsed.data.occurredAt ? opportunity.lastActivityAt : parsed.data.occurredAt,
           nextActionAt,
           noNextActionReason: nextActionAt ? null : opportunity.noNextActionReason,
           updatedAt: new Date(),
@@ -1348,7 +1389,7 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
     });
     revalidatePath("/pipeline");
     revalidatePath("/my-work");
-    return { ok: true };
+    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [parsed.data.opportunityId] })).opportunities[0] };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Activity could not be saved.") };
   }
@@ -1358,21 +1399,21 @@ export async function completeTaskAction(input: unknown): Promise<ActionResult> 
   const parsed = completeTaskSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "That task is invalid." };
 
-  const member = await requireMember();
-  if (member.storageMode === "sqlite") {
-    updateLocalBoardSnapshot((snapshot) => {
-      const task = snapshot.opportunities.flatMap((item) => item.tasks).find((item) => item.id === parsed.data.taskId);
-      if (!task) throw new Error("Task not found.");
-      task.status = "completed";
-    });
-    recordLocalAuditEvent({ actorId: member.id, action: "task.completed", entityType: "task", entityId: parsed.data.taskId });
-    revalidatePath("/pipeline");
-    revalidatePath("/my-work");
-    return { ok: true };
-  }
-  if (member.demoMode) return { ok: true };
-
   try {
+    const member = await requireMember();
+    if (member.demoMode) return { ok: true };
+    let opportunityId: string | undefined;
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => {
+        const opportunity = snapshot.opportunities.find((item) => item.tasks.some((task) => task.id === parsed.data.taskId));
+        const task = opportunity?.tasks.find((item) => item.id === parsed.data.taskId);
+        if (!opportunity || !task) throw new Error("Task not found.");
+        opportunityId = opportunity.id;
+        task.status = "completed";
+        opportunity.nextActionAt = opportunity.tasks.filter((item) => item.status === "open").map((item) => item.dueAt).sort()[0] ?? null;
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "task.completed", entityType: "task", entityId: parsed.data.taskId });
+    } else {
     await db.transaction(async (tx) => {
       const [task] = await tx
         .select()
@@ -1382,11 +1423,16 @@ export async function completeTaskAction(input: unknown): Promise<ActionResult> 
         )
         .limit(1);
       if (!task) throw new Error("Task not found.");
+      opportunityId = task.opportunityId;
+      await tx.select({ id: opportunities.id }).from(opportunities).where(and(eq(opportunities.id, task.opportunityId), eq(opportunities.organisationId, member.organisationId))).for("update");
 
       await tx
         .update(tasks)
         .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
-        .where(eq(tasks.id, task.id));
+        .where(and(eq(tasks.id, task.id), eq(tasks.organisationId, member.organisationId)));
+      const open = await tx.select({ dueAt: tasks.dueAt }).from(tasks).where(and(eq(tasks.opportunityId, task.opportunityId), eq(tasks.organisationId, member.organisationId), eq(tasks.status, "open")));
+      const nextActionAt = open.reduce<Date | null>((earliest, item) => !earliest || item.dueAt < earliest ? item.dueAt : earliest, null);
+      await tx.update(opportunities).set({ nextActionAt, updatedAt: new Date() }).where(and(eq(opportunities.id, task.opportunityId), eq(opportunities.organisationId, member.organisationId)));
       await tx.insert(auditEvents).values({
         organisationId: member.organisationId,
         actorId: member.id,
@@ -1397,9 +1443,9 @@ export async function completeTaskAction(input: unknown): Promise<ActionResult> 
         after: { status: "completed" },
       });
     });
-    revalidatePath("/pipeline");
-    revalidatePath("/my-work");
-    return { ok: true };
+    }
+    revalidateCrmPaths();
+    return { ok: true, opportunity: opportunityId ? (await getBoardSnapshot(member.organisationId, { opportunityIds: [opportunityId] })).opportunities[0] : undefined };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Task could not be completed.") };
   }

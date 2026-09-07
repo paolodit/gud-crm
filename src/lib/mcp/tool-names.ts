@@ -17,6 +17,9 @@ export const GUD_MCP_TOOL_NAMES = [
   "archive_company",
   "restore_company",
   "find_work_email",
+  "get_opportunities",
+  "list_live_projects",
+  "update_live_project",
 ] as const;
 
 const GUD_MCP_TOOL_NAME_SET = new Set<string>(GUD_MCP_TOOL_NAMES);

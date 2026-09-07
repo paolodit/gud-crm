@@ -41,6 +41,7 @@ import {
   Mail,
   Maximize2,
   Minimize2,
+  Mic,
   Phone,
   Plus,
   Columns3,
@@ -61,6 +62,9 @@ import {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   startTransition,
+  createContext,
+  useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -69,7 +73,9 @@ import {
 import {
   archiveOpportunityAction,
   completeTaskAction,
+  createNextActionAction,
   logActivityAction,
+  moveOpportunityAction,
   reorderOpportunityAction,
   saveContactAction,
   saveOpportunityDetailsAction,
@@ -82,6 +88,8 @@ import {
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
+import { useDialogFocus } from "@/components/use-dialog-focus";
+import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
@@ -97,6 +105,13 @@ import type {
   StageSummary,
   TaskSummary,
 } from "@/lib/domain/types";
+
+const CardActionsContext = createContext<{
+  stages: StageSummary[];
+  edit: (id: string) => void;
+  talk: (id: string) => void;
+  move: (id: string, stageId: string) => Promise<void>;
+} | null>(null);
 
 type DueState = "overdue" | "soon" | "future" | "missing";
 
@@ -119,6 +134,8 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  useEffect(() => { queueMicrotask(() => setOpportunities(initialSnapshot.opportunities)); }, [initialSnapshot.opportunities]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const boardPan = useRef<{
     pointerId: number;
@@ -155,17 +172,31 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
     });
   }, [attentionOnly, now, offerFilter, opportunities, owner, query, showArchived]);
 
-  function openOpportunity(id: string) {
+  function openOpportunity(id: string, action?: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("opportunity", id);
+    if (action) params.set("action", action); else params.delete("action");
     router.push(`/pipeline?${params.toString()}`, { scroll: false });
   }
 
   function closeOpportunity() {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("opportunity");
+    params.delete("action");
     const suffix = params.toString();
     router.push(suffix ? `/pipeline?${suffix}` : "/pipeline", { scroll: false });
+  }
+
+  async function moveFromCard(id: string, stageId: string) {
+    const stage = initialSnapshot.stages.find((item) => item.id === stageId);
+    if (!stage) return;
+    if (stage.terminalType !== "open" && !window.confirm(`Move this opportunity to ${stage.name}?${stage.terminalType === "won" ? " It will also appear on Live projects." : ""}`)) return;
+    try {
+      const result = await moveOpportunityAction({ opportunityId: id, toStageId: stageId });
+      if (!result.ok) return showToast(result.error);
+      setOpportunities((items) => items.map((item) => item.id === id ? { ...item, stageId } : item));
+      showToast(`Moved to ${stage.name}`);
+    } catch { showToast("Could not move this opportunity. Please try again."); }
   }
 
   function updateOpportunity(next: OpportunitySummary) {
@@ -191,6 +222,8 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
     const overOpportunity = opportunities.find((item) => item.id === overId);
     const targetStageId = overOpportunity?.stageId ?? initialSnapshot.stages.find((stage) => stage.id === overId)?.id;
     if (!targetStageId) return;
+    const destination = initialSnapshot.stages.find((stage) => stage.id === targetStageId);
+    if (moving.stageId !== targetStageId && destination?.terminalType !== "open" && !window.confirm(`Move this opportunity to ${destination?.name}?${destination?.terminalType === "won" ? " It will also appear on Live projects." : ""}`)) return;
 
     const previous = opportunities;
     const currentStageItems = opportunities.filter((item) => item.stageId === moving.stageId).sort((a, b) => a.position - b.position);
@@ -300,6 +333,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           <p>{activeCount} active opportunities{archivedCount ? ` · ${archivedCount} archived` : ""} · Updated {formatTime(now)}</p>
         </div>
         <div className="header-actions">
+          <Link className="btn btn-quiet" href="/live">Live projects <ChevronRight size={16} /></Link>
           <button className="btn btn-primary" type="button" onClick={() => setCreating(true)} aria-label="Create a new opportunity">
             <Plus size={16} /> <span className="mobile-hide">New opportunity</span>
           </button>
@@ -317,7 +351,8 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           <Search size={15} />
           <input
             type="search"
-            placeholder="Search company, opportunity or contact"
+            aria-label="Search opportunities"
+            placeholder="Search opportunities or contacts"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -359,6 +394,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
         </div>
       </section>
 
+      <CardActionsContext.Provider value={{ stages: initialSnapshot.stages, edit: setEditingId, talk: (id) => openOpportunity(id, "update"), move: moveFromCard }}>
       <DndContext id="gud-crm-pipeline" sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={onDragEnd}>
         <div className="board-shell">
           <div
@@ -393,9 +429,11 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           {activeDragId ? <OpportunityDragPreview opportunity={opportunities.find((item) => item.id === activeDragId) ?? null} stages={initialSnapshot.stages} /> : null}
         </DragOverlay>
       </DndContext>
+      </CardActionsContext.Provider>
 
       {selected ? (
         <OpportunityPanel
+          key={selected.id}
           opportunity={selected}
           snapshot={initialSnapshot}
           now={now}
@@ -412,6 +450,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           }}
         />
       ) : null}
+      {editingId && opportunities.find((item) => item.id === editingId) ? <OpportunityEditor opportunity={opportunities.find((item) => item.id === editingId)!} snapshot={initialSnapshot} onClose={() => setEditingId(null)} onSaved={(item) => { updateOpportunity(item); setEditingId(null); showToast("Opportunity updated"); }} /> : null}
       {creating ? (
         <CreateOpportunityDialog
           snapshot={{ ...initialSnapshot, opportunities }}
@@ -555,14 +594,12 @@ function OpportunityCard({
       data-dragging={isDragging}
       data-compact={compact}
       style={{ borderLeftColor: stageColour, transform: CSS.Transform.toString(transform), transition }}
-      {...listeners}
-      {...attributes}
     >
       <button className="card-open" type="button" onClick={() => onOpen(opportunity.id)}>
         <div className="card-topline">
           <span className="company-name">{opportunity.company.name}</span>
           {opportunity.isExample ? <span className="demo-label">Demo</span> : null}
-          <span className="card-drag-handle"><GripVertical size={14} color="#98A2B3" aria-hidden="true" /></span>
+
         </div>
         <p className="opportunity-title">{opportunity.title}</p>
         {showOffer && opportunity.offer ? <span className="offer-chip card-offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
@@ -597,8 +634,23 @@ function OpportunityCard({
           </div>
         </div></>}
       </button>
+      <button type="button" className="card-sort-handle" aria-label={`Reorder ${opportunity.company.name}`} {...attributes} {...listeners}><GripVertical size={14} /></button>
+      <CardQuickActions opportunity={opportunity} />
     </article>
   );
+}
+
+function CardQuickActions({ opportunity }: { opportunity: OpportunitySummary }) {
+  const actions = useContext(CardActionsContext);
+  const [pending, setPending] = useState(false);
+  if (!actions) return null;
+  return <div className="card-quick-actions" onPointerDown={(event) => event.stopPropagation()}>
+    <button type="button" onClick={() => actions.edit(opportunity.id)} aria-label={`Edit ${opportunity.company.name} opportunity`}><FilePenLine size={13} />Edit</button>
+    <button type="button" onClick={() => actions.talk(opportunity.id)} aria-label={`Update ${opportunity.company.name} by voice or text`}><Mic size={13} />Update</button>
+    <select aria-label={`Move ${opportunity.company.name} to stage`} value={opportunity.stageId} disabled={pending} onChange={async (event) => { setPending(true); try { await actions.move(opportunity.id, event.target.value); } finally { setPending(false); } }}>
+      {actions.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+    </select>
+  </div>;
 }
 
 function OpportunityPanel({
@@ -625,6 +677,7 @@ function OpportunityPanel({
   const [contactEditor, setContactEditor] = useState<ContactSummary | "new" | null>(null);
   const [companyEditor, setCompanyEditor] = useState(false);
   const [opportunityEditor, setOpportunityEditor] = useState(false);
+  const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
   const archived = isArchivedOpportunity(opportunity);
@@ -659,6 +712,7 @@ function OpportunityPanel({
         onUpdate(opportunity);
         onToast(result.error);
       } else {
+        if (result.opportunity) onUpdate(result.opportunity);
         onToast("Next action completed");
       }
     });
@@ -677,7 +731,7 @@ function OpportunityPanel({
             <p>{opportunity.title} · {stage?.name}</p>
             {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 && opportunity.offer ? <span className="offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
           </div>
-          <button className="icon-button" type="button" onClick={() => setOpportunityEditor(true)} aria-label="Edit opportunity" title="Edit opportunity"><FilePenLine size={16} /></button>
+          <button className="btn btn-quiet" type="button" onClick={() => setOpportunityEditor(true)}><FilePenLine size={16} />Edit</button>
           {companyWebsiteUrl ? (
             <a className="icon-button" href={companyWebsiteUrl} target="_blank" rel="noopener noreferrer" aria-label="Open company website">
               <Link2 size={16} />
@@ -697,6 +751,7 @@ function OpportunityPanel({
           {archived ? <div className="archive-notice"><Archive size={16} /><span><strong>Archived opportunity</strong><small>Its stage, contacts, activity and next actions are preserved.</small></span><button className="btn btn-quiet btn-compact" type="button" onClick={toggleArchive} disabled={archivePending}><ArchiveRestore size={14} />Restore</button></div> : null}
           <div className="panel-grid">
             <div className="panel-stack">
+              <QuickActivityComposer opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onToast={onToast} voiceAiConfigured={voiceAiConfigured} initiallyOpen={searchParams.get("action") === "update"} />
               <section className="surface relationship-overview">
                 <div className="relationship-overview-main">
                   <span className="eyebrow">The opportunity</span>
@@ -745,13 +800,7 @@ function OpportunityPanel({
                 </div>
               </section>
 
-              <QuickActivityComposer
-                opportunity={opportunity}
-                snapshot={snapshot}
-                onUpdate={onUpdate}
-                onToast={onToast}
-                voiceAiConfigured={voiceAiConfigured}
-              />
+
             </div>
 
             <div className="panel-stack">
@@ -824,6 +873,7 @@ function OpportunityPanel({
 }
 
 function OpportunityEditor({ opportunity, snapshot, onClose, onSaved }: { opportunity: OpportunitySummary; snapshot: BoardSnapshot; onClose: () => void; onSaved: (opportunity: OpportunitySummary) => void }) {
+  const dialogRef = useDialogFocus(onClose);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const offers = activeOffers(snapshot.offers);
@@ -865,17 +915,17 @@ function OpportunityEditor({ opportunity, snapshot, onClose, onSaved }: { opport
 
   return (
     <div className="dialog-backdrop" role="presentation">
-      <section className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="opportunity-editor-title">
-        <header className="dialog-header"><div><span className="eyebrow">Opportunity</span><h2 id="opportunity-editor-title">Edit the pitch</h2><p>Keep ownership, commercial context and the next move clear.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close opportunity editor"><X size={17} /></button></header>
+      <section ref={dialogRef} className="dialog-card" role="dialog" aria-modal="true" aria-labelledby="opportunity-editor-title">
+        <header className="dialog-header"><div><span className="eyebrow">Opportunity</span><h2 id="opportunity-editor-title">Edit opportunity</h2><p>Keep ownership, commercial context and the next move clear.</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close opportunity editor"><X size={17} /></button></header>
         <form className="dialog-form" onSubmit={submit}>
           <div className="form-grid">
-            <label className="field-label form-span-2">Opportunity title<input className="field" name="title" defaultValue={opportunity.title} required minLength={2} /></label>
+            <label className="field-label form-span-2">Opportunity title<input data-autofocus className="field" name="title" defaultValue={opportunity.title} required minLength={2} /></label>
             {offers.length > 1 ? <label className="field-label form-span-2">What are you pitching?<select className="field-select" name="offerId" defaultValue={opportunity.offer?.id ?? ""} required><option value="" disabled>Choose an offer</option>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : <input type="hidden" name="offerId" value={opportunity.offer?.id ?? offers[0]?.id ?? ""} />}
             <label className="field-label">Owner<select className="field-select" name="ownerId" defaultValue={opportunity.owner?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
             <label className="field-label">Priority<select className="field-select" name="priority" defaultValue={opportunity.priority}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
             <label className="field-label">Temperature<select className="field-select" name="temperature" defaultValue={opportunity.temperature}><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option><option value="at_risk">At risk</option><option value="unresponsive">Unresponsive</option></select></label>
             <label className="field-label">Potential value (£)<input className="field" name="expectedValue" type="number" min="0" step="100" defaultValue={opportunity.expectedValue ?? ""} /></label>
-            <label className="field-label">Probability<select className="field-select" name="probability" defaultValue={opportunity.probability ?? ""}><option value="">Not estimated</option>{[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((value) => <option key={value} value={value}>{value}%</option>)}</select></label>
+            <label className="field-label">Probability<select className="field-select" name="probability" defaultValue={opportunity.probability ?? ""}><option value="">Not estimated</option>{[...new Set([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, ...(opportunity.probability != null ? [opportunity.probability] : [])])].sort((a, b) => a - b).map((value) => <option key={value} value={value}>{value}%</option>)}</select></label>
             <label className="field-label">Expected close<input className="field" name="expectedCloseDate" type="date" defaultValue={opportunity.expectedCloseDate?.slice(0, 10) ?? ""} /></label>
             <label className="field-label form-span-2">Outreach angle<textarea className="field-textarea" name="outreachAngle" defaultValue={opportunity.outreachAngle ?? ""} rows={4} /></label>
           </div>
@@ -1077,7 +1127,9 @@ function QuickActivityComposer({
   onUpdate,
   onToast,
   voiceAiConfigured,
+  initiallyOpen = false,
 }: {
+  initiallyOpen?: boolean;
   opportunity: OpportunitySummary;
   snapshot: BoardSnapshot;
   onUpdate: (opportunity: OpportunitySummary) => void;
@@ -1085,7 +1137,8 @@ function QuickActivityComposer({
   voiceAiConfigured: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [typeId, setTypeId] = useState(snapshot.activityTypes[0]?.id ?? "");
+  const [typeId, setTypeId] = useState(snapshot.activityTypes.find((type) => type.name === "Other activity / note")?.id ?? snapshot.activityTypes.find((type) => type.channel === "note")?.id ?? snapshot.activityTypes[0]?.id ?? "");
+  const [taskOnly, setTaskOnly] = useState(false);
   const [notes, setNotes] = useState("");
   const [outcome, setOutcome] = useState("");
   const [contactId, setContactId] = useState(opportunity.contacts.find((item) => item.primary)?.id ?? "");
@@ -1105,15 +1158,17 @@ function QuickActivityComposer({
     const matchingContact = draft.contactName
       ? opportunity.contacts.find((contact) => contact.name.trim().toLowerCase() === draft.contactName?.trim().toLowerCase())
       : null;
-    if (matchingType) setTypeId(matchingType.id);
-    if (matchingContact) setContactId(matchingContact.id);
+    setTypeId(matchingType?.id ?? snapshot.activityTypes.find((type) => type.name === "Other activity / note")?.id ?? "");
+    setContactId(matchingContact?.id ?? "");
+    setTaskOnly(Boolean(draft.nextActionTitle && !draft.activityTypeName && !draft.activityNotes));
+    if (!matchingType && draft.activityTypeName) setSaveError("The activity type was not recognised. Please choose it before saving.");
     if (draft.activityNotes) setNotes(draft.activityNotes);
     if (draft.activityOutcome) setOutcome(normaliseSpokenOutcome(draft.activityOutcome));
     if (draft.activityOccurredAt) setOccurredAt(toDateTimeLocal(draft.activityOccurredAt));
     if (draft.nextActionTitle) {
       setAddFollowUp(true);
       setNextActionTitle(draft.nextActionTitle);
-      if (draft.nextActionAt) setNextActionAt(toDateTimeLocal(draft.nextActionAt));
+      setNextActionAt(draft.nextActionAt ? toDateTimeLocal(draft.nextActionAt) : "");
     }
     return [matchingType, matchingContact, draft.activityNotes, draft.activityOutcome, draft.activityOccurredAt, draft.nextActionTitle].filter(Boolean).length;
   }
@@ -1121,10 +1176,21 @@ function QuickActivityComposer({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const type = snapshot.activityTypes.find((item) => item.id === typeId);
-    if (!type) return;
+    if (!type && !taskOnly) { setSaveError("Choose an activity type before saving."); return; }
     setPending(true);
     setSaveError(null);
 
+    if (taskOnly) {
+      try {
+        const result = await createNextActionAction({ opportunityId: opportunity.id, title: nextActionTitle, dueAt: new Date(nextActionAt).toISOString() });
+        if (!result.ok) { setSaveError(result.error); return; }
+        if (result.opportunity) onUpdate(result.opportunity);
+        setOpen(false); setNextActionTitle(""); onToast("Next action created");
+      } catch { setSaveError("Could not save the task. Please try again."); }
+      finally { setPending(false); }
+      return;
+    }
+    if (!type) { setPending(false); return; }
     const input = {
       opportunityId: opportunity.id,
       activityTypeId: type.id,
@@ -1135,7 +1201,7 @@ function QuickActivityComposer({
       nextActionTitle: addFollowUp && nextActionTitle ? nextActionTitle : undefined,
       nextActionAt: addFollowUp && nextActionTitle ? new Date(nextActionAt).toISOString() : undefined,
     };
-    const result = await logActivityAction(input);
+    const result = await logActivityAction(input).catch(() => ({ ok: false as const, error: "Could not save the update. Your draft is still here; please try again." }));
     setPending(false);
     if (!result.ok) {
       setSaveError(result.error);
@@ -1166,7 +1232,7 @@ function QuickActivityComposer({
             contactId: contactId || null,
           }
         : null;
-    onUpdate({
+    onUpdate(result.opportunity ?? {
       ...opportunity,
       lastActivityAt: input.occurredAt,
       nextActionAt: newTask?.dueAt ?? opportunity.nextActionAt,
@@ -1185,10 +1251,11 @@ function QuickActivityComposer({
     <section className="surface compact-composer" data-open={open}>
       <header className="surface-header">
         <div><h3>Log an activity</h3><small>Record every attempt, channel and outcome</small></div>
-        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
+        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" opportunityId={opportunity.id} initiallyOpen={initiallyOpen} aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
       </header>
       {open ? <form className="surface-content composer-fields" onSubmit={submit}>
-        <div className="three-fields">
+        <label className="checkbox-row"><input type="checkbox" checked={taskOnly} onChange={(event) => { setTaskOnly(event.target.checked); if (event.target.checked) setAddFollowUp(true); }} />Create a task only — don’t log a touchpoint</label>
+        <div className="three-fields" hidden={taskOnly}>
           <label className="field-label">Activity
             <select className="field-select" value={typeId} onChange={(event) => setTypeId(event.target.value)}>
               {snapshot.activityTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
@@ -1201,7 +1268,7 @@ function QuickActivityComposer({
             </select>
           </label>
         </div>
-        <fieldset className="outcome-picker">
+        <fieldset className="outcome-picker" hidden={taskOnly}>
           <legend>Outcome <span>Optional</span></legend>
           {["No reply", "Connected", "Positive", "Not now", "Referred", "Meeting booked"].map((item) => (
             <label key={item} data-selected={outcome === item}>
@@ -1212,33 +1279,33 @@ function QuickActivityComposer({
           {outcome ? <button type="button" onClick={() => setOutcome("")}>Clear</button> : null}
         </fieldset>
         <div className="composer-fields-inner">
-          <div className="two-fields">
+          <div className="two-fields" hidden={taskOnly}>
             <label className="field-label">When it happened
-              <input className="field" type="datetime-local" value={occurredAt} max={toDateTimeLocal(new Date().toISOString())} onChange={(event) => setOccurredAt(event.target.value)} required />
+              <input className="field" type="datetime-local" value={occurredAt} max={toDateTimeLocal(new Date().toISOString())} onChange={(event) => setOccurredAt(event.target.value)} required={!taskOnly} />
             </label>
             <label className="field-label">Notes (optional)
               <textarea className="field-textarea composer-notes" rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What happened? Record the useful detail." />
             </label>
           </div>
           <label className="checkbox-row">
-            <input type="checkbox" checked={addFollowUp} onChange={(event) => setAddFollowUp(event.target.checked)} />
+            <input type="checkbox" checked={addFollowUp} disabled={taskOnly} onChange={(event) => setAddFollowUp(event.target.checked)} />
             Add the next action now
           </label>
           {addFollowUp ? (
             <div className="two-fields">
               <label className="field-label">Next action
-                <input className="field" value={nextActionTitle} onChange={(event) => setNextActionTitle(event.target.value)} placeholder="e.g. Follow up on the overview" />
+                <input className="field" required minLength={2} value={nextActionTitle} onChange={(event) => setNextActionTitle(event.target.value)} placeholder="e.g. Follow up on the overview" />
               </label>
               <label className="field-label">Due
-                <input className="field" type="datetime-local" value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} />
+                <input className="field" type="datetime-local" required value={nextActionAt} onChange={(event) => setNextActionAt(event.target.value)} />
               </label>
             </div>
           ) : null}
           {saveError ? <p className="form-error activity-save-error" role="alert"><AlertCircle size={14} />{saveError}</p> : null}
           <div className="button-row" style={{ justifyContent: "flex-end" }}>
-            <button className="btn btn-primary" type="submit" disabled={pending || !typeId}>
+            <button className="btn btn-primary" type="submit" disabled={pending || (!taskOnly && !typeId)}>
               {pending ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}
-              Log activity
+              {taskOnly ? "Create next action" : "Save reviewed update"}
             </button>
           </div>
         </div>

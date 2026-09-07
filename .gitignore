@@ -9,6 +9,7 @@
 /.next-demo-*/
 /.next-instance/
 /.next-instance-*/
+/.next-review-build/
 /out/
 
 # production
@@ -34,6 +35,7 @@
 *.tsbuildinfo
 next-env.d.ts
 /.codex-tmp/
+/.local-audit-*/
 /.codex/
 /.codex-browser-runtime/
 /.agents/

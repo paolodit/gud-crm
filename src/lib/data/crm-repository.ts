@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { deliveryDetails } from "@/lib/domain/delivery";
 
 import { db } from "@/db";
 import {
@@ -33,9 +34,14 @@ import { getEdition, normaliseEditionKey } from "@/lib/editions";
 
 const iso = (value: Date | null) => value?.toISOString() ?? null;
 
-export async function getBoardSnapshot(organisationId: string): Promise<BoardSnapshot> {
-  if (env.demoMode) return demoBoardForEdition(env.defaultEdition);
-  if (env.sqliteMode) return getLocalBoardSnapshot();
+export type SnapshotOptions = { opportunityIds?: string[]; includeHistory?: boolean };
+
+export async function getBoardSnapshot(organisationId: string, options: SnapshotOptions = {}): Promise<BoardSnapshot> {
+  if (env.demoMode || env.sqliteMode) {
+    const snapshot = env.demoMode ? demoBoardForEdition(env.defaultEdition) : getLocalBoardSnapshot();
+    if (options.opportunityIds) snapshot.opportunities = snapshot.opportunities.filter((item) => options.opportunityIds!.includes(item.id));
+    return snapshot;
+  }
 
   const [[organisation], [pipeline]] = await Promise.all([db
     .select({ settings: organisations.settings })
@@ -81,6 +87,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
         and(
           eq(opportunities.organisationId, organisationId),
           eq(opportunities.pipelineId, pipeline.id),
+          options.opportunityIds ? (options.opportunityIds.length ? inArray(opportunities.id, options.opportunityIds) : sql`false`) : undefined,
         ),
       )
       .orderBy(asc(opportunities.position), desc(opportunities.updatedAt)),
@@ -112,7 +119,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
           .from(opportunityContacts)
           .innerJoin(contacts, eq(opportunityContacts.contactId, contacts.id))
           .where(inArray(opportunityContacts.opportunityId, opportunityIds)),
-        db
+        options.includeHistory === false ? Promise.resolve([]) : db
           .select({
             activity: activities,
             type: activityTypes,
@@ -137,7 +144,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
           .leftJoin(users, eq(tasks.ownerId, users.id))
           .where(inArray(tasks.opportunityId, opportunityIds))
           .orderBy(asc(tasks.dueAt)),
-        db
+        options.includeHistory === false ? Promise.resolve([]) : db
           .select()
           .from(aiSuggestions)
           .where(inArray(aiSuggestions.opportunityId, opportunityIds))
@@ -216,6 +223,7 @@ export async function getBoardSnapshot(organisationId: string): Promise<BoardSna
     const relatedActivities = activitiesByOpportunity.get(row.opportunity.id) ?? [];
     return {
       id: row.opportunity.id,
+      delivery: deliveryDetails(row.opportunity.delivery),
       isExample: row.opportunity.importMetadata?.demoExample === true,
       stageId: row.opportunity.stageId,
       position: row.opportunity.position,

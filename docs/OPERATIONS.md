@@ -3,7 +3,7 @@
 ## Daily rhythm
 
 1. Open **Pipeline** and scan where the whole book of work stands.
-2. Spread a crowded stage into two lanes or use Compact view when density is hiding the picture.
+2. Spread a crowded stage into three lanes or use Compact view when density is hiding the picture.
 3. Open **Today** when you want the five ranked next moves. They are ranked, not automated; judgement still wins.
 4. Log every meaningful attempt and outcome from the opportunity workspace.
 5. Create the next owned, dated action while logging the touch.
@@ -28,6 +28,7 @@ The board describes outcomes. Calls, emails, LinkedIn attempts, letters, demos a
 - Review quiet conversations and either create a credible next action, return them to Targets or close them.
 - Check the Sales guide asset kit for missing or stalled material.
 - Review Reports by owner and, when relevant, by offer.
+- Review won work in **Live projects**: keep delivery stage, next milestone and due date current without changing the sales result.
 - Download a fresh SQLite backup during development or confirm the latest PostgreSQL backup and restore-test status in production.
 
 ## Backups

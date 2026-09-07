@@ -11,6 +11,7 @@ import {
   describeWorkspace,
   enrichContactEmail,
   getOpportunity,
+  getOpportunities,
   getSalesBrief,
   listOpportunities,
   logActivity,
@@ -23,6 +24,8 @@ import {
   updateCompany,
   updateOpportunity,
 } from "@/lib/mcp/service";
+import { updateDelivery } from "@/lib/data/delivery-repository";
+import { deliveryPatchSchema } from "@/lib/domain/delivery";
 
 const safeUrl = z.url().refine(isSafeHttpUrl, "Only complete HTTP or HTTPS URLs are accepted.");
 const optionalSafeUrl = z.union([z.literal(""), safeUrl]).optional();
@@ -93,7 +96,7 @@ export function createGudMcpServer(context: {
   clientId: string;
 }) {
   const server = new McpServer(
-    { name: "gud-crm", version: "0.3.1" },
+    { name: "gud-crm", version: "0.4.0" },
     {
       instructions:
         "GUD is the sales system of record. Start with get_sales_brief for an at-a-glance view, then read the exact opportunity before writing. After a write, report exactly what changed, the returned record ID and the sensible next step. Put unverified findings into submit_research_results with public source URLs. Never guess contact data, initiate outreach, remove do-not-contact protection, archive records, or move an opportunity to Won/Lost without the user's explicit confirmation.",
@@ -144,6 +147,7 @@ export function createGudMcpServer(context: {
         needsAttention: z.boolean().optional(),
         includeArchived: z.boolean().default(false),
         limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).max(100000).default(0).describe("Page offset. Increase by limit to retrieve the next page; an empty page means the end."),
       },
       outputSchema: genericToolOutputSchema,
       annotations: readAnnotations,
@@ -533,6 +537,27 @@ export function createGudMcpServer(context: {
     }),
   );
 
+  server.registerTool("get_opportunities", {
+    title: "Read several opportunities",
+    description: "Read up to ten known records in one request. Returns contacts, tasks, recent activity and delivery details, plus missingIds. Use instead of repeated get_opportunity calls.",
+    inputSchema: { opportunityIds: z.array(z.uuid()).min(1).max(10) },
+    outputSchema: genericToolOutputSchema, annotations: readAnnotations,
+  }, async ({ opportunityIds }) => toolResult(() => getOpportunities(context.actor, opportunityIds)));
+
+  server.registerTool("list_live_projects", {
+    title: "Review live projects",
+    description: "List unarchived won work with delivery stage, next milestone and due date. Sales stages are unchanged. Paginate with offset and limit.",
+    inputSchema: { query: z.string().trim().max(220).optional(), ownerId: z.string().max(220).optional(), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(100000).default(0) },
+    outputSchema: genericToolOutputSchema, annotations: readAnnotations,
+  }, async (input) => toolResult(() => listOpportunities(context.actor, { ...input, terminalType: "won" })));
+
+  server.registerTool("update_live_project", {
+    title: "Update live project",
+    description: "Update the delivery stage, milestone, due date or notes on an unarchived won opportunity. Read the record first. Omitted fields are preserved; null clears dueDate. Does not change sales status or send messages.",
+    inputSchema: { opportunityId: z.uuid(), delivery: deliveryPatchSchema },
+    outputSchema: genericToolOutputSchema, annotations: writeAnnotations,
+  }, async (input) => toolResult(async () => { requireWriteScope(context.scopes); return updateDelivery(context.actor, input); }));
+
   server.registerResource(
     "gud-workspace-context",
     "gud://workspace/context",
@@ -567,6 +592,8 @@ export function createGudMcpServer(context: {
           captureUpdate: ["list_opportunities", "get_opportunity", "describe_workspace", "log_activity", "set_next_action"],
           research: ["search_companies", "describe_workspace", "submit_research_results"],
           enrich: ["get_opportunity", "find_work_email"],
+          compare: ["list_opportunities", "get_opportunities"],
+          delivery: ["list_live_projects", "get_opportunity", "update_live_project"],
           rules: [
             "Read the exact record before writing.",
             "Do not invent activity, contact details, outcomes or private data.",
