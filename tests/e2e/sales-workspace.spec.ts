@@ -20,6 +20,7 @@ test.describe.serial("Service Sales workspace", () => {
 
   test("lets an admin add and safely remove a pipeline stage", async ({ page }) => {
     await page.goto("/settings");
+    await page.getByRole("tab", { name: "Sales", exact: true }).click();
     await page.getByRole("button", { name: "Add stage" }).click();
     await page.getByLabel("Name").fill("Commercial review");
     await page.getByLabel("Meaning").selectOption("open");
