@@ -1,5 +1,5 @@
 import { and, asc, eq, ilike, isNull, max, ne, or, sql, lt } from "drizzle-orm";
-import { deliveryDetails, deliveryStages } from "@/lib/domain/delivery";
+import { configuredDeliveryStages, deliveryDetails, liveProjectRecords } from "@/lib/domain/delivery";
 import { env } from "@/lib/env";
 
 import { db } from "@/db";
@@ -163,7 +163,7 @@ export async function getMcpActor(userId: string): Promise<McpActor | null> {
 export async function describeWorkspace(actor: McpActor) {
   const snapshot = await getBoardSnapshot(actor.organisationId, { opportunityIds: [], includeHistory: false });
   return {
-    deliveryStages,
+    deliveryStages: configuredDeliveryStages(snapshot.deliveryStages),
     edition: snapshot.edition,
     pipeline: snapshot.pipeline,
     offers: snapshot.offers.filter((offer) => offer.active).map((offer) => ({
@@ -197,6 +197,13 @@ export async function describeWorkspace(actor: McpActor) {
       "Terminal stage moves require an explicit confirmation flag.",
     ],
   };
+}
+
+export async function listLiveProjects(actor: McpActor, input: { query?: string; ownerId?: string; offset: number; limit: number }) {
+  const snapshot = await getBoardSnapshot(actor.organisationId, { includeHistory: false });
+  const query = input.query?.toLowerCase() ?? "";
+  const projects = liveProjectRecords(snapshot).filter((project) => !project.delivery.archivedAt && (!input.ownerId || project.ownerId === input.ownerId) && `${project.companyName} ${project.title} ${project.delivery.nextMilestone}`.toLowerCase().includes(query));
+  return { projects: projects.slice(input.offset, input.offset + input.limit), total: projects.length, nextOffset: input.offset + input.limit < projects.length ? input.offset + input.limit : null, deliveryStages: configuredDeliveryStages(snapshot.deliveryStages), note: "Direct projects do not have sales opportunity records; manage them on the Live projects screen." };
 }
 
 export async function listOpportunities(

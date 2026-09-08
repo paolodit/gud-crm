@@ -308,7 +308,7 @@ export async function saveWorkspaceEditionAction(input: unknown): Promise<Result
     } else {
       const [row] = await db.select({ settings: organisations.settings }).from(organisations).where(eq(organisations.id, member.organisationId)).limit(1);
       if (!row) throw new Error("Workspace not found.");
-      await db.update(organisations).set({ settings: { ...row.settings, edition: parsed.data.edition }, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
+      await db.update(organisations).set({ settings: sql`${organisations.settings} || ${JSON.stringify({ edition: parsed.data.edition })}::jsonb`, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
       await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "workspace.edition_changed", entityType: "workspace", entityId: member.organisationId, after: { edition: parsed.data.edition } });
     }
     for (const path of ["/settings", "/my-work", "/pipeline", "/research", "/targets", "/companies", "/reports", "/playbook"]) revalidatePath(path);
@@ -505,7 +505,7 @@ export async function saveSalesAssetAction(input: unknown): Promise<Result> {
       const stored = byOffer[offer.id] ?? legacy ?? salesAssetDefaults;
       const asset = { id: parsed.data.id, status: parsed.data.status, url: parsed.data.url, note: parsed.data.note } satisfies SalesAssetSummary;
       const salesAssets = stored.map((item) => item.id === asset.id ? asset : item);
-      await db.update(organisations).set({ settings: { ...settings, salesAssetsByOffer: { ...byOffer, [offer.id]: salesAssets } }, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
+      await db.update(organisations).set({ settings: sql`${organisations.settings} || jsonb_build_object('salesAssetsByOffer', COALESCE(${organisations.settings}->'salesAssetsByOffer', '{}'::jsonb) || ${JSON.stringify({ [offer.id]: salesAssets })}::jsonb)`, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId));
       await db.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "sales_asset.updated", entityType: "sales_asset", entityId: parsed.data.id, after: parsed.data });
     }
     revalidatePath("/playbook");

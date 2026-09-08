@@ -58,7 +58,7 @@ export function buildPostgresPromotionSql(snapshot: BoardSnapshot, input: {
         RAISE EXCEPTION 'Target workspace is not empty (% opportunities); refusing promotion.', existing_opportunities;
       END IF;
     END $gud$;`,
-    `UPDATE organisations SET name = ${text(input.organisationName)}, ai_enabled = ${bool(input.aiEnabled)}, settings = ${json({ edition: snapshot.edition })}, updated_at = now() WHERE id = ${text(organisationId)}::uuid;`,
+    `UPDATE organisations SET name = ${text(input.organisationName)}, ai_enabled = ${bool(input.aiEnabled)}, settings = ${json({ edition: snapshot.edition, deliveryStages: snapshot.deliveryStages, directProjects: snapshot.directProjects })}, updated_at = now() WHERE id = ${text(organisationId)}::uuid;`,
     `UPDATE users SET name = ${text(administrator.name)}, role = 'admin', active = true, organisation_id = ${text(organisationId)}::uuid, updated_at = now() WHERE lower(email) = lower(${text(administratorEmail)});`,
   ];
 
@@ -67,6 +67,11 @@ export function buildPostgresPromotionSql(snapshot: BoardSnapshot, input: {
     sql.push(`INSERT INTO users (id, name, email, email_verified, organisation_id, role, active, banned, created_at, updated_at)
       VALUES (${text(user.id)}, ${text(user.name)}, ${text(user.email.toLowerCase())}, false, ${text(organisationId)}::uuid, ${text(user.role ?? "member")}::user_role, ${bool(user.active !== false)}, false, now(), now())
       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, organisation_id = EXCLUDED.organisation_id, role = EXCLUDED.role, active = EXCLUDED.active, updated_at = now();`);
+  }
+
+  for (const [index, project] of (snapshot.directProjects ?? []).entries()) {
+    const owner = snapshot.users.find((user) => user.id === project.ownerId);
+    if (owner) sql.push(`UPDATE organisations SET settings = jsonb_set(settings, '{directProjects,${index},ownerId}', COALESCE(to_jsonb(${ownerId(owner, snapshot.users, administratorEmail)}), 'null'::jsonb)) WHERE id = ${text(organisationId)}::uuid;`);
   }
 
   sql.push(`INSERT INTO pipelines (id, organisation_id, name, active, created_at, updated_at)

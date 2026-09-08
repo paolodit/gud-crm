@@ -41,7 +41,7 @@ describe("delivery persistence safety", () => {
     const result = await updateDelivery(actor, { opportunityId: actor.id, delivery: { stage: "client_review" } });
     expect(result.delivery).toEqual({ ...original, stage: "client_review" });
     expect(set.mock.calls[0][0]).toEqual({ delivery: result.delivery, updatedAt: expect.any(Date) });
-    const predicate = new PgDialect().sqlToQuery(where.mock.calls[0][0] as SQL);
+    const predicate = new PgDialect().sqlToQuery(where.mock.calls[1][0] as SQL);
     expect(predicate.sql).toContain('"organisation_id"');
     expect(predicate.params).toContain(actor.organisationId);
     expect(lock).toHaveBeenCalledWith("update", expect.any(Object));
@@ -63,7 +63,7 @@ describe("delivery persistence safety", () => {
 });
 
 function databaseFixture(rows: unknown[]) {
-  const lock = vi.fn().mockResolvedValue(rows);
+  const lock = vi.fn().mockResolvedValueOnce([{ settings: {} }]).mockResolvedValue(rows);
   const where = vi.fn().mockReturnValue({ limit: vi.fn().mockReturnValue({ for: lock }) });
   const query = { innerJoin: vi.fn(), where }; query.innerJoin.mockReturnValue(query);
   const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });

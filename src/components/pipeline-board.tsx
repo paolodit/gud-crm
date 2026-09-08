@@ -34,7 +34,6 @@ import {
   FilePenLine,
   Filter,
   GripVertical,
-  Info,
   Link2,
   LoaderCircle,
   ListPlus,
@@ -89,6 +88,8 @@ import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
 import { useDialogFocus } from "@/components/use-dialog-focus";
+import { useExitTransition } from "./use-exit-transition";
+import { AnimatedReveal } from "./animated-reveal";
 import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
@@ -529,7 +530,6 @@ function BoardColumn({
     <section className="board-column" ref={setNodeRef} data-over={isOver} data-expanded={expanded} aria-label={`${stage.name}, ${opportunities.length} opportunities`}>
       <header className="column-header" style={{ backgroundColor: stage.colour }}>
         <strong>{stage.name}</strong>
-        <span className="column-help" title={stageGuidance(stage.name)} aria-label={`${stage.name}: ${stageGuidance(stage.name)}`}><Info size={13} /></span>
         {opportunities.length >= 2 ? (
           <button
             className="column-expand"
@@ -672,6 +672,8 @@ function OpportunityPanel({
   voiceAiConfigured: boolean;
   onArchiveChange: (opportunity: OpportunitySummary, archived: boolean, companyWide?: boolean) => void;
 }) {
+  const { closing, close } = useExitTransition(onClose);
+  const panelRef = useDialogFocus(close);
   const openTasks = opportunity.tasks.filter((task) => task.status === "open");
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
   const [contactEditor, setContactEditor] = useState<ContactSummary | "new" | null>(null);
@@ -720,10 +722,10 @@ function OpportunityPanel({
 
   return (
     <>
-      <button className="panel-backdrop" type="button" aria-label="Close opportunity" onClick={onClose} />
-      <aside className="opportunity-panel" data-expanded={expanded} aria-label={`${opportunity.company.name} opportunity`}>
+      <button className="panel-backdrop" data-closing={closing} type="button" aria-label="Close opportunity" onClick={close} />
+      <aside ref={panelRef} className="opportunity-panel" data-closing={closing} data-expanded={expanded} role="dialog" aria-modal="true" aria-label={`${opportunity.company.name} opportunity`}>
         <header className="panel-header">
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Back to pipeline">
+          <button className="icon-button" type="button" onClick={close} aria-label="Back to pipeline">
             <ChevronLeft size={18} />
           </button>
           <div className="panel-title">
@@ -744,7 +746,7 @@ function OpportunityPanel({
           ) : null}
           <button className="icon-button panel-expand" type="button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace width" : "Expand workspace"} title={expanded ? "Restore width" : "Expand workspace"}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
           <button className="icon-button" type="button" onClick={toggleArchive} disabled={archivePending} aria-label={archived ? "Restore opportunity" : "Archive opportunity"} title={archived ? "Restore opportunity" : "Archive opportunity"}>{archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}</button>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close panel"><X size={18} /></button>
+          <button className="icon-button" type="button" onClick={close} aria-label="Close panel"><X size={18} /></button>
         </header>
 
         <div className="panel-body">
@@ -755,25 +757,25 @@ function OpportunityPanel({
               <section className="surface relationship-overview">
                 <div className="relationship-overview-main">
                   <span className="eyebrow">The opportunity</span>
-                  <h3>{opportunity.title}</h3>
-                  <p className="relationship-angle">{opportunity.outreachAngle || "Add the need, timing and most credible reason to start a conversation."}</p>
+                  <h3><button className="summary-edit-title" onClick={() => setOpportunityEditor(true)} title="Edit opportunity">{opportunity.title}<FilePenLine size={15} /></button></h3>
+                  <p className="relationship-angle"><button className="summary-edit-title" type="button" onClick={() => setOpportunityEditor(true)} aria-label="Edit outreach angle">{opportunity.outreachAngle || "Add the need, timing and most credible reason to start a conversation."}</button></p>
                   <div className="relationship-signals">
                   <div className="relationship-signal-grid">
-                    {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 ? <div className="summary-item"><span>Offer</span><strong>{opportunity.offer?.name ?? "Choose before outreach"}</strong></div> : null}
-                    <div className="summary-item"><span>Owner</span><strong>{opportunity.owner?.name ?? "Unassigned"}</strong></div>
-                    <div className="summary-item"><span>Priority</span><strong className={`badge badge-${opportunity.priority}`}>{opportunity.priority}</strong></div>
-                    <div className="summary-item"><span>Temperature</span><strong className={`badge badge-${opportunity.temperature}`}>{opportunity.temperature.replace("_", " ")}</strong></div>
+                    {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 ? <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Offer</span><strong>{opportunity.offer?.name ?? "Choose before outreach"}</strong></button> : null}
+                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Owner</span><strong>{opportunity.owner?.name ?? "Unassigned"}</strong></button>
+                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Priority</span><strong className={`badge badge-${opportunity.priority}`}>{opportunity.priority}</strong></button>
+                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Temperature</span><strong className={`badge badge-${opportunity.temperature}`}>{opportunity.temperature.replace("_", " ")}</strong></button>
                     <button className="summary-item summary-item-edit" type="button" onClick={() => setCompanyEditor(true)} title="Edit company fit and qualification"><span>Fit <FilePenLine size={12} /></span><strong>{opportunity.company.fitScore ? `${opportunity.company.fitScore}/5` : "Not scored"} · {opportunity.company.scaleNote || "Add qualification note"}</strong></button>
                   </div>
                 </div>
                 </div>
                 <div className="relationship-overview-foot">
-                  {opportunity.expectedValue || opportunity.probability !== null && opportunity.probability !== undefined || opportunity.expectedCloseDate ? <div className="commercial-summary" aria-label="Commercial outlook">
+                  {opportunity.expectedValue || opportunity.probability !== null && opportunity.probability !== undefined || opportunity.expectedCloseDate ? <button type="button" className="commercial-summary commercial-summary-edit" aria-label="Edit commercial outlook" onClick={() => setOpportunityEditor(true)}>
                     {opportunity.expectedValue ? <span><small>Potential</small><strong>{formatMoney(opportunity.expectedValue)}</strong></span> : null}
                     {opportunity.probability !== null && opportunity.probability !== undefined ? <span><small>Probability</small><strong>{opportunity.probability}%</strong></span> : null}
                     {opportunity.expectedCloseDate ? <span><small>Expected close</small><strong>{format(new Date(opportunity.expectedCloseDate), "d MMM yyyy")}</strong></span> : null}
-                  </div> : null}
-                  <OutreachRhythm opportunity={opportunity} />
+                  </button> : null}
+                  <button type="button" className="summary-rhythm-edit" aria-label="Open opportunity editor from outreach summary" onClick={() => setOpportunityEditor(true)}><OutreachRhythm opportunity={opportunity} /></button>
                 </div>
               </section>
 
@@ -1253,7 +1255,7 @@ function QuickActivityComposer({
         <div><h3>Log an activity</h3><small>Record every attempt, channel and outcome</small></div>
         <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" opportunityId={opportunity.id} initiallyOpen={initiallyOpen} aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
       </header>
-      {open ? <form className="surface-content composer-fields" onSubmit={submit}>
+      <AnimatedReveal open={open}><form className="surface-content composer-fields" onSubmit={submit}>
         <label className="checkbox-row"><input type="checkbox" checked={taskOnly} onChange={(event) => { setTaskOnly(event.target.checked); if (event.target.checked) setAddFollowUp(true); }} />Create a task only — don’t log a touchpoint</label>
         <div className="three-fields" hidden={taskOnly}>
           <label className="field-label">Activity
@@ -1309,7 +1311,7 @@ function QuickActivityComposer({
             </button>
           </div>
         </div>
-      </form> : null}
+      </form></AnimatedReveal>
     </section>
   );
 }
@@ -1333,25 +1335,6 @@ function normaliseSpokenOutcome(value: string) {
   return "No reply";
 }
 
-function stageGuidance(name: string) {
-  return ({
-    "Researching": "Actively validating fit and finding the right person.",
-    "Research holding": "Market-map or paused research. No active outreach and not a sales loss.",
-    "Ready to contact": "A credible person and route are identified; the next touch can be prepared.",
-    "Outreach active": "One or more touches are underway; keep attempts and outcomes here until engagement.",
-    "Engaged": "A real person has responded or opened a useful conversation.",
-    "Conversation active": "A real person has responded and a useful sales conversation is underway.",
-    "Review booked": "A discovery, review or working session is in the diary.",
-    "Discovery booked": "A discovery or scoping conversation is in the diary.",
-    "Pilot proposed": "A specific pilot or commercial next step has been offered.",
-    "Proposal sent": "A clear scope, value and commercial proposal have been shared.",
-    "Pilot active": "A live pilot is underway with an owner and success criteria.",
-    "Decision pending": "The buyer has what they need and a decision or agreed next step is pending.",
-    "Nurture": "There is genuine relationship signal, but timing is not active. Record a re-entry trigger and date.",
-    "Won": "The opportunity converted into a customer or agreed engagement.",
-    "Lost": "A genuine post-contact commercial loss. Research exclusions belong in Research holding.",
-  } as Record<string, string>)[name] ?? "Pipeline stage";
-}
 
 function relative(value: string, now: string) {
   return formatDistanceStrict(new Date(value), new Date(now), { addSuffix: true });

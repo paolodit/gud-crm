@@ -25,8 +25,8 @@ import { BrandLogo } from "@/components/brand-logo";
 
 const coreNavItems = [
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
-  { href: "/live", label: "Live projects", icon: Rocket },
   { href: "/my-work", label: "Today", icon: ListChecks },
+  { href: "/live", label: "Live projects", icon: Rocket },
 ];
 
 export function AppShell({ member, instanceName, children }: { member: CurrentMember; instanceName: string; children: React.ReactNode }) {

@@ -30,7 +30,7 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **Research stays out of live sales.** Explore market ideas separately, build named targets before outreach, then promote only credible opportunities.
 - **One product or several services.** Focused Sales suits a single product or SaaS motion. Service Sales suits agencies and consultancies pitching different projects, retainers and advisory work.
 - **Say it, review it, save it.** A focused voice desk keeps an editable transcript, recognises your workspace's activity types and prepares a touchpoint and follow-up—or a task on its own. Nothing is saved until you review and confirm.
-- **A win has somewhere to go.** Live projects puts won work into Kickoff, In progress, Client review, On hold or Complete. Keep a next milestone, due date and delivery notes without duplicating the opportunity. [How it works](docs/LIVE-PROJECTS.md).
+- **Delivery has its own home.** Won opportunities appear on Live projects automatically—or add an existing project without a sales cycle. Configure delivery stages, expand busy columns, track milestones and archive completed work independently of sales. [How it works](docs/LIVE-PROJECTS.md).
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
 - **AI is bounded and reviewable.** Draft outreach, explore angles, prepare research and ask for a next move without auto-sending anything.

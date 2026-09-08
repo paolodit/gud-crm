@@ -10,6 +10,7 @@
 /.next-instance/
 /.next-instance-*/
 /.next-review-build/
+/.next-live-review/
 /out/
 
 # production
