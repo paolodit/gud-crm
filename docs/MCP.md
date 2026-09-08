@@ -123,7 +123,7 @@ MCP server 0.4.0 adds bounded batch reads and delivery tools. Refresh the tool l
 - `describe_workspace` loads configuration without opportunity histories. It includes the delivery stage IDs.
 - `list_opportunities` filters in PostgreSQL before loading the matching records. Use `query`, `stageId` / `stageName`, `ownerId`, `offerId` or `needsAttention`. `limit` defaults to 50 (maximum 100); `offset` starts at 0. Increase offset by the previous page size until fewer than `limit` records are returned. Lists and briefs skip activity and AI-history queries.
 - `get_opportunity` loads the requested record only. `get_opportunities` accepts `{ "opportunityIds": ["<uuid>", "<uuid>"] }` for up to ten records in one request. Its result contains `records` and `missingIds`, with contacts, open tasks, up to 20 recent activities, delivery details and record links. Unknown IDs do not reveal records from another workspace.
-- `list_live_projects` lists unarchived won opportunities, including their delivery details. It accepts `query`, `ownerId`, `limit` and `offset`.
+- `list_live_projects` returns `projects`, `total`, `nextOffset` and the workspace’s configured `deliveryStages`. It includes won sales and directly added projects, excludes the delivery archive, and accepts `query`, `ownerId`, `limit` and `offset`. Each project has a `source` (`sales` or `direct`); direct projects are not sales opportunities and are currently edited in the Live projects UI.
 - `update_live_project` requires write access and an active won opportunity. It accepts a partial delivery object: omitted fields remain unchanged, `dueDate: null` clears the date, and an empty string clears milestone or notes. It never changes sales status or sends messages.
 
 Example delivery update after reading the record and confirming the user's intent:
@@ -139,7 +139,7 @@ Example delivery update after reading the record and confirming the user's inten
 }
 ```
 
-Valid delivery stage IDs: `kickoff`, `in_progress`, `client_review`, `on_hold`, `complete`. Due dates use `YYYY-MM-DD`. The saved response returns the opportunity ID and complete delivery details; all writes are audited. There is no response cache that could mix tenants or conceal a recent write. Request latency still depends on hosting, database size and network conditions.
+Use the current delivery stage IDs from `describe_workspace`, not a hard-coded list. The default IDs are `kickoff`, `in_progress`, `client_review`, `on_hold`, `complete`; admins can change the stage list in Settings → Live projects. Due dates use `YYYY-MM-DD`. The saved response returns the opportunity ID and complete delivery details; all writes are audited. Setting `archivedAt` to an ISO timestamp archives delivery only; `null` restores it. Confirm archive intent first. The sales opportunity and activity history remain unchanged. There is no response cache that could mix tenants or conceal a recent write. Request latency still depends on hosting, database size and network conditions.
 
 ## Useful requests
 

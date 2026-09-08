@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { deliveryDetails } from "@/lib/domain/delivery";
+import { configuredDeliveryStages, directProjects, deliveryDetails } from "@/lib/domain/delivery";
 
 import { db } from "@/db";
 import {
@@ -301,6 +301,8 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
   });
 
   return {
+    deliveryStages: configuredDeliveryStages(organisation?.settings.deliveryStages),
+    directProjects: directProjects(organisation?.settings.directProjects),
     edition: organisation ? normaliseEditionKey(organisation.settings.edition) : getEdition(env.defaultEdition).key,
     pipeline,
     offers: offerRows.map((offer) => ({

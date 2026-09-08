@@ -1,13 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { demoBoardForEdition } from "@/lib/demo-data";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
-import { describeWorkspace, getOpportunities, getOpportunity, getSalesBrief } from "./service";
+import { describeWorkspace, getOpportunities, getOpportunity, getSalesBrief, listLiveProjects } from "./service";
 
 vi.mock("@/lib/data/crm-repository", () => ({ getBoardSnapshot: vi.fn() }));
 const actor = { id: "demo-admin", name: "Alex", email: "alex@example.com", organisationId: "00000000-0000-4000-8000-000000000001", role: "admin" as const };
 beforeEach(() => { vi.mocked(getBoardSnapshot).mockReset(); });
 
 describe("bounded MCP reads", () => {
+  it("lists direct projects without putting them in sales and excludes archived delivery", async () => {
+    const snapshot = demoBoardForEdition("service");
+    snapshot.opportunities = [];
+    snapshot.deliveryStages = [{ id: "custom", name: "Custom", colour: "#123456", description: "" }];
+    const project = { id: "00000000-0000-4000-8000-000000000003", title: "Delivery only", companyName: "Example", ownerId: null, offerId: null, delivery: { stage: "custom", dueDate: null, nextMilestone: "", notes: "" } };
+    snapshot.directProjects = [project, { ...project, id: "00000000-0000-4000-8000-000000000004", delivery: { ...project.delivery, archivedAt: "2026-09-08T12:00:00.000Z" } }];
+    vi.mocked(getBoardSnapshot).mockResolvedValue(snapshot);
+    const result = await listLiveProjects(actor, { limit: 10, offset: 0 });
+    expect(result.total).toBe(1);
+    expect(result.projects[0].source).toBe("direct");
+    expect(result.deliveryStages).toEqual(snapshot.deliveryStages);
+  });
   it("loads metadata without loading opportunity history", async () => {
     vi.mocked(getBoardSnapshot).mockResolvedValue({ ...demoBoardForEdition("service"), opportunities: [] });
     const result = await describeWorkspace(actor);

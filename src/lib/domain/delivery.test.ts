@@ -23,7 +23,7 @@ describe("live project model", () => {
   it("validates stages, real dates and preserves omitted fields in patches", () => {
     expect(deliveryStages).toHaveLength(5);
     expect(deliveryPatchSchema.parse({ stage: "client_review" })).toEqual({ stage: "client_review" });
-    expect(deliveryPatchSchema.safeParse({ stage: "won" }).success).toBe(false);
+    expect(deliveryPatchSchema.safeParse({ stage: "" }).success).toBe(false);
     expect(deliveryPatchSchema.safeParse({ dueDate: "2026-02-30" }).success).toBe(false);
     expect(deliveryPatchSchema.parse({ dueDate: null })).toEqual({ dueDate: null });
     expect(deliveryPatchSchema.safeParse({}).success).toBe(false);

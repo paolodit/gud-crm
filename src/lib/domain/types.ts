@@ -181,6 +181,8 @@ export type StageSummary = {
 };
 
 export type BoardSnapshot = {
+  deliveryStages?: import("./delivery").DeliveryStage[];
+  directProjects?: import("./delivery").DirectProject[];
   edition: EditionKey;
   pipeline: { id: string; name: string };
   offers: OfferSummary[];

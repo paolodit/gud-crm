@@ -14,6 +14,7 @@ import {
   getOpportunities,
   getSalesBrief,
   listOpportunities,
+  listLiveProjects,
   logActivity,
   restoreCompany,
   restoreOpportunity,
@@ -546,10 +547,10 @@ export function createGudMcpServer(context: {
 
   server.registerTool("list_live_projects", {
     title: "Review live projects",
-    description: "List unarchived won work with delivery stage, next milestone and due date. Sales stages are unchanged. Paginate with offset and limit.",
+    description: "List current live projects from won sales and directly added projects, including source, stage, milestone, due date and configured delivery stages. Archived delivery is excluded. Direct projects are separate from sales opportunities. Paginate with offset and limit.",
     inputSchema: { query: z.string().trim().max(220).optional(), ownerId: z.string().max(220).optional(), limit: z.number().int().min(1).max(100).default(50), offset: z.number().int().min(0).max(100000).default(0) },
     outputSchema: genericToolOutputSchema, annotations: readAnnotations,
-  }, async (input) => toolResult(() => listOpportunities(context.actor, { ...input, terminalType: "won" })));
+  }, async (input) => toolResult(() => listLiveProjects(context.actor, input)));
 
   server.registerTool("update_live_project", {
     title: "Update live project",
