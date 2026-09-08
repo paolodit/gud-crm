@@ -1,0 +1,64 @@
+import { expect, test } from "@playwright/test";
+
+test.describe.serial("Live project refinements", () => {
+  test("edits delivery stages with the pipeline row editor", async ({ page }, testInfo) => {
+    await page.goto("/settings?tab=delivery");
+    await expect(page.getByRole("tab", { name: "Live projects", exact: true })).toHaveAttribute("aria-selected", "true");
+    const panel = page.getByRole("tabpanel", { name: "Live projects", exact: true });
+    await expect(panel.locator(".stage-settings-row")).toHaveCount(5);
+    await expect(panel.getByRole("textbox")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("delivery-settings.png") });
+    await panel.getByRole("button", { name: "Add stage", exact: true }).click();
+    await panel.getByRole("textbox", { name: "Name", exact: true }).fill("Final handover");
+    await panel.getByRole("textbox", { name: "Description", exact: true }).fill("Check the handover.");
+    await panel.getByRole("button", { name: "Save stage", exact: true }).click();
+    const row = panel.locator(".stage-settings-edit").filter({ hasText: "Final handover" });
+    await expect(row).toBeVisible();
+    await row.click();
+    await panel.getByRole("button", { name: "Remove stage", exact: true }).click();
+    await expect(panel.getByText(/All current and archived projects/)).toBeVisible();
+    await panel.getByLabel("Move projects to").selectOption("kickoff");
+    await panel.getByRole("button", { name: "Move and remove", exact: true }).click();
+    await expect(row).toHaveCount(0);
+  });
+  test("opens delivery voice input without saving a project automatically", async ({ page }, testInfo) => {
+    await page.goto("/live");
+    await page.getByRole("button", { name: "Add project", exact: true }).click();
+    await page.getByLabel("Project name").fill("Delivery voice test");
+    await page.getByLabel("Organisation / client").fill("Demo delivery client");
+    await page.getByRole("button", { name: "Save project", exact: true }).click();
+    await page.locator(".live-card-open").filter({ hasText: "Delivery voice test" }).click();
+    await expect(page.locator(".delivery-editor-note")).toHaveCSS("font-size", "12px");
+    await page.getByRole("button", { name: "Talk through an update", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "What’s changed?" })).toBeVisible();
+    await expect(page.getByText("Prepare a delivery stage, milestone or note. Review before saving.")).toBeVisible();
+    await page.getByRole("button", { name: "Cancel voice input", exact: true }).click();
+    await expect(page.getByLabel("Delivery stage")).toHaveValue("kickoff");
+    await page.getByRole("button", { name: "Close project", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const column = page.locator(".live-column").first();
+    await expect(column.locator("header")).toHaveCSS("background-color", "rgb(0, 123, 255)");
+    await column.getByRole("button", { name: "Expand Kickoff to three lanes" }).click();
+    await expect(column).toHaveAttribute("data-expanded", "true");
+    await page.screenshot({ path: testInfo.outputPath("live-board.png") });
+  });
+  test("keeps only a mic next to each pipeline card drag handle", async ({ page }, testInfo) => {
+    await page.goto("/pipeline");
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+    await page.getByLabel("Company name").fill("DEMO · Voice Card");
+    await page.getByLabel("Opportunity title").fill("Voice card review");
+    await page.getByRole("button", { name: "Create opportunity", exact: true }).click();
+    await expect(page.locator(".opportunity-panel")).toBeVisible();
+    await page.goto("/pipeline");
+    await expect(page.locator(".card-quick-actions")).toHaveCount(0);
+    const card = page.locator(".opportunity-card").first();
+    await expect(card.locator(".card-voice-action")).toHaveText("");
+    await expect(card.locator(".card-voice-action")).toBeVisible();
+    await expect(card.locator("select")).toHaveCount(0);
+    const links = page.locator(".side-nav a");
+    await expect(links.nth(0)).toHaveText("Pipeline");
+    await expect(links.nth(1)).toHaveText("Live projects");
+    await expect(links.nth(2)).toHaveText("Today");
+    await page.screenshot({ path: testInfo.outputPath("pipeline-card.png") });
+  });
+});

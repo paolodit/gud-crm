@@ -10,7 +10,11 @@ Track delivery after a sale, or add work you are already doing.
 
 ## Configure delivery stages
 
-Workspace admins can open Settings → Live projects to rename, describe, recolour, reorder, add or remove stages. Removing a stage requires a destination for its projects, including archived projects. Changes apply together when you choose Save stages. At least one stage is required. Sales stages are configured separately under Settings → Sales.
+Workspace admins can open Settings → Live projects to rename, describe, recolour, reorder, add or remove stages. Click a stage row to edit it, then choose Save stage. Drag rows or use arrow keys on a drag handle to save a new order. Removing a stage requires a destination and an explicit Move and remove confirmation for all its projects, including archived projects. At least one stage is required. Sales stages use the same editing layout under Settings → Sales.
+
+## Talk through a delivery update
+
+Open a project and choose Talk through an update. Speak or type what has changed, the delivery stage, next milestone and due date. Prepare for review fills only explicitly stated delivery fields; notes are appended to existing notes. Review the form and choose Save project. Nothing changes until you save, and no sales activity or sales-stage change is created. This works for both direct and sales-linked projects and uses the workspace OpenAI connection in Settings → AI & connections.
 
 Reports includes current projects, overdue milestones, missing milestones, archived totals and a stage breakdown. Offer filtering applies to both sales and delivery. The default `complete` stage is excluded from overdue milestone counts.
 

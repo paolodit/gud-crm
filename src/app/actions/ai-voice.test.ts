@@ -8,10 +8,25 @@ vi.mock("@/lib/env", () => ({ env: mocks.env }));
 vi.mock("@/lib/data/crm-repository", () => ({ getBoardSnapshot: mocks.snapshot }));
 vi.mock("@/lib/session", () => ({ getCurrentMember: async () => ({ id: "user", organisationId: "workspace", name: "Alex", storageMode: "sqlite", demoMode: false }) }));
 vi.mock("@/lib/data/local-store", () => ({ getLocalAiEnabled: () => true, consumeLocalAiRateLimit: () => true, recordLocalAuditEvent: mocks.audit }));
-const fields = ["companyName", "sector", "websiteUrl", "companyLinkedinUrl", "fitScore", "scaleNote", "researchNote", "title", "offerName", "ownerName", "priority", "temperature", "expectedValue", "probability", "expectedCloseDate", "outreachAngle", "contactName", "contactTitle", "contactEmail", "contactPhone", "contactLinkedinUrl", "nextActionTitle", "nextActionAt", "activityTypeName", "activityOutcome", "activityNotes", "activityOccurredAt"];
+const fields = ["deliveryStage", "deliveryMilestone", "deliveryDueDate", "deliveryNotes", "companyName", "sector", "websiteUrl", "companyLinkedinUrl", "fitScore", "scaleNote", "researchNote", "title", "offerName", "ownerName", "priority", "temperature", "expectedValue", "probability", "expectedCloseDate", "outreachAngle", "contactName", "contactTitle", "contactEmail", "contactPhone", "contactLinkedinUrl", "nextActionTitle", "nextActionAt", "activityTypeName", "activityOutcome", "activityNotes", "activityOccurredAt"];
 beforeEach(() => { vi.clearAllMocks(); mocks.env.OPENAI_API_KEY = "test-placeholder"; });
 
 describe("voice drafting boundary", () => {
+  it("prepares delivery fields with custom stage context and no CRM write", async () => {
+    mocks.snapshot.mockResolvedValue({ ...demoBoardForEdition("service"), deliveryStages: [{ id: "qa", name: "Quality review", colour: "#123456", description: "" }] });
+    mocks.parse.mockResolvedValue({ output_parsed: { ...Object.fromEntries(fields.map((name) => [name, null])), kind: "delivery_update", deliveryStage: "qa", deliveryNotes: "Draft ready", deliveryDueDate: "2026-10-16" } });
+    const result = await parseSpokenCrmDraftAction({ kind: "delivery_update", transcript: "Move to Quality review. Draft ready. Due 16 October." });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.draft.deliveryStage).toBe("qa");
+    expect(mocks.parse.mock.calls[0][0].input[2].content).toContain("Quality review");
+    expect(mocks.parse.mock.calls[0][0].input[2].content).toContain("Leave all sales, activity and task fields null");
+  });
+  it("rejects an invented delivery stage before returning a draft", async () => {
+    mocks.snapshot.mockResolvedValue(demoBoardForEdition("service"));
+    mocks.parse.mockResolvedValue({ output_parsed: { ...Object.fromEntries(fields.map((name) => [name, null])), kind: "delivery_update", deliveryStage: "nonexistent" } });
+    expect((await parseSpokenCrmDraftAction({ kind: "delivery_update", transcript: "Move it ahead" })).ok).toBe(false);
+    expect(mocks.audit).not.toHaveBeenCalled();
+  });
   it("prepares a task-only draft using scoped record context without saving CRM work", async () => {
     const snapshot = demoBoardForEdition("service");
     const id = snapshot.opportunities[0].id;

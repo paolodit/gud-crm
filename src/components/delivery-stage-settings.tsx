@@ -1,36 +1,51 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { ArrowDown, ArrowUp, Check, Plus, Trash2 } from "lucide-react";
+import { Check, GripVertical, Pencil, Plus, Trash2, Workflow, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { mutateLiveAction } from "@/app/actions/delivery";
 import { configuredDeliveryStages, type DeliveryStage } from "@/lib/domain/delivery";
 
 export function DeliveryStageSettings({ initialStages, canEdit }: { initialStages?: DeliveryStage[]; canEdit: boolean }) {
   const router = useRouter();
-  const [saved, setSaved] = useState(() => configuredDeliveryStages(initialStages));
-  const [stages, setStages] = useState(saved);
-  const [removing, setRemoving] = useState<string | null>(null);
-  const [replacements, setReplacements] = useState<Record<string, string>>({});
+  const [stages, setStages] = useState(() => configuredDeliveryStages(initialStages));
+  const [editor, setEditor] = useState<DeliveryStage | "new" | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
-  function change(id: string, patch: Partial<DeliveryStage>) { setStages((items) => items.map((item) => item.id === id ? { ...item, ...patch } : item)); }
-  function move(index: number, delta: number) { const next = [...stages]; [next[index], next[index + delta]] = [next[index + delta], next[index]]; setStages(next); }
-  async function save(e: FormEvent) {
-    e.preventDefault(); setPending(true); setMessage("");
+  async function save(next: DeliveryStage[], replacements: Record<string, string> = {}) {
+    if (pending) return false;
+    setPending(true); setMessage("");
     try {
-      const result = await mutateLiveAction({ kind: "stages", stages, replacements });
-      if (!result.ok) setMessage(result.error);
-      else { setSaved(stages); setReplacements({}); setMessage("Delivery stages saved. All projects keep a valid stage."); router.refresh(); }
-    } catch { setMessage("Could not save stages. Please try again."); }
+      const result = await mutateLiveAction({ kind: "stages", stages: next, replacements });
+      if (!result.ok) { setMessage(result.error); return false; }
+      setStages(next); setMessage("Delivery stages saved. All projects keep a valid stage."); router.refresh(); return true;
+    } catch { setMessage("Could not save stages. Please try again."); return false; }
     finally { setPending(false); }
   }
-  return <article className="surface settings-card settings-card-wide"><div><h2>Live project stages</h2><p>Shape the delivery board around how your team works. Sales stages stay unchanged.</p></div><form className="delivery-stage-form" onSubmit={save}><fieldset disabled={!canEdit || pending}>
-    {stages.map((stage, index) => <div className="delivery-stage-row" key={stage.id}><label className="field-label">Name<input className="field" value={stage.name} required maxLength={60} onChange={(e) => change(stage.id, { name: e.target.value })} /></label><label className="field-label">Description<input className="field" value={stage.description} maxLength={240} onChange={(e) => change(stage.id, { description: e.target.value })} /></label><label className="field-label">Colour<input type="color" value={stage.colour} onChange={(e) => change(stage.id, { colour: e.target.value })} /></label><div className="button-row"><button className="icon-button" type="button" disabled={!index} onClick={() => move(index, -1)} aria-label={`Move ${stage.name} up`}><ArrowUp size={16} /></button><button className="icon-button" type="button" disabled={index === stages.length - 1} onClick={() => move(index, 1)} aria-label={`Move ${stage.name} down`}><ArrowDown size={16} /></button><button className="icon-button" type="button" disabled={stages.length === 1} onClick={() => setRemoving(stage.id)} aria-label={`Remove ${stage.name}`}><Trash2 size={16} /></button></div></div>)}
-    {removing ? <div className="archive-notice"><p>Remove this stage? All current and archived projects in it will move to the destination when you save. Nothing is deleted.</p><label className="field-label">Move projects to<select className="field-select" defaultValue="" onChange={(e) => {
-      if (!e.target.value) return;
-      const destination = e.target.value;
-      setReplacements((old) => ({ ...Object.fromEntries(Object.entries(old).map(([id, to]) => [id, to === removing ? destination : to])), ...(saved.some((stage) => stage.id === removing) ? { [removing]: destination } : {}) }));
-      setStages((items) => items.filter((item) => item.id !== removing)); setRemoving(null);
-    }}><option value="">Choose destination…</option>{stages.filter((stage) => stage.id !== removing).map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}</select></label><button className="btn btn-quiet" type="button" onClick={() => setRemoving(null)}>Cancel removal</button></div> : null}
-    <div className="button-row"><button className="btn btn-quiet" type="button" disabled={stages.length >= 20} onClick={() => setStages((items) => [...items, { id: `stage_${crypto.randomUUID().replaceAll("-", "")}`, name: "New stage", colour: "#6554c0", description: "" }])}><Plus size={15} />Add stage</button><button className="btn btn-primary" type="submit" disabled={!!removing}><Check size={15} />{pending ? "Saving…" : "Save stages"}</button></div></fieldset>{message ? <p role="status">{message}</p> : null}{!canEdit ? <p>Only workspace admins can edit delivery stages.</p> : null}</form></article>;
+  function move(id: string, destination: number) {
+    const index = stages.findIndex((stage) => stage.id === id);
+    if (index < 0 || destination < 0 || destination >= stages.length || index === destination) return;
+    const next = [...stages]; const [stage] = next.splice(index, 1); next.splice(destination, 0, stage); void save(next);
+  }
+  return <article className="surface settings-card settings-card-stages">
+    <div className="settings-icon"><Workflow /></div><div><h2>Live project stages</h2><p>{stages.length} visible delivery stages</p></div>
+    {canEdit ? <button className="btn btn-quiet settings-card-action" type="button" disabled={pending || stages.length >= 20} onClick={() => setEditor("new")}><Plus size={14} />Add stage</button> : null}
+    <div className="stage-settings-list">{stages.map((stage, index) => <div key={stage.id} className="stage-settings-row" data-dragging={dragging === stage.id} draggable={canEdit && !pending && !editor} onDragStart={() => setDragging(stage.id)} onDragEnd={() => setDragging(null)} onDragOver={(e) => { if (canEdit && !pending && !editor) e.preventDefault(); }} onDrop={() => { if (dragging) move(dragging, index); setDragging(null); }}>
+      <button className="stage-drag-handle" type="button" disabled={!canEdit || pending || !!editor} aria-label={`Reorder ${stage.name}. Use arrow keys or drag.`} onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); move(stage.id, index + (e.key === "ArrowUp" ? -1 : 1)); } }}><GripVertical size={16} /></button>
+      <button className="stage-settings-edit" type="button" disabled={!canEdit || pending} onClick={() => setEditor(stage)}><i style={{ background: stage.colour }} /><span><strong>{stage.name}</strong><small>{stage.description}</small></span>{canEdit ? <Pencil size={13} /> : null}</button>
+    </div>)}</div>
+    <p className="settings-hint" role="status">{message || (canEdit ? "Drag stages into delivery order, or use arrow keys on a drag handle. Sales stages stay unchanged." : "Only workspace admins can edit delivery stages.")}</p>
+    {editor && canEdit ? <DeliveryStageEditor key={editor === "new" ? "new" : editor.id} stage={editor === "new" ? null : editor} stages={stages} pending={pending} onClose={() => setEditor(null)} onSave={async (stage) => { if (await save(stages.some((item) => item.id === stage.id) ? stages.map((item) => item.id === stage.id ? stage : item) : [...stages, stage])) setEditor(null); }} onRemove={async (id, destination) => { if (await save(stages.filter((item) => item.id !== id), { [id]: destination })) setEditor(null); }} /> : null}
+  </article>;
+}
+
+function DeliveryStageEditor({ stage, stages, pending, onClose, onSave, onRemove }: { stage: DeliveryStage | null; stages: DeliveryStage[]; pending: boolean; onClose: () => void; onSave: (stage: DeliveryStage) => Promise<void>; onRemove: (id: string, destination: string) => Promise<void> }) {
+  const [removing, setRemoving] = useState(false);
+  const destinations = stages.filter((item) => item.id !== stage?.id);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); const form = new FormData(e.currentTarget);
+    await onSave({ id: stage?.id ?? `stage_${crypto.randomUUID().replaceAll("-", "")}`, name: String(form.get("name")), description: String(form.get("description")), colour: String(form.get("colour")) });
+  }
+  if (removing && stage) return <form className="stage-editor" onSubmit={(e) => { e.preventDefault(); void onRemove(stage.id, String(new FormData(e.currentTarget).get("destination"))); }}><header><div><strong>Remove {stage.name}</strong><small>All current and archived projects in this stage will move to your chosen destination. Nothing is deleted.</small></div><button className="icon-button" type="button" disabled={pending} onClick={onClose} aria-label="Close stage editor"><X size={14} /></button></header><label className="field-label">Move projects to<select name="destination" required defaultValue=""><option value="" disabled>Choose destination…</option>{destinations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><div className="team-editor-actions"><button className="btn btn-quiet" type="button" disabled={pending} onClick={() => setRemoving(false)}>Back</button><button className="btn btn-danger" disabled={pending}><Trash2 size={14} />{pending ? "Moving…" : "Move and remove"}</button></div></form>;
+  return <form className="stage-editor" onSubmit={submit}><header><div><strong>{stage ? `Edit ${stage.name}` : "Add a live project stage"}</strong><small>Keep delivery stages clear and easy to understand.</small></div><button className="icon-button" type="button" disabled={pending} onClick={onClose} aria-label="Close stage editor"><X size={14} /></button></header><div className="stage-editor-fields"><label className="field-label">Name<input className="field" name="name" defaultValue={stage?.name ?? ""} required maxLength={60} /></label><label className="field-label">Description<input className="field" name="description" defaultValue={stage?.description ?? ""} maxLength={240} /></label><label className="field-label colour-field">Colour<input name="colour" type="color" defaultValue={stage?.colour ?? "#6554c0"} /></label></div><div className="team-editor-actions">{stage && destinations.length ? <button className="btn btn-danger" type="button" disabled={pending} onClick={() => setRemoving(true)}><Trash2 size={14} />Remove stage</button> : <span />}<div className="button-row"><button className="btn btn-quiet" type="button" disabled={pending} onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={pending}><Check size={14} />{pending ? "Saving…" : "Save stage"}</button></div></div></form>;
 }

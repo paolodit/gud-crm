@@ -642,15 +642,8 @@ function OpportunityCard({
 
 function CardQuickActions({ opportunity }: { opportunity: OpportunitySummary }) {
   const actions = useContext(CardActionsContext);
-  const [pending, setPending] = useState(false);
   if (!actions) return null;
-  return <div className="card-quick-actions" onPointerDown={(event) => event.stopPropagation()}>
-    <button type="button" onClick={() => actions.edit(opportunity.id)} aria-label={`Edit ${opportunity.company.name} opportunity`}><FilePenLine size={13} />Edit</button>
-    <button type="button" onClick={() => actions.talk(opportunity.id)} aria-label={`Update ${opportunity.company.name} by voice or text`}><Mic size={13} />Update</button>
-    <select aria-label={`Move ${opportunity.company.name} to stage`} value={opportunity.stageId} disabled={pending} onChange={async (event) => { setPending(true); try { await actions.move(opportunity.id, event.target.value); } finally { setPending(false); } }}>
-      {actions.stages.map((stage) => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
-    </select>
-  </div>;
+  return <button className="card-voice-action" type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => actions.talk(opportunity.id)} aria-label={`Update ${opportunity.company.name} by voice or text`} title="Talk through an update"><Mic size={14} /></button>;
 }
 
 function OpportunityPanel({

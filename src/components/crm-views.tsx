@@ -230,7 +230,6 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
       </section>
 
       <div className="report-grid">
-        <LiveReports snapshot={snapshot} offerId={offerFilter} />
         <section className="surface report-panel">
           <div className="surface-header"><div><h2>Stage distribution</h2><p>Where current attention is accumulating</p></div><Workflow size={18} /></div>
           <div className="bar-list">{snapshot.stages.map((stage) => { const count = records.filter((item) => item.stageId === stage.id).length; return <div className="bar-row" key={stage.id}><span>{stage.name}</span><div><i style={{ width: `${Math.max(count ? 8 : 0, (count / maxStage) * 100)}%`, background: stage.colour }} /></div><strong>{count}</strong></div>; })}</div>
@@ -248,6 +247,7 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
           <div className="surface-header"><div><h2>Needs attention</h2><p>The shortest route to a healthier board</p></div><AlertTriangle size={18} /></div>
           <div className="attention-list">{[...new Map([...overdue, ...unscheduled, ...atRisk].map((item) => [item.id, item])).values()].slice(0, 6).map((item) => <Link href={`/pipeline?opportunity=${item.id}`} key={item.id}><span><strong>{item.company.name}</strong><small>{attentionReason(item, now)}</small></span><ArrowRight size={15} /></Link>)}{!overdue.length && !unscheduled.length && !atRisk.length ? <div className="all-clear"><Check size={17} /> Every open record has a healthy next step.</div> : null}</div>
         </section>
+        <LiveReports snapshot={snapshot} offerId={offerFilter} />
       </div>
     </WorkspaceFrame>
   );
