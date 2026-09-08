@@ -22,7 +22,7 @@ test.describe.serial("Service Sales workspace", () => {
     await page.goto("/settings");
     await page.getByRole("tab", { name: "Sales", exact: true }).click();
     await page.getByRole("button", { name: "Add stage" }).click();
-    await page.getByLabel("Name").fill("Commercial review");
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill("Commercial review");
     await page.getByLabel("Meaning").selectOption("open");
     await page.getByRole("button", { name: "Save stage" }).click();
 
