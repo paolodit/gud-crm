@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+.inline-opportunity-details { padding:22px; }
+.inline-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+.inline-detail-display { position:relative; text-align:left; border:1px solid #ffffff25; border-radius:8px; padding:10px 26px 10px 10px; background:#ffffff10; color:inherit; min-width:0; }
+.inline-detail-display small { display:block; font-size:10px; opacity:.8; margin-bottom:4px; }
+.inline-detail-display strong { display:block; font-size:13px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.inline-detail-display[data-field="title"] strong { font-size:20px; }
+.inline-detail-display svg { position:absolute; right:8px; top:12px; opacity:.55; }
+.inline-detail-display:hover:not(:disabled), .inline-detail-display:focus-visible { background:#ffffff25; }
+.inline-detail-display:disabled { opacity:.65; cursor:default; }
+.inline-detail-grid [data-wide="true"] { grid-column:1/-1; }
+.inline-detail-form { background:#fff; color:#172b4d; border-radius:8px; padding:12px; min-width:0; }
+.inline-detail-form .button-row { margin-top:8px; }
+.inline-detail-form>small { display:block; margin-top:6px; font-size:11px; }
+.inline-save-status, .inline-activity-hint { display:block; font-size:11px; margin-top:10px; }
+@media(max-width:700px) { .inline-detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .inline-detail-form { grid-column:1/-1; } }
+
 /* Shared work surfaces: a quieter board, explicit controls, and a focused voice desk. */
 .card-quick-actions { display:flex; align-items:center; gap:5px; padding:7px 10px; border-top:1px solid var(--border, #e5e9f0); }
 .composer-fields [hidden] { display:none !important; }

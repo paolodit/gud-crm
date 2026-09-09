@@ -834,6 +834,55 @@ export async function saveContactAction(input: unknown): Promise<SaveContactResu
   }
 }
 
+/** A single-field write avoids replacing unrelated edits from another user. */
+export async function saveOpportunityFieldAction(input: unknown): Promise<ActionResult> {
+  const parsed = z.object({ opportunityId: z.uuid(), field: z.enum(["title", "offerId", "ownerId", "priority", "temperature", "expectedValue", "probability", "expectedCloseDate", "outreachAngle", "fitScore", "scaleNote"]), value: z.unknown() }).safeParse(input);
+  if (!parsed.success || parsed.data.value === undefined) return { ok: false, error: "Choose a valid field and value." };
+  const { opportunityId, field } = parsed.data;
+  const validator = field === "fitScore" || field === "scaleNote" ? saveCompanySchema.shape[field] : saveOpportunityDetailsSchema.shape[field];
+  const checked = validator.safeParse(parsed.data.value);
+  if (!checked.success) return { ok: false, error: checked.error.issues[0]?.message ?? "Check this value." };
+  const value = checked.data;
+  try {
+    const member = await requireMember();
+    if (member.demoMode) return { ok: false, error: "This demo cannot be edited." };
+    const companyField = field === "fitScore" || field === "scaleNote";
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => {
+        const item = snapshot.opportunities.find((item) => item.id === opportunityId);
+        if (!item) throw new Error("Opportunity not found.");
+        if (companyField) {
+          for (const other of snapshot.opportunities) if (other.company.id === item.company.id) Object.assign(other.company, { [field]: value });
+        } else if (field === "ownerId") {
+          const owner = value ? snapshot.users.find((user) => user.id === value && user.active !== false) : null;
+          if (value && !owner) throw new Error("That owner is not available.");
+          item.owner = owner ?? null;
+        } else if (field === "offerId") {
+          const stage = snapshot.stages.find((stage) => stage.id === item.stageId);
+          item.offer = chooseLocalOffer(snapshot, value as string | null, stage?.name === "Researching" || stage?.name === "Research holding");
+        } else Object.assign(item, { [field]: value instanceof Date ? value.toISOString() : value });
+      });
+      recordLocalAuditEvent({ actorId: member.id, action: "opportunity.inline_updated", entityType: "opportunity", entityId: opportunityId, detail: { field, value } });
+    } else {
+      await db.transaction(async (tx) => {
+        const [record] = await tx.select({ item: opportunities, stageName: stages.name }).from(opportunities).innerJoin(stages, eq(stages.id, opportunities.stageId)).where(and(eq(opportunities.id, opportunityId), eq(opportunities.organisationId, member.organisationId))).limit(1);
+        if (!record) throw new Error("Opportunity not found.");
+        let stored = value;
+        if (field === "offerId") stored = await resolvePostgresOfferId(tx, member.organisationId, value as string | null, record.stageName === "Researching" || record.stageName === "Research holding");
+        if (field === "ownerId" && value) {
+          const [owner] = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, String(value)), eq(users.organisationId, member.organisationId), eq(users.active, true))).limit(1);
+          if (!owner) throw new Error("That owner is not available.");
+        }
+        if (companyField) await tx.update(companies).set({ [field]: stored, updatedAt: new Date() }).where(and(eq(companies.id, record.item.companyId), eq(companies.organisationId, member.organisationId)));
+        else await tx.update(opportunities).set({ [field === "expectedValue" ? "value" : field]: field === "expectedValue" && stored !== null ? String(stored) : stored, updatedAt: new Date() }).where(and(eq(opportunities.id, opportunityId), eq(opportunities.organisationId, member.organisationId)));
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "opportunity.inline_updated", entityType: companyField ? "company" : "opportunity", entityId: companyField ? record.item.companyId : opportunityId, after: { field, value: stored } });
+      });
+    }
+    revalidateCrmPaths();
+    return { ok: true };
+  } catch (error) { return { ok: false, error: publicActionError(error, "The field could not be saved.") }; }
+}
+
 export async function saveOpportunityDetailsAction(input: unknown): Promise<ActionResult> {
   const parsed = saveOpportunityDetailsSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the opportunity details." };

@@ -14,7 +14,11 @@ export function useDialogFocus(onClose: () => void) {
     const controls = () => [...root.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter((item) => item.getClientRects().length);
     (root.querySelector<HTMLElement>("[data-autofocus]") ?? controls()[0] ?? root).focus();
     function keydown(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close.current(); }
+      if (event.key === "Escape") {
+        // Inline editors consume Escape themselves before the surrounding panel closes.
+        if (event.target instanceof Element && event.target.closest(".inline-detail-form")) return;
+        event.preventDefault(); event.stopPropagation(); close.current();
+      }
       if (event.key !== "Tab") return;
       const items = controls();
       const first = items[0], last = items.at(-1);
