@@ -1,15 +1,17 @@
 "use client";
-import { useState, type FormEvent } from "react";
-import { Check, Pencil, X } from "lucide-react";
+import { startTransition, useRef, useState, type FormEvent } from "react";
 import { saveOpportunityFieldAction } from "@/app/actions/crm";
 import type { BoardSnapshot, OpportunitySummary } from "@/lib/domain/types";
 
 type Field = "title" | "outreachAngle" | "offerId" | "ownerId" | "priority" | "temperature" | "fitScore" | "scaleNote" | "expectedValue" | "probability" | "expectedCloseDate";
 type Spec = { field: Field; label: string; value: string | number | null; display?: string; type?: "text" | "textarea" | "number" | "date"; options?: { value: string; label: string }[]; min?: number; max?: number; maxLength?: number };
 
-export function OpportunityInlineDetails({ opportunity: item, snapshot, onUpdate }: { opportunity: OpportunitySummary; snapshot: BoardSnapshot; onUpdate: (item: OpportunitySummary) => void }) {
+export function OpportunityInlineDetails({ opportunity: item, snapshot, onUpdate, onEditingEnd }: { opportunity: OpportunitySummary; snapshot: BoardSnapshot; onUpdate: (item: OpportunitySummary) => void; onEditingEnd?: () => void }) {
   const [active, setActive] = useState<Field | null>(null);
   const [status, setStatus] = useState("");
+  const container = useRef<HTMLDivElement>(null);
+  const nextField = useRef<Field | null>(null);
+  function finishEditing() { const next = nextField.current; setActive(next); nextField.current = null; if (!next) onEditingEnd?.(); }
   const specs: Spec[] = [
     { field: "title", label: "Opportunity title", value: item.title, maxLength: 220 },
     { field: "outreachAngle", label: "Outreach angle", value: item.outreachAngle, type: "textarea", maxLength: 10000 },
@@ -27,31 +29,42 @@ export function OpportunityInlineDetails({ opportunity: item, snapshot, onUpdate
     const value = ["expectedValue", "probability", "fitScore"].includes(spec.field) ? raw === "" ? null : Number(raw)
       : ["offerId", "ownerId", "expectedCloseDate"].includes(spec.field) ? raw || null : raw.trim();
     const result = await saveOpportunityFieldAction({ opportunityId: item.id, field: spec.field, value });
-    if (!result.ok) return result.error;
+    if (!result.ok) { nextField.current = null; return result.error; }
     const next = { ...item };
     if (spec.field === "offerId") next.offer = snapshot.offers.find((offer) => offer.id === value) ?? null;
     else if (spec.field === "ownerId") next.owner = snapshot.users.find((user) => user.id === value) ?? null;
     else if (spec.field === "fitScore" || spec.field === "scaleNote") next.company = { ...item.company, [spec.field]: value };
     else Object.assign(next, { [spec.field]: value });
-    onUpdate(next); setActive(null); setStatus(spec.label + " saved."); return null;
+    onUpdate(next); finishEditing(); setStatus(spec.label + " saved."); return null;
   }
-  return <div className="inline-opportunity-details"><span className="eyebrow">The opportunity</span><div className="inline-detail-grid">{specs.map((spec) => <InlineField key={spec.field} spec={spec} editing={active === spec.field} disabled={active !== null && active !== spec.field} onEdit={() => { setStatus(""); setActive(spec.field); }} onCancel={() => setActive(null)} onSave={(value) => save(spec, value)} />)}</div>{status ? <p className="inline-save-status" role="status">{status}</p> : null}</div>;
+  return <div ref={container} className="inline-opportunity-details"><span className="eyebrow">The opportunity</span><div className="inline-detail-grid">{specs.map((spec) => <InlineField key={spec.field} spec={spec} editing={active === spec.field} disabled={false} onEdit={() => { setStatus(""); if (active) { nextField.current = spec.field; container.current?.querySelector<HTMLFormElement>("form")?.requestSubmit(); } else setActive(spec.field); }} onCancel={finishEditing} onSave={(value) => save(spec, value)} />)}</div>{status ? <p className="inline-save-status" role="status">{status}</p> : null}</div>;
 }
 
 function InlineField({ spec, editing, disabled, onEdit, onCancel, onSave }: { spec: Spec; editing: boolean; disabled: boolean; onEdit: () => void; onCancel: () => void; onSave: (value: string) => Promise<string | null> }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = useRef(false);
+  const cancelled = useRef(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); setPending(true); setError(null);
-    try { setError(await onSave(String(new FormData(e.currentTarget).get("value") ?? ""))); }
-    catch { setError("Could not save. Your edit is still here; try again."); }
-    finally { setPending(false); }
+    e.preventDefault();
+    if (saving.current || cancelled.current) return;
+    const form = e.currentTarget;
+    const field = form.elements.namedItem("value") as HTMLInputElement;
+    if (!field.checkValidity()) { setError(field.validationMessage); return; }
+    const raw = field.value;
+    if (raw === String(spec.value ?? "")) { onCancel(); return; }
+    saving.current = true; setPending(true); setError(null);
+    startTransition(async () => {
+      try { setError(await onSave(raw)); }
+      catch { setError("Could not save. Your edit is still here; leave the field to retry, or press Escape to cancel."); }
+      finally { saving.current = false; setPending(false); }
+    });
   }
   const wide = ["title", "outreachAngle", "scaleNote"].includes(spec.field);
-  if (!editing) return <button className="inline-detail-display" data-wide={wide} data-field={spec.field} disabled={disabled} type="button" onClick={() => { setError(null); onEdit(); }} aria-label={"Edit " + spec.label}><small>{spec.label}</small><strong>{spec.display ?? (spec.value === null || spec.value === "" ? "Click to add" : String(spec.value))}</strong><Pencil size={12} /></button>;
-  return <form className="inline-detail-form" data-wide={wide} onSubmit={submit} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); if (!pending) onCancel(); } }}><label className="field-label">{spec.label}
+  if (!editing) return <button className="inline-detail-display" data-wide={wide} data-field={spec.field} disabled={disabled} type="button" onPointerDown={(e) => { if (e.button === 0) { e.preventDefault(); cancelled.current = false; setError(null); onEdit(); } }} onClick={(e) => { if (e.detail === 0) { cancelled.current = false; setError(null); onEdit(); } }} aria-label={"Edit " + spec.label}><small>{spec.label}</small><strong>{spec.display ?? (spec.value === null || spec.value === "" ? "Click to add" : String(spec.value))}</strong></button>;
+  return <form className="inline-detail-form" data-wide={wide} data-field={spec.field} aria-busy={pending} data-unsaved="true" noValidate onSubmit={submit} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.requestSubmit(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); if (!pending) { cancelled.current = true; onCancel(); } } }}><label className="field-label">{spec.label}
     {spec.options ? <select aria-label={spec.label} autoFocus name="value" className="field-select" defaultValue={spec.value ?? ""} disabled={pending}>{!spec.options.some((option) => option.value === "") ? <option value="" disabled>Choose…</option> : null}{spec.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
       : spec.type === "textarea" ? <textarea autoFocus className="field-textarea" name="value" rows={3} defaultValue={spec.value ?? ""} maxLength={spec.maxLength} disabled={pending} />
       : <input autoFocus className="field" name="value" type={spec.type ?? "text"} defaultValue={spec.value ?? ""} min={spec.min} max={spec.max} maxLength={spec.maxLength} minLength={spec.field === "title" ? 2 : undefined} required={spec.field === "title"} step={spec.field === "expectedValue" ? "0.01" : "1"} disabled={pending} />}
-    </label>{["fitScore", "scaleNote"].includes(spec.field) ? <small>Shared across this company’s opportunities.</small> : null}{error ? <p role="alert" className="form-error">{error}</p> : null}<div className="button-row"><button type="submit" className="btn btn-primary btn-compact" disabled={pending}><Check size={14} />{pending ? "Saving…" : "Save"}</button><button type="button" className="btn btn-quiet btn-compact" disabled={pending} onClick={onCancel}><X size={14} />Cancel</button></div></form>;
+    </label>{["fitScore", "scaleNote"].includes(spec.field) ? <small>Shared across this company’s opportunities.</small> : null}{error ? <p role="alert" className="form-error">{error}</p> : null}<small role="status">{pending ? "Saving…" : "Saves when you leave · Esc to cancel"}</small></form>;
 }

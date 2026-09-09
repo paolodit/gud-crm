@@ -20,6 +20,7 @@ import { completeTaskAction } from "@/app/actions/crm";
 import type { BoardSnapshot, OpportunitySummary, StageSummary, TaskSummary } from "@/lib/domain/types";
 import { getEdition } from "@/lib/editions";
 import { getActiveOpportunities } from "@/lib/data/board-selectors";
+import { deliveryNextMoves } from "@/lib/domain/delivery-next-moves";
 
 type WorkItem = { task: TaskSummary; opportunity: OpportunitySummary };
 
@@ -68,6 +69,7 @@ export function MyWork({
   });
   const laterTasks = allTasks.filter(({ task }) => new Date(task.dueAt).getTime() > startOfToday(now).getTime() + 7 * 86_400_000);
   const focusItems = allTasks.slice(0, 5);
+  const deliveryMoves = deliveryNextMoves(initialSnapshot, memberId, offerFilter);
   const openOpportunities = opportunities.filter((opportunity) => stageById.get(opportunity.stageId)?.terminalType === "open");
   const noNextAction = openOpportunities.filter(
     (opportunity) => opportunity.tasks.every((task) => task.status !== "open") && !opportunity.noNextActionReason,
@@ -160,6 +162,11 @@ export function MyWork({
             </section>
           </aside>
         </div>
+
+        <section className="surface delivery-next-moves" aria-labelledby="delivery-next-heading">
+          <header className="focus-header"><div><span className="eyebrow">Keep delivery moving</span><h2 id="delivery-next-heading">Live projects · next milestones</h2></div><Link className="btn btn-quiet" href="/live">View live board <ArrowRight size={14} /></Link></header>
+          {deliveryMoves.length ? <div className="focus-list">{deliveryMoves.slice(0, 5).map(({ project, title, timing, overdue: urgent }) => <article key={project.id} className="focus-item" data-urgent={urgent}><CalendarDays size={17} /><div className="focus-copy"><Link href={`/live?project=${project.id}`}>{title}</Link><p><strong>{project.companyName}</strong><span>{project.title}</span><span>{timing}</span></p></div><Link className="focus-open" href={`/live?project=${project.id}`} aria-label={`Update ${project.companyName} delivery`}><ArrowRight size={17} /></Link></article>)}{deliveryMoves.length > 5 ? <p className="settings-hint">{deliveryMoves.length - 5} more projects on the live board.</p> : null}</div> : <div className="all-clear"><Check size={17} />No active delivery projects assigned to you{offerFilter !== "all" ? " for this offer" : ""}.</div>}
+        </section>
 
         <details className="surface queue-details">
           <summary>

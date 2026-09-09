@@ -236,6 +236,7 @@ export const serviceDemoBoard: BoardSnapshot = (() => {
   snapshot.pipeline.name = serviceEdition.pipelineName;
   snapshot.offers = structuredClone(serviceOffers);
   snapshot.researchThemes = [
+    { id: "81000000-0000-4000-8000-000000000002", position: 2000, title: "Turn museum interest into visits", audience: "Independent museums and visitor attractions", problem: "Interested visitors abandon the journey between discovering an exhibition and planning a visit.", signal: "Fictional demo hypothesis: exhibition pages explain the story but leave accessibility, opening times and booking unclear.", angle: "Review one exhibition-to-booking journey and propose three measurable improvements before pitching a wider redesign.", status: "idea", offerId: serviceOffers[2]?.id ?? null, sourceUrls: [], updatedAt: "2026-09-09T09:00:00.000Z" },
     { id: "81000000-0000-4000-8000-000000000001", position: 1000, title: "Better follow-up for specialist firms", audience: "Small professional-service teams", problem: "Good conversations are being lost between inboxes and informal notes.", signal: "Teams are adopting narrower workflow tools instead of heavyweight CRMs.", angle: "Offer a short sales-workflow review tied to one measurable handoff problem.", status: "evidence", offerId: serviceOffers[2]?.id ?? null, sourceUrls: ["https://example.com/fictional-research"], updatedAt: "2026-07-17T09:00:00.000Z" },
   ];
   snapshot.stages = snapshot.stages.map((stage, index) => ({
