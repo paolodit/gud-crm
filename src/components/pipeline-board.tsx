@@ -1,4 +1,5 @@
 "use client";
+import { OpportunityInlineDetails } from "./opportunity-inline-details";
 
 import {
   DndContext,
@@ -201,7 +202,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
   }
 
   function updateOpportunity(next: OpportunitySummary) {
-    setOpportunities((items) => items.map((item) => (item.id === next.id ? next : item)));
+    setOpportunities((items) => items.map((item) => item.id === next.id ? next : item.company.id === next.company.id ? { ...item, company: next.company } : item));
   }
 
   async function restoreArchivedOpportunity(opportunity: OpportunitySummary) {
@@ -748,28 +749,8 @@ function OpportunityPanel({
             <div className="panel-stack">
               <QuickActivityComposer opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onToast={onToast} voiceAiConfigured={voiceAiConfigured} initiallyOpen={searchParams.get("action") === "update"} />
               <section className="surface relationship-overview">
-                <div className="relationship-overview-main">
-                  <span className="eyebrow">The opportunity</span>
-                  <h3><button className="summary-edit-title" onClick={() => setOpportunityEditor(true)} title="Edit opportunity">{opportunity.title}<FilePenLine size={15} /></button></h3>
-                  <p className="relationship-angle"><button className="summary-edit-title" type="button" onClick={() => setOpportunityEditor(true)} aria-label="Edit outreach angle">{opportunity.outreachAngle || "Add the need, timing and most credible reason to start a conversation."}</button></p>
-                  <div className="relationship-signals">
-                  <div className="relationship-signal-grid">
-                    {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 ? <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Offer</span><strong>{opportunity.offer?.name ?? "Choose before outreach"}</strong></button> : null}
-                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Owner</span><strong>{opportunity.owner?.name ?? "Unassigned"}</strong></button>
-                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Priority</span><strong className={`badge badge-${opportunity.priority}`}>{opportunity.priority}</strong></button>
-                    <button className="summary-item summary-item-edit" type="button" onClick={() => setOpportunityEditor(true)}><span>Temperature</span><strong className={`badge badge-${opportunity.temperature}`}>{opportunity.temperature.replace("_", " ")}</strong></button>
-                    <button className="summary-item summary-item-edit" type="button" onClick={() => setCompanyEditor(true)} title="Edit company fit and qualification"><span>Fit <FilePenLine size={12} /></span><strong>{opportunity.company.fitScore ? `${opportunity.company.fitScore}/5` : "Not scored"} · {opportunity.company.scaleNote || "Add qualification note"}</strong></button>
-                  </div>
-                </div>
-                </div>
-                <div className="relationship-overview-foot">
-                  {opportunity.expectedValue || opportunity.probability !== null && opportunity.probability !== undefined || opportunity.expectedCloseDate ? <button type="button" className="commercial-summary commercial-summary-edit" aria-label="Edit commercial outlook" onClick={() => setOpportunityEditor(true)}>
-                    {opportunity.expectedValue ? <span><small>Potential</small><strong>{formatMoney(opportunity.expectedValue)}</strong></span> : null}
-                    {opportunity.probability !== null && opportunity.probability !== undefined ? <span><small>Probability</small><strong>{opportunity.probability}%</strong></span> : null}
-                    {opportunity.expectedCloseDate ? <span><small>Expected close</small><strong>{format(new Date(opportunity.expectedCloseDate), "d MMM yyyy")}</strong></span> : null}
-                  </button> : null}
-                  <button type="button" className="summary-rhythm-edit" aria-label="Open opportunity editor from outreach summary" onClick={() => setOpportunityEditor(true)}><OutreachRhythm opportunity={opportunity} /></button>
-                </div>
+                <OpportunityInlineDetails opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} />
+                <div className="relationship-overview-foot"><OutreachRhythm opportunity={opportunity} /><small className="inline-activity-hint">Calculated from the activity timeline. Use Log touch to record an update.</small></div>
               </section>
 
               <section className="surface">
@@ -1339,10 +1320,6 @@ function formatShortDate(value: string) {
 
 function formatTime(value: string) {
   return format(new Date(value), "d MMM, HH:mm");
-}
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 }).format(value);
 }
 
 function initials(name: string) {
