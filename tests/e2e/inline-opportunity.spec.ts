@@ -11,7 +11,7 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await details.getByRole("button", { name: "Edit Priority", exact: true }).click();
   await expect(page.locator(".dialog-card")).toHaveCount(0);
   await details.getByLabel("Priority", { exact: true }).selectOption("high");
-  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await details.getByLabel("Priority", { exact: true }).press("Tab");
   await expect(details.getByRole("status")).toHaveText("Priority saved.");
   await details.getByRole("button", { name: "Edit Opportunity title", exact: true }).click();
   await details.getByLabel("Opportunity title", { exact: true }).fill("Cancelled title");
@@ -20,11 +20,11 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toContainText("Inline editing test");
   await details.getByRole("button", { name: "Edit Potential value (£)", exact: true }).click();
   await details.getByLabel("Potential value (£)", { exact: true }).fill("0");
-  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await details.getByLabel("Potential value (£)", { exact: true }).press("Tab");
   await expect(details.getByRole("status")).toHaveText("Potential value (£) saved.");
   await details.getByRole("button", { name: "Edit Expected close", exact: true }).click();
   await details.getByLabel("Expected close", { exact: true }).fill("2026-09-30");
-  await details.getByRole("button", { name: "Save", exact: true }).click();
+  await panel.getByText("The opportunity", { exact: true }).click();
   await expect(details.getByRole("status")).toHaveText("Expected close saved.");
   await page.reload();
   await expect(details.getByRole("button", { name: "Edit Priority", exact: true })).toContainText("high");
@@ -32,7 +32,32 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await expect(details.getByRole("button", { name: "Edit Expected close", exact: true })).toContainText("30 Sep 2026");
   await details.getByRole("button", { name: "Edit Qualification note", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("inline-editor.png") });
-  await details.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.keyboard.press("Escape");
   await panel.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page.locator(".dialog-card")).toBeVisible();
+});
+
+test("click-away validates drafts, switches fields, and saves before closing", async ({ page }) => {
+  await page.goto("/pipeline");
+  await page.getByRole("button", { name: "Create a new opportunity" }).click();
+  await page.getByLabel("Company name").fill("DEMO · Autosave");
+  await page.getByLabel("Opportunity title").fill("Autosave checks");
+  await page.getByRole("button", { name: "Create opportunity", exact: true }).click();
+  const panel = page.locator(".opportunity-panel");
+  const details = panel.locator(".inline-opportunity-details");
+  await details.getByRole("button", { name: "Edit Opportunity title", exact: true }).click();
+  await details.getByLabel("Opportunity title", { exact: true }).fill("");
+  await panel.getByText("The opportunity", { exact: true }).click();
+  await expect(details.getByRole("alert")).toBeVisible();
+  await expect(details.getByLabel("Opportunity title", { exact: true })).toHaveValue("");
+  await details.getByLabel("Opportunity title", { exact: true }).fill("A better title");
+  await details.getByRole("button", { name: "Edit Priority", exact: true }).click();
+  await expect(details.getByLabel("Priority", { exact: true })).toBeVisible();
+  await details.getByLabel("Priority", { exact: true }).selectOption("critical");
+  const recordUrl = page.url();
+  await page.getByRole("button", { name: "Close panel", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await page.goto(recordUrl);
+  await expect(details.getByRole("button", { name: "Edit Priority", exact: true })).toContainText("critical");
+  await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toContainText("A better title");
 });

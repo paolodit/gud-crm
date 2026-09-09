@@ -23,9 +23,15 @@ test.describe.serial("Live project refinements", () => {
   });
   test("opens delivery voice input without saving a project automatically", async ({ page }, testInfo) => {
     await page.goto("/live");
+    await expect(page.getByRole("link", { name: "Sales pipeline", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Edit stages", exact: true })).toHaveText("");
     await page.getByRole("button", { name: "Add project", exact: true }).click();
+    await page.getByRole("button", { name: "Talk through adding a project", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Describe the project setup" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel voice input", exact: true }).click();
     await page.getByLabel("Project name").fill("Delivery voice test");
     await page.getByLabel("Organisation / client").fill("Demo delivery client");
+    await page.getByLabel("Owner", { exact: true }).selectOption({ label: "Alex Morgan" });
     await page.getByRole("button", { name: "Save project", exact: true }).click();
     await page.locator(".live-card-open").filter({ hasText: "Delivery voice test" }).click();
     await expect(page.locator(".delivery-editor-note")).toHaveCSS("font-size", "12px");
@@ -41,6 +47,16 @@ test.describe.serial("Live project refinements", () => {
     await column.getByRole("button", { name: "Expand Kickoff to three lanes" }).click();
     await expect(column).toHaveAttribute("data-expanded", "true");
     await page.screenshot({ path: testInfo.outputPath("live-board.png") });
+    await page.goto("/my-work");
+    const delivery = page.getByRole("region", { name: "Live projects · next milestones" });
+    await expect(delivery).toContainText("Demo delivery client");
+    await page.screenshot({ path: testInfo.outputPath("today-delivery.png") });
+    await delivery.getByRole("link", { name: "Set the next milestone", exact: true }).click();
+    await expect(page.getByRole("dialog")).toContainText("Delivery voice test");
+    await page.setViewportSize({ width: 2562, height: 1272 });
+    await page.goto("/reports");
+    await expect(page.locator(".live-reports")).toHaveCSS("max-width", "1100px");
+    await page.locator(".live-reports").screenshot({ path: testInfo.outputPath("delivery-report.png") });
   });
   test("keeps only a mic next to each pipeline card drag handle", async ({ page }, testInfo) => {
     await page.goto("/pipeline");

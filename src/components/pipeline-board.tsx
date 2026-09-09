@@ -667,7 +667,14 @@ function OpportunityPanel({
   onArchiveChange: (opportunity: OpportunitySummary, archived: boolean, companyWide?: boolean) => void;
 }) {
   const { closing, close } = useExitTransition(onClose);
-  const panelRef = useDialogFocus(close);
+  const closeAfterInlineSave = useRef(false);
+  const editAfterInlineSave = useRef(false);
+  const panelRef = useDialogFocus(requestClose);
+  function requestClose() {
+    const editor = panelRef.current?.querySelector<HTMLFormElement>(".inline-detail-form");
+    if (editor) { closeAfterInlineSave.current = true; editor.requestSubmit(); return; }
+    close();
+  }
   const openTasks = opportunity.tasks.filter((task) => task.status === "open");
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
   const [contactEditor, setContactEditor] = useState<ContactSummary | "new" | null>(null);
@@ -716,10 +723,10 @@ function OpportunityPanel({
 
   return (
     <>
-      <button className="panel-backdrop" data-closing={closing} type="button" aria-label="Close opportunity" onClick={close} />
+      <button className="panel-backdrop" data-closing={closing} type="button" aria-label="Close opportunity" onClick={requestClose} />
       <aside ref={panelRef} className="opportunity-panel" data-closing={closing} data-expanded={expanded} role="dialog" aria-modal="true" aria-label={`${opportunity.company.name} opportunity`}>
         <header className="panel-header">
-          <button className="icon-button" type="button" onClick={close} aria-label="Back to pipeline">
+          <button className="icon-button" type="button" onClick={requestClose} aria-label="Back to pipeline">
             <ChevronLeft size={18} />
           </button>
           <div className="panel-title">
@@ -727,7 +734,7 @@ function OpportunityPanel({
             <p>{opportunity.title} · {stage?.name}</p>
             {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 && opportunity.offer ? <span className="offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
           </div>
-          <button className="btn btn-quiet" type="button" onClick={() => setOpportunityEditor(true)}><FilePenLine size={16} />Edit</button>
+          <button className="btn btn-quiet" type="button" onClick={() => { const editor = panelRef.current?.querySelector<HTMLFormElement>(".inline-detail-form"); if (editor) { editAfterInlineSave.current = true; editor.requestSubmit(); } else setOpportunityEditor(true); }}><FilePenLine size={16} />Edit</button>
           {companyWebsiteUrl ? (
             <a className="icon-button" href={companyWebsiteUrl} target="_blank" rel="noopener noreferrer" aria-label="Open company website">
               <Link2 size={16} />
@@ -740,7 +747,7 @@ function OpportunityPanel({
           ) : null}
           <button className="icon-button panel-expand" type="button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace width" : "Expand workspace"} title={expanded ? "Restore width" : "Expand workspace"}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
           <button className="icon-button" type="button" onClick={toggleArchive} disabled={archivePending} aria-label={archived ? "Restore opportunity" : "Archive opportunity"} title={archived ? "Restore opportunity" : "Archive opportunity"}>{archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}</button>
-          <button className="icon-button" type="button" onClick={close} aria-label="Close panel"><X size={18} /></button>
+          <button className="icon-button" type="button" onClick={requestClose} aria-label="Close panel"><X size={18} /></button>
         </header>
 
         <div className="panel-body">
@@ -749,7 +756,7 @@ function OpportunityPanel({
             <div className="panel-stack">
               <QuickActivityComposer opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onToast={onToast} voiceAiConfigured={voiceAiConfigured} initiallyOpen={searchParams.get("action") === "update"} />
               <section className="surface relationship-overview">
-                <OpportunityInlineDetails opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} />
+                <OpportunityInlineDetails opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onEditingEnd={() => { if (closeAfterInlineSave.current) { closeAfterInlineSave.current = false; close(); } else if (editAfterInlineSave.current) { editAfterInlineSave.current = false; setOpportunityEditor(true); } }} />
                 <div className="relationship-overview-foot"><OutreachRhythm opportunity={opportunity} /><small className="inline-activity-hint">Calculated from the activity timeline. Use Log touch to record an update.</small></div>
               </section>
 
