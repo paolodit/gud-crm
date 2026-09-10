@@ -30,7 +30,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleUserRound,
-  Copy,
   ExternalLink,
   FilePenLine,
   Filter,
@@ -48,9 +47,6 @@ import {
   Rows3,
   Search,
   Sparkles,
-  ShieldCheck,
-  ThumbsDown,
-  ThumbsUp,
   Target,
   UserRound,
   X,
@@ -80,11 +76,6 @@ import {
   saveContactAction,
   saveOpportunityDetailsAction,
 } from "@/app/actions/crm";
-import {
-  createTaskFromAiAction,
-  generateAiCoachAction,
-  saveAiFeedbackAction,
-} from "@/app/actions/ai";
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
@@ -98,9 +89,6 @@ import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type {
   ActivitySummary,
-  AICoachMode,
-  AIFeedbackRating,
-  AISuggestionSummary,
   BoardSnapshot,
   ContactSummary,
   OpportunitySummary,
@@ -844,7 +832,6 @@ function OpportunityPanel({
                 </div>
               </section>
 
-              <AiCoach opportunity={opportunity} onUpdate={onUpdate} onToast={onToast} />
             </div>
           </div>
         </div>
@@ -984,123 +971,6 @@ function ContactEditor({ opportunity, contact, onClose, onSaved, onToast }: {
       </div>
       <div className="button-row"><button className="btn btn-quiet" type="button" onClick={onClose}>Cancel</button><button className="btn btn-primary" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{pending ? "Saving…" : "Save contact"}</button></div>
     </form>
-  );
-}
-
-const coachModes: Array<{ value: AICoachMode; label: string; hint: string }> = [
-  { value: "coach", label: "Best next move", hint: "Prioritise" },
-  { value: "draft", label: "Write outreach", hint: "Draft" },
-  { value: "creative", label: "Creative angles", hint: "Explore" },
-  { value: "recovery", label: "Recover cold lead", hint: "Re-open" },
-];
-
-function AiCoach({ opportunity, onUpdate, onToast }: {
-  opportunity: OpportunitySummary;
-  onUpdate: (opportunity: OpportunitySummary) => void;
-  onToast: (message: string) => void;
-}) {
-  const [mode, setMode] = useState<AICoachMode>("coach");
-  const [suggestion, setSuggestion] = useState<AISuggestionSummary | null>(opportunity.aiSuggestions?.[0] ?? null);
-  const [pending, setPending] = useState(false);
-  const [taskPending, setTaskPending] = useState<number | null>(null);
-  const [copied, setCopied] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [resultOpen, setResultOpen] = useState(false);
-
-  async function generate() {
-    setPending(true);
-    setError(null);
-    const result = await generateAiCoachAction({ opportunityId: opportunity.id, mode });
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setSuggestion(result.suggestion);
-    setResultOpen(true);
-    onUpdate({ ...opportunity, aiSuggestions: [result.suggestion, ...(opportunity.aiSuggestions ?? [])] });
-    onToast("Fresh coaching generated");
-  }
-
-  async function copyDraft(index: number, text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(index);
-      window.setTimeout(() => setCopied(null), 1_800);
-    } catch {
-      onToast("Clipboard access is not available in this browser");
-    }
-  }
-
-  async function createTask(index: number) {
-    if (!suggestion) return;
-    setTaskPending(index);
-    const result = await createTaskFromAiAction({ opportunityId: opportunity.id, suggestionId: suggestion.id, actionIndex: index });
-    setTaskPending(null);
-    if (!result.ok) {
-      onToast(result.error);
-      return;
-    }
-    onUpdate({ ...opportunity, tasks: [...opportunity.tasks, result.task], nextActionAt: result.task.dueAt, noNextActionReason: null });
-    onToast("Suggested action added to My work");
-  }
-
-  async function rate(rating: AIFeedbackRating) {
-    if (!suggestion) return;
-    const result = await saveAiFeedbackAction({ opportunityId: opportunity.id, suggestionId: suggestion.id, rating });
-    if (!result.ok) {
-      onToast(result.error);
-      return;
-    }
-    const updated = { ...suggestion, feedbackRating: rating };
-    setSuggestion(updated);
-    onUpdate({ ...opportunity, aiSuggestions: (opportunity.aiSuggestions ?? []).map((item) => item.id === updated.id ? updated : item) });
-    onToast("Feedback saved");
-  }
-
-  return (
-    <section className="surface ai-coach-surface">
-      <header className="surface-header"><h3>AI coach</h3><span className="badge">On demand</span></header>
-      <div className="surface-content ai-coach">
-        <div className="ai-coach-intro">
-          <span className="ai-spark"><Sparkles size={16} /></span>
-          <div><strong>A useful second brain, grounded in this record.</strong><p>It drafts and suggests; you decide. Nothing is sent or scheduled automatically.</p></div>
-        </div>
-        <div className="ai-coach-controls">
-          <div className="ai-mode-grid" role="radiogroup" aria-label="Coaching mode">{coachModes.map((item) => <button type="button" role="radio" aria-checked={mode === item.value} key={item.value} onClick={() => setMode(item.value)}><small>{item.hint}</small><strong>{item.label}</strong></button>)}</div>
-          <button className="btn btn-primary" type="button" disabled={pending} onClick={generate}>{pending ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{pending ? "Thinking..." : suggestion ? "Generate fresh" : "Coach me"}</button>
-          {suggestion ? <button className="btn btn-quiet" type="button" onClick={() => setResultOpen(true)}><Maximize2 size={14} />View latest advice</button> : null}
-        </div>
-        {error ? <div className="ai-error" role="alert"><AlertCircle size={15} />{error}</div> : null}
-
-        {suggestion && resultOpen ? (
-          <div className="ai-advice-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setResultOpen(false); }}>
-            <section className="ai-advice-dialog" role="dialog" aria-modal="true" aria-labelledby="ai-advice-title">
-              <header><div><span className="eyebrow">AI coach</span><h3 id="ai-advice-title">{coachModes.find((item) => item.value === suggestion.suggestionType)?.label ?? "Sales advice"}</h3><p>Grounded in this relationship. You choose what to use.</p></div><button className="icon-button" type="button" onClick={() => setResultOpen(false)} aria-label="Close AI advice"><X size={18} /></button></header>
-              <div className="ai-result" aria-live="polite">
-            <div className="ai-summary"><span>Read on the relationship</span><p>{suggestion.output.summary}</p></div>
-            {suggestion.output.warnings.length ? <div className="ai-warnings">{suggestion.output.warnings.map((warning) => <p key={warning}><AlertCircle size={14} />{warning}</p>)}</div> : null}
-
-            {suggestion.output.nextActions.length ? <div className="ai-section"><h4>Best next actions</h4><div className="ai-action-list">{suggestion.output.nextActions.map((action, index) => <article key={`${action.title}-${index}`}><div><span className="ai-number">{index + 1}</span><strong>{action.title}</strong><small>{action.timing} - {action.confidence} confidence</small></div><p>{action.reason}</p><button className="btn btn-quiet" type="button" disabled={taskPending === index} onClick={() => createTask(index)}>{taskPending === index ? <LoaderCircle className="spin" size={14} /> : <ListPlus size={14} />}Make task</button></article>)}</div></div> : null}
-
-            {suggestion.output.drafts.length ? <div className="ai-section"><h4>Drafts to adapt</h4><div className="ai-draft-list">{suggestion.output.drafts.map((draft, index) => <article key={`${draft.channel}-${index}`}><header><span className="badge">{draft.channel}</span><button className="btn btn-quiet" type="button" onClick={() => copyDraft(index, draft.text)}>{copied === index ? <Check size={14} /> : <Copy size={14} />}{copied === index ? "Copied" : "Copy"}</button></header><p>{draft.text}</p></article>)}</div></div> : null}
-
-            {suggestion.output.creativeIdeas.length ? <div className="ai-section"><h4>Creative routes</h4><div className="ai-idea-list">{suggestion.output.creativeIdeas.map((idea) => <article key={idea.level} data-level={idea.level}><header><span>{idea.level}</span><small>{idea.costBand}</small></header><strong>{idea.idea}</strong><p>{idea.reason}</p></article>)}</div></div> : null}
-
-            <footer className="ai-footer">
-              <div><ShieldCheck size={14} /><span>Generated for human review</span><small>{suggestion.provider} / {suggestion.model} / {format(new Date(suggestion.generatedAt), "d MMM, HH:mm")}</small></div>
-              <div className="ai-feedback" aria-label="Rate this suggestion">
-                <button type="button" data-selected={suggestion.feedbackRating === "useful"} onClick={() => rate("useful")}><ThumbsUp size={13} /> Useful</button>
-                <button type="button" data-selected={suggestion.feedbackRating === "not_useful"} onClick={() => rate("not_useful")}><ThumbsDown size={13} /> Not useful</button>
-                <button type="button" data-selected={suggestion.feedbackRating === "already_tried"} onClick={() => rate("already_tried")}><Check size={13} /> Tried</button>
-              </div>
-            </footer>
-              </div>
-            </section>
-          </div>
-        ) : <p className="ai-empty">{suggestion ? "Your latest advice is ready. Open it when you want to focus." : "Choose what you need. The coach will use the company, contacts, stage, recent activity, tasks, outreach angle, and the approved playbook."}</p>}
-      </div>
-    </section>
   );
 }
 

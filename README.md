@@ -22,7 +22,7 @@
 
 GUD CRM is for small sales teams, agencies, consultancies, SaaS companies and independent specialists who want useful sales discipline without traditional CRM sprawl.
 
-It keeps ideas, targets and live opportunities distinct; makes the whole pipeline readable at a glance; and gives every active relationship an owner, context and a next action. AI is available as an optional research and coaching layer, never an automatic salesperson.
+It keeps ideas, targets and live opportunities distinct; makes the whole pipeline readable at a glance; and gives every active relationship an owner, context and a next action. AI supports optional research and voice-to-fields input, never an automatic salesperson. Video guides replace the former Sales Guide and in-app coaching panel with a small curated YouTube library.
 
 ## Why GUD feels different
 
@@ -148,7 +148,14 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 
 All three integrations are off or local-first by default:
 
-- The built-in deterministic coach needs no API key. Voice-to-fields and model-generated coaching require `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to the in-app setup guide when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name.
+- Voice-to-fields requires `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to Settings → AI connections when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name. The in-app sales coaching controls have been removed; existing historical AI records are retained.
+
+### Curated video guides
+
+- `/playbook` remains the stable route, now labelled **Video guides**. No database migration is needed.
+- Curate entries in `src/lib/video-guides.ts`: verified YouTube ID, original title, speaker, publisher, topic and a short editorial reason to watch. The initial six entries were checked against YouTube oEmbed on 10 September 2026.
+- Thumbnails are served through Next.js image optimisation, restricted to `i.ytimg.com/vi/`. A fallback is shown if an image fails. No YouTube player or script is loaded into the CRM; videos open on YouTube in a separate tab.
+- Search and topic filters run locally. The library needs no YouTube API key and sends no CRM records to YouTube. Check video availability periodically when maintaining the list.
 - Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`. Follow the [ChatGPT, Codex and MCP setup guide](docs/MCP.md) for the supported read/write actions, consent model and example requests.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 

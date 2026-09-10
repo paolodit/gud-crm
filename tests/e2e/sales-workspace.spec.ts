@@ -80,13 +80,25 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page.getByRole("alertdialog")).toContainText("shared contact records, activities and audit history are not deleted");
   });
 
-  test("presents the sales guide as a simple first-use path", async ({ page }) => {
+  test("presents curated videos with topic and speaker filters instead of sales help", async ({ page }, testInfo) => {
     await page.goto("/playbook");
-    await expect(page.getByRole("heading", { name: "Sales guide" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Three steps are enough" })).toBeVisible();
-    await expect(page.getByText("Plan an outreach rhythm", { exact: true })).toBeVisible();
-    await expect(page.getByText("Check what proof is ready", { exact: true })).toBeVisible();
-    await expect(page.locator(".playbook-tool[open]")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Video guides", exact: true })).toBeVisible();
+    await expect(page.locator(".video-guide-card")).toHaveCount(6);
+    await expect.poll(() => page.locator(".video-guide-thumbnail img").evaluateAll((images) => images.filter((image) => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(6);
+    await page.screenshot({ path: testInfo.outputPath("video-library-desktop.png"), fullPage: true });
+    await expect(page.locator(".video-guide-card").first()).toHaveAttribute("target", "_blank");
+    await expect(page.locator(".video-guide-card").first()).toHaveAttribute("href", "https://www.youtube.com/watch?v=lwipfn9znk0");
+    await page.getByRole("button", { name: "Pricing", exact: true }).click();
+    await expect(page.locator(".video-guide-card")).toHaveCount(2);
+    await page.getByLabel("Search video guides").fill("April");
+    await expect(page.getByRole("heading", { name: "No matching videos" })).toBeVisible();
+    await page.getByRole("button", { name: "All videos", exact: true }).click();
+    await expect(page.locator(".video-guide-card")).toHaveCount(2);
+    await expect(page.getByText("Plan an outreach rhythm", { exact: true })).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator(".video-guide-card").first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+    await page.screenshot({ path: testInfo.outputPath("video-library-mobile.png"), fullPage: true });
   });
 
   test("explains required opportunity fields and accepts a bare optional website", async ({ page }) => {

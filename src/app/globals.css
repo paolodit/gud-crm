@@ -3878,3 +3878,32 @@ details.research-assistant-path { display: block; padding: 0; }
     transition-duration: 0.01ms !important;
   }
 }
+.video-library { max-width: 1400px; }
+.video-library-intro { max-width: 730px; padding: 10px 0 16px; }
+.video-library-intro h2 { font-size: clamp(24px, 2.2vw, 34px); letter-spacing: -.035em; margin: 10px 0; line-height: 1.2; }
+.video-library-intro p { color: var(--muted, #617087); font-size: 14px; line-height: 1.65; }
+.video-library-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.video-topic-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.video-topic-filters button[aria-pressed="true"] { background: #e5efff; color: #005ed7; }
+.video-library-search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid #dce3ed; border-radius: 9px; background: white; color: #617087; }
+.video-library-search input { border: 0; background: transparent; color: #15243b; min-width: 210px; font: inherit; font-size: 13px; }
+.video-library-search:focus-within { outline: 2px solid #006fff; outline-offset: 2px; }
+.video-library-search input:focus { outline: none; }
+.video-library-count, .video-library-note { color: #617087; font-size: 12px; line-height: 1.6; }
+.video-library-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+.video-guide-card { display: flex; flex-direction: column; overflow: hidden; text-decoration: none; color: inherit; transition: box-shadow 160ms ease, transform 160ms ease; }
+.video-guide-card:hover { box-shadow: 0 10px 25px #172c4b14; transform: translateY(-3px); }
+.video-guide-card:focus-visible { outline: 3px solid #006fff; outline-offset: 4px; }
+.video-guide-thumbnail { aspect-ratio: 16 / 9; position: relative; display: grid; place-items: center; background: #182b48; color: #cadbff; overflow: hidden; }
+.video-guide-thumbnail img { object-fit: cover; }
+.video-guide-play { position: absolute; bottom: 12px; right: 12px; display: grid; place-items: center; width: 44px; height: 34px; border-radius: 9px; background: #101b2de6; color: white; }
+.video-guide-card:hover .video-guide-play { background: #006fff; }
+.video-guide-copy { display: flex; flex: 1; flex-direction: column; align-items: flex-start; padding: 20px; }
+.video-guide-copy h2 { font-size: 16px; line-height: 1.45; margin: 9px 0; }
+.video-guide-byline { font-size: 12px; color: #617087; margin: 0 0 12px; }
+.video-guide-reason { font-size: 13px; line-height: 1.65; color: #47556b; margin: 0 0 20px; }
+.video-guide-watch { display: flex; align-items: center; gap: 7px; margin-top: auto; color: #005ed7; font-size: 12px; font-weight: 650; }
+.video-library-empty { display: grid; justify-items: center; text-align: center; padding: 42px 20px; gap: 12px; }
+@media (max-width: 1100px) { .video-library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; } }
+@media (max-width: 640px) { .video-library-grid { grid-template-columns: 1fr; } .video-library-search { width: 100%; } .video-library-search input { min-width: 0; width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .video-guide-card { transition: none; } .video-guide-card:hover { transform: none; } }
