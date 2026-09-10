@@ -9,7 +9,12 @@ export const deliveryStages = [
   { id: "complete", name: "Complete", colour: "#008664", description: "Delivered and handed over." },
 ] as const;
 
+export const projectValueSchema = z.number().min(0).max(999_999_999_999.99).multipleOf(0.01);
+
 export const deliverySchema = z.object({
+  // GBP agreed delivery value, independent of the sales opportunity's estimate.
+  // Optional for existing records; null explicitly clears a previously saved value.
+  projectValue: projectValueSchema.nullable().optional(),
   stage: z.string().trim().min(1).max(80).default("kickoff"),
   dueDate: z.iso.date().nullable().default(null),
   nextMilestone: z.string().trim().max(240).default(""),
@@ -18,6 +23,7 @@ export const deliverySchema = z.object({
 });
 export type DeliveryDetails = z.infer<typeof deliverySchema>;
 export const deliveryPatchSchema = z.object({
+  projectValue: projectValueSchema.nullable().optional(),
   stage: z.string().trim().min(1).max(80).optional(),
   dueDate: z.iso.date().nullable().optional(),
   nextMilestone: z.string().trim().max(240).optional(),

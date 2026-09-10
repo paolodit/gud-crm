@@ -303,6 +303,7 @@ export function consumeLocalAiRateLimit(bucketKey: string, limit: number, window
 }
 
 export function recordLocalAuditEvent(input: {
+  id?: string;
   actorId?: string | null;
   action: string;
   entityType: string;
@@ -312,7 +313,7 @@ export function recordLocalAuditEvent(input: {
   database()
     .prepare("INSERT INTO local_audit_events (id, actor_id, action, entity_type, entity_id, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .run(
-      crypto.randomUUID(),
+      input.id ?? crypto.randomUUID(),
       input.actorId ?? null,
       input.action,
       input.entityType,
@@ -320,6 +321,11 @@ export function recordLocalAuditEvent(input: {
       JSON.stringify(input.detail ?? {}),
       new Date().toISOString(),
     );
+}
+
+export function getLocalAuditEvent(id: string) {
+  const row = database().prepare("SELECT id, actor_id, action, entity_id, detail_json FROM local_audit_events WHERE id = ?").get(id) as { id: string; actor_id: string | null; action: string; entity_id: string; detail_json: string } | undefined;
+  return row ? { id: row.id, actorId: row.actor_id, action: row.action, entityId: row.entity_id, detail: JSON.parse(row.detail_json) as Record<string, unknown> } : null;
 }
 
 export function saveLocalAiSuggestion(suggestion: AISuggestionSummary) {

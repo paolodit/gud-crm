@@ -2,6 +2,11 @@
 // Keep this editorial list small: every entry needs a clear reason to watch.
 export const videoGuides = [
   {
+    id: "YS9In813jJ0", topic: "Enterprise sales", speaker: "Jen Abel", publisher: "Lenny’s Podcast",
+    title: "84 minutes of enterprise sales alpha | Jen Abel",
+    reason: "A step-by-step look at a complex enterprise deal, from the first conversation through pilots and procurement. Useful when several people need to say yes.",
+  },
+  {
     id: "lwipfn9znk0", topic: "Client conversations", speaker: "Chris Do", publisher: "The Futur",
     title: "Watch This Before Your Next Client Call Or Regret It Later",
     reason: "A short reset before a first call: discuss money, ask better questions and help the client decide whether you fit.",

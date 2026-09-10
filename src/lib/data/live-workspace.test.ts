@@ -11,7 +11,7 @@ import type { CurrentMember } from "@/lib/session";
 vi.mock("@/db", () => ({ db: { transaction: vi.fn() } }));
 vi.mock("./local-store", () => ({ updateLocalBoardSnapshot: vi.fn(), recordLocalAuditEvent: vi.fn() }));
 const actor: CurrentMember = { id: "00000000-0000-4000-8000-000000000001", organisationId: "00000000-0000-4000-8000-000000000002", name: "Test", email: "test@example.com", role: "admin", demoMode: false, storageMode: "sqlite" };
-const project = { id: "00000000-0000-4000-8000-000000000003", title: "Existing work", companyName: "Example", ownerId: null, offerId: null, delivery: deliveryDetails({}) };
+const project = { id: "00000000-0000-4000-8000-000000000003", title: "Existing work", companyName: "Example", ownerId: null, offerId: null, delivery: deliveryDetails({ projectValue: 8000.50 }) };
 beforeEach(() => vi.clearAllMocks());
 
 describe("standalone projects and stage settings", () => {

@@ -36,9 +36,10 @@ test.describe.serial("Live project refinements", () => {
     await page.locator(".live-card-open").filter({ hasText: "Delivery voice test" }).click();
     await expect(page.locator(".delivery-editor-note")).toHaveCSS("font-size", "12px");
     await page.getByRole("button", { name: "Talk through an update", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "What’s changed?" })).toBeVisible();
-    await expect(page.getByText("Prepare a delivery stage, milestone or note. Review before saving.")).toBeVisible();
-    await page.getByRole("button", { name: "Cancel voice input", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "What happened? What’s next?" })).toBeVisible();
+    await expect(page.locator(".voice-selected")).toContainText("Demo delivery client");
+    await page.getByRole("button", { name: "Close voice workspace", exact: true }).click();
+    await page.locator(".live-card-open").filter({ hasText: "Delivery voice test" }).click();
     await expect(page.getByLabel("Delivery stage")).toHaveValue("kickoff");
     await page.getByRole("button", { name: "Close project", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);

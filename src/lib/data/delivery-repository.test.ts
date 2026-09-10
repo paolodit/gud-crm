@@ -14,6 +14,21 @@ const original = { stage: "kickoff" as const, dueDate: "2026-10-15", nextMilesto
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe("delivery persistence safety", () => {
+  it("stores and clears agreed delivery value without touching the sales estimate", async () => {
+    const snapshot = demoBoardForEdition("service");
+    const record = snapshot.opportunities[0];
+    record.stageId = snapshot.stages.find((stage) => stage.terminalType === "won")!.id;
+    record.delivery = { ...original };
+    const before = structuredClone(record);
+    vi.mocked(updateLocalBoardSnapshot).mockImplementation((update) => { update(snapshot); return snapshot; });
+    await updateDelivery({ ...actor, storageMode: "sqlite" }, { opportunityId: record.id, delivery: { projectValue: 12500.25 } });
+    expect(record).toEqual({ ...before, delivery: { ...original, projectValue: 12500.25 } });
+    await updateDelivery({ ...actor, storageMode: "sqlite" }, { opportunityId: record.id, delivery: { stage: "complete" } });
+    expect(record.delivery.projectValue).toBe(12500.25);
+    await updateDelivery({ ...actor, storageMode: "sqlite" }, { opportunityId: record.id, delivery: { projectValue: null } });
+    expect(record.delivery.projectValue).toBeNull();
+    expect(record.expectedValue).toEqual(before.expectedValue);
+  });
   it("merges SQLite delivery fields without changing contacts, tasks or sales status", async () => {
     const snapshot = demoBoardForEdition("service");
     const record = snapshot.opportunities[0];
@@ -38,8 +53,8 @@ describe("delivery persistence safety", () => {
     const record = { opportunity: { id: actor.id, delivery: original, archivedAt: null }, terminalType: "won", companyArchived: null };
     const { tx, set, where, lock, values } = databaseFixture([record]);
     vi.mocked(db.transaction).mockImplementation(async (work) => work(tx as never));
-    const result = await updateDelivery(actor, { opportunityId: actor.id, delivery: { stage: "client_review" } });
-    expect(result.delivery).toEqual({ ...original, stage: "client_review" });
+    const result = await updateDelivery(actor, { opportunityId: actor.id, delivery: { stage: "client_review", projectValue: 15000.50 } });
+    expect(result.delivery).toEqual({ ...original, stage: "client_review", projectValue: 15000.50 });
     expect(set.mock.calls[0][0]).toEqual({ delivery: result.delivery, updatedAt: expect.any(Date) });
     const predicate = new PgDialect().sqlToQuery(where.mock.calls[1][0] as SQL);
     expect(predicate.sql).toContain('"organisation_id"');

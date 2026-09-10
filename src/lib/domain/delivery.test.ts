@@ -3,6 +3,15 @@ import { deliveryDetails, deliveryPatchSchema, deliveryStages, getLiveProjects }
 import { demoBoardForEdition } from "@/lib/demo-data";
 
 describe("live project model", () => {
+  it("accepts optional project values, zero and clearing, but rejects invalid money", () => {
+    expect(deliveryDetails({ notes: "Existing project" })).toMatchObject({ notes: "Existing project" });
+    expect(deliveryPatchSchema.parse({ projectValue: 0 })).toEqual({ projectValue: 0 });
+    expect(deliveryPatchSchema.parse({ projectValue: 12500.25 })).toEqual({ projectValue: 12500.25 });
+    expect(deliveryPatchSchema.parse({ projectValue: null })).toEqual({ projectValue: null });
+    for (const projectValue of [-1, Infinity, NaN, 12.345, 1e13, "100"]) {
+      expect(deliveryPatchSchema.safeParse({ projectValue }).success).toBe(false);
+    }
+  });
   it("gives existing wins a kickoff bucket without changing their sales stage", () => {
     const snapshot = demoBoardForEdition("service");
     const record = snapshot.opportunities[0];

@@ -6,6 +6,7 @@ export function mergeDeliveryDraft(current: DeliveryDetails, draft: SpokenCrmDra
   if (draft.kind !== "delivery_update") return { delivery: current, count: 0 };
   const next = { ...current };
   let count = 0;
+  if (draft.deliveryValue !== null && draft.deliveryValue !== undefined) { next.projectValue = draft.deliveryValue; count++; }
   if (draft.deliveryStage && stages.some((stage) => stage.id === draft.deliveryStage)) { next.stage = draft.deliveryStage; count++; }
   if (draft.deliveryMilestone?.trim()) { next.nextMilestone = draft.deliveryMilestone.trim(); count++; }
   if (draft.deliveryDueDate) { next.dueDate = draft.deliveryDueDate; count++; }
