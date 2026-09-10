@@ -7,7 +7,6 @@ import {
   ArchiveRestore,
   ArrowDownWideNarrow,
   ArrowRight,
-  BookOpen,
   Bot,
   Check,
   ChevronDown,
@@ -20,29 +19,20 @@ import {
   Download,
   ExternalLink,
   FileSpreadsheet,
-  FileText,
-  Globe2,
   KeyRound,
-  LibraryBig,
   ListChecks,
   LoaderCircle,
-  MessageCircle,
   MessageSquareText,
-  MonitorPlay,
   Pencil,
   Plus,
-  Radio,
   RefreshCw,
-  Route,
   Rows3,
   Search,
-  Send,
   ShieldCheck,
   Sparkles,
   Target,
   Trash2,
   Users,
-  Video,
   Workflow,
   GripVertical,
   X,
@@ -56,15 +46,15 @@ import { setWorkspaceAiEnabledAction } from "@/app/actions/ai";
 import { saveActivityTypeAction } from "@/app/actions/crm";
 import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
-import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveSalesAssetAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
+import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { DeliveryStageSettings } from "./delivery-stage-settings";
 import { SettingsSections } from "./settings-sections";
 import { LiveReports } from "./live-reports";
 import { SafeUpdateHelp } from "./safe-update-help";
 import { getActiveOpportunities, isResearchStage } from "@/lib/data/board-selectors";
-import { contextualOffers, defaultOffer } from "@/lib/domain/offers";
-import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, SalesAssetSummary, StageSummary } from "@/lib/domain/types";
+import { contextualOffers } from "@/lib/domain/offers";
+import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, StageSummary } from "@/lib/domain/types";
 import { editions, getEdition, type EditionKey } from "@/lib/editions";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
 
@@ -253,93 +243,6 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
   );
 }
 
-const playbookFlow = [
-  { title: "Research", detail: "Find one useful operational fact", icon: Compass, tone: "cyan" },
-  { title: "Choose a route", detail: "Pick the person and best channel", icon: Route, tone: "blue" },
-  { title: "Make a touch", detail: "One observation, one small ask", icon: Send, tone: "purple" },
-  { title: "Read the signal", detail: "Log outcome, not just activity", icon: Radio, tone: "amber" },
-  { title: "Decide", detail: "Follow up, nurture or close", icon: MessageCircle, tone: "green" },
-] as const;
-
-const playbookItems = [
-  { id: "opener", category: "Outreach", title: "Proof-led opener", description: "Earn relevance before asking for time.", when: "First direct message or email to a credible owner.", guardrail: "Use one approved proof point; never imply they are already a customer.", body: "Hi [name] — I noticed [specific operational context]. [[offer-positioning]] [Approved proof, if relevant.] Is improving [relevant process] on your list this quarter?" },
-  { id: "referral", category: "Outreach", title: "Warm referral ask", description: "A low-friction route when the role is close, but not exact.", when: "The person is relevant, but ownership is uncertain.", guardrail: "Ask for a name or role—not a meeting and a referral at the same time.", body: "Thanks, [name]. I may have the ownership wrong: who looks after how store teams complete and evidence [process] across the estate? A name or role is genuinely enough — I’ll keep the context concise." },
-  { id: "discovery", category: "Discovery", title: "Evidence gap prompts", description: "Questions that reveal workflow cost without manufacturing pain.", when: "A contact is engaged and willing to compare the current routine.", guardrail: "Follow their answer. Do not march through every question like a script.", body: "How is the check completed today?\nWho can see that it happened?\nWhat happens when a site misses it?\nWhere does evidence live when someone needs it quickly?\nWhat would a simpler routine make possible?" },
-  { id: "diagnostic", category: "Offer", title: "Lightweight review offer", description: "Give value before asking for a full discovery call.", when: "There is relevance, but a meeting is still too large a commitment.", guardrail: "A diagnostic is one option—not a compulsory pipeline step.", body: "I can send a one-page review your team can use to sense-check the current workflow across ownership, visibility, follow-up and evidence. No form or meeting required. If it surfaces a gap, we can compare notes for 15 minutes." },
-  { id: "already", category: "Objection", title: "We already have a system", description: "Respect the incumbent and test the workflow around it.", when: "The contact points to existing software or an established process.", guardrail: "Do not attack the incumbent; distinguish the frontline routine from the system of record.", body: "That makes sense — most teams we speak with do. The useful question is usually not whether a system exists, but whether the frontline routine is easy enough to complete and the evidence easy enough to retrieve. If both are working well, I’ll happily leave it there." },
-  { id: "timing", category: "Objection", title: "Not a priority", description: "Keep dignity and create a legitimate future trigger.", when: "There is a credible fit, but no active timing.", guardrail: "Nurture only when a real trigger and re-entry date are recorded.", body: "Understood. I won’t manufacture urgency. What would normally move this up the list — an audit, rollout, incident, leadership change, or a wider systems review? I can close the loop now and only return if that trigger appears." },
-] as const;
-
-const salesAssetDefinitions = [
-  { id: "website", title: "Website / service page", purpose: "A credible home for the problem, product and proof.", moment: "Before or after a first touch", icon: Globe2 },
-  { id: "walkthrough", title: "Video walkthrough", purpose: "A short human explanation of the routine and outcome.", moment: "When a contact wants context without a meeting", icon: Video },
-  { id: "playable_demo", title: "Playable demo", purpose: "Something concrete to use live in a review or meeting.", moment: "Engaged, review booked or internal hand-off", icon: MonitorPlay },
-  { id: "benefits_pdf", title: "Benefits one-pager", purpose: "A forwardable summary for email and internal sharing.", moment: "After relevance is established", icon: FileText },
-  { id: "qualifier", title: "Light qualifier", purpose: "A short questionnaire that reveals fit without creating homework.", moment: "Before a review or as an asynchronous alternative", icon: ListChecks },
-  { id: "compliance_research", title: "Industry research", purpose: "Useful evidence that earns attention and sharpens discovery.", moment: "Research, outreach and nurture", icon: LibraryBig },
-] as const;
-
-export function PlaybookWorkspace({ offers, assetsByOffer, canManageAssets }: { offers: OfferSummary[]; assetsByOffer: Record<string, SalesAssetSummary[]>; canManageAssets: boolean }) {
-  const [category, setCategory] = useState("Outreach");
-  const [copied, setCopied] = useState<string | null>(null);
-  const [selectedOfferId, setSelectedOfferId] = useState(defaultOffer(offers)?.id ?? offers[0]?.id ?? "");
-  const [assetLists, setAssetLists] = useState(assetsByOffer);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
-  const selectedOffer = offers.find((offer) => offer.id === selectedOfferId) ?? offers[0];
-  const assetList = assetLists[selectedOfferId] ?? [];
-  const categories = [...new Set(playbookItems.map((item) => item.category))];
-  async function copy(id: string, body: string) {
-    await navigator.clipboard.writeText(body);
-    setCopied(id);
-    window.setTimeout(() => setCopied(null), 1800);
-  }
-  return (
-    <WorkspaceFrame title="Sales guide" subtitle="What to do before, during and after a first conversation">
-      <section className="playbook-hero"><span className="playbook-hero-icon"><BookOpen size={24} /></span><div><span className="eyebrow">A practical guide{selectedOffer ? ` · ${selectedOffer.name}` : ""}</span><h2>Know what to do, say and send.</h2><p>This is your calm reference when you are preparing outreach, writing a message, or deciding what should happen next.</p>{offers.length > 1 ? <label className="playbook-offer-select">Guide for<select value={selectedOfferId} onChange={(event) => { setSelectedOfferId(event.target.value); setSelectedAssetId(null); }}>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}</div><aside><small>The useful message</small><strong>Observation → relevance → proof → small ask</strong><span>{selectedOffer?.positioning || "Be specific, useful and easy to answer."}</span></aside></section>
-
-      <section className="playbook-start surface"><header><span className="eyebrow">Start here</span><h2>Three steps are enough</h2><p>You do not need to learn a system before doing useful sales work.</p></header><div><Link href="/targets"><span>1</span><strong>Prepare</strong><small>Choose a credible company, person and reason to contact them.</small><ArrowRight size={17} /></Link><button type="button" onClick={() => setCategory("Outreach")}><span>2</span><strong>Start a conversation</strong><small>Use one observation and one small, answerable ask.</small><ArrowRight size={17} /></button><Link href="/pipeline"><span>3</span><strong>Record the signal</strong><small>Log the outcome, set the next move, or close the loop.</small><ArrowRight size={17} /></Link></div></section>
-
-      <div className="playbook-tools">
-        <details className="playbook-tool surface"><summary><span><Route size={20} /><span><strong>Plan an outreach rhythm</strong><small>A light multi-channel sequence—never an automated chase.</small></span></span><ChevronDown size={18} /></summary><div className="playbook-tool-content"><div className="playbook-flow">{playbookFlow.map((step, index) => { const Icon = step.icon; return <div className="playbook-flow-step" data-tone={step.tone} key={step.title}><span><Icon size={17} /></span><div><strong>{step.title}</strong><small>{step.detail}</small></div>{index < playbookFlow.length - 1 ? <ArrowRight className="playbook-flow-arrow" size={16} /> : null}</div>; })}</div><section className="cadence-board"><div><span className="eyebrow">A sensible first sequence</span><h2>Vary the route, not the pressure</h2><p>Stop or adapt when the evidence changes.</p></div><ol><li><b>Day 1</b><span><strong>LinkedIn or email</strong><small>Observation + one question</small></span></li><li><b>Day 4–6</b><span><strong>Use a second channel</strong><small>Add new value</small></span></li><li><b>Day 10–14</b><span><strong>Close the loop</strong><small>Pause, redirect or set a trigger</small></span></li></ol></section></div></details>
-
-        <details className="playbook-tool surface"><summary><span><LibraryBig size={20} /><span><strong>Check what proof is ready</strong><small>Open an asset only when you need to send or improve it.</small></span></span><span className="asset-kit-progress">{assetList.filter((asset) => asset.status === "ready").length} / {assetList.length} ready</span><ChevronDown size={18} /></summary><div className="playbook-tool-content"><div className="asset-browser">{salesAssetDefinitions.map((definition) => { const asset = assetList.find((item) => item.id === definition.id); if (!asset) return null; const Icon = definition.icon; return <button className="asset-tile" data-status={asset.status} aria-pressed={selectedAssetId === asset.id} type="button" key={definition.id} onClick={() => setSelectedAssetId((current) => current === asset.id ? null : asset.id)}><span className="asset-tile-icon"><Icon size={20} /></span><span><strong>{definition.title}</strong><small>{definition.purpose}</small></span><i>{assetStatusLabel(asset.status)}</i><ChevronDown size={17} /></button>; })}</div>{selectedAssetId ? (() => { const definition = salesAssetDefinitions.find((item) => item.id === selectedAssetId); const asset = assetList.find((item) => item.id === selectedAssetId); return definition && asset && selectedOffer ? <SalesAssetEditor definition={definition} asset={asset} offerId={selectedOffer.id} canManage={canManageAssets} onClose={() => setSelectedAssetId(null)} onSaved={(saved) => setAssetLists((items) => ({ ...items, [selectedOffer.id]: (items[selectedOffer.id] ?? []).map((item) => item.id === saved.id ? saved : item) }))} /> : null; })() : null}</div></details>
-      </div>
-
-      <section className="playbook-patterns"><header><div><span className="eyebrow">When you need words</span><h2>Copy a starting point</h2><p>Choose the moment, then open one pattern. Adapt it until it sounds like you.</p></div><div className="segmented" role="tablist" aria-label="Sales guide category">{categories.map((item) => <button role="tab" aria-selected={category === item} key={item} onClick={() => setCategory(item)}>{item}</button>)}</div></header><div className="playbook-grid">{playbookItems.filter((item) => item.category === category).map((item) => { const body = adaptPlaybookBody(item.body, selectedOffer); return <details className="playbook-card" data-category={item.category.toLowerCase()} key={item.id}><summary><span><span className="eyebrow">{item.category}</span><strong>{item.title}</strong><small>{item.description}</small></span><ChevronDown size={19} /></summary><div className="playbook-card-content"><div className="playbook-card-meta"><div><small>Use when</small><span>{item.when}</span></div><div><small>Guardrail</small><span>{item.guardrail}</span></div></div><div className="playbook-copy"><span>Adapt this</span><p>{body}</p></div><button className="btn btn-quiet" type="button" onClick={() => copy(item.id, body)}>{copied === item.id ? <Check size={15} /> : <Copy size={15} />}{copied === item.id ? "Copied" : "Copy pattern"}</button></div></details>; })}</div></section>
-      <p className="playbook-note"><ShieldCheck size={16} /> Use approved proof, replace every bracketed field, and read the message aloud before sending.</p>
-    </WorkspaceFrame>
-  );
-}
-
-function SalesAssetEditor({ definition, asset, offerId, canManage, onClose, onSaved }: { definition: (typeof salesAssetDefinitions)[number]; asset: SalesAssetSummary; offerId: string; canManage: boolean; onClose: () => void; onSaved: (asset: SalesAssetSummary) => void }) {
-  const Icon = definition.icon;
-  const [status, setStatus] = useState(asset.status);
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending(true);
-    setMessage(null);
-    const form = new FormData(event.currentTarget);
-    const result = await saveSalesAssetAction({ offerId, id: asset.id, status, url: form.get("url"), note: form.get("note") });
-    setPending(false);
-    setMessage(result.ok ? "Saved" : result.error);
-    if (result.ok) onSaved({ ...asset, status, url: String(form.get("url") ?? ""), note: String(form.get("note") ?? "") });
-  }
-
-  return <form className="asset-editor" data-status={status} onSubmit={submit}><header><span><Icon size={21} /></span><div><h3>{definition.title}</h3><p>{definition.purpose}</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Close asset details"><X size={15} /></button></header><p className="asset-moment"><strong>Best used:</strong> {definition.moment}</p><div className="asset-editor-fields"><label className="field-label">Status<select className="field-select" aria-label={`${definition.title} status`} value={status} onChange={(event) => setStatus(event.target.value as SalesAssetSummary["status"])} disabled={!canManage}><option value="untracked">Needs checking</option><option value="missing">Missing</option><option value="in_progress">In progress</option><option value="ready">Ready</option></select></label><label className="field-label">Link<input className="field" name="url" type="url" defaultValue={asset.url ?? ""} placeholder="https://..." readOnly={!canManage} /></label><label className="field-label asset-note-field">Owner / next step<textarea className="field-textarea" name="note" defaultValue={asset.note ?? ""} placeholder="Who owns it, or what is missing?" readOnly={!canManage} /></label></div><footer><span>{canManage ? message : "View only - asset editing is limited to managers and admins."}</span>{canManage ? <button className="btn btn-primary btn-compact" type="submit" disabled={pending}>{pending ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />}{pending ? "Saving..." : "Save asset"}</button> : null}</footer></form>;
-}
-
-function assetStatusLabel(status: SalesAssetSummary["status"]) {
-  return ({ untracked: "Check", missing: "Missing", in_progress: "In progress", ready: "Ready" } as const)[status];
-}
-
-function adaptPlaybookBody(body: string, offer?: OfferSummary) {
-  const positioning = offer?.positioning?.trim();
-  return body.replace("[[offer-positioning]]", positioning || "[One clear sentence about how this offer helps]");
-}
-
 export type RuntimeStatus = {
   demoMode: boolean;
   storageMode: BoardSnapshot["storageMode"];
@@ -445,7 +348,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
       return;
     }
     setWorkspaceAiEnabled(enabled);
-    setAiMessage(enabled ? "AI coaching enabled for this workspace." : "AI coaching disabled for this workspace.");
+    setAiMessage(enabled ? "AI tools enabled for this workspace." : "AI tools disabled for this workspace.");
   }
 
   async function importTracker() {
@@ -602,7 +505,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
           <p className="settings-hint">{runtime.mcpEnabled ? <>GUD exposes focused CRM actions—not raw database access—and audit-logs every write against your user. <a href="https://github.com/paolodit/gud-crm/blob/main/docs/MCP.md" target="_blank" rel="noreferrer">Open the complete setup and prompt guide <ExternalLink size={12} /></a></> : runtime.storageMode === "postgres" ? "Set MCP_ENABLED=true in the private server environment, redeploy, then return here to copy the endpoint." : "Remote MCP stays off in local SQLite and demo workspaces. Use a PostgreSQL deployment for separate logins and revocable connections."}</p>
         </article>
 
-        <article data-settings-tab="ai" className="surface settings-card ai-settings-card"><div className="settings-icon settings-icon-ai"><KeyRound /></div><div><h2>AI coach</h2><p>Provider, server-side key and workspace access</p></div><div className="status-list"><StatusRow label="Provider" value={runtime.aiProvider === "openai" ? "OpenAI Responses API" : "Local deterministic coach"} good={runtime.aiEnabled} /><StatusRow label="OpenAI key" value={runtime.aiKeyConfigured ? "Configured on server" : "Not configured"} good={runtime.aiKeyConfigured || runtime.aiProvider === "local"} /><StatusRow label="Model" value={runtime.aiProvider === "openai" ? runtime.aiModel : "No API model used"} good /><StatusRow label="Workspace AI" value={workspaceAiEnabled && runtime.aiEnabled ? "Enabled" : "Disabled"} good={workspaceAiEnabled && runtime.aiEnabled} /></div><div className="settings-ai-control"><button className="btn btn-quiet" type="button" disabled={aiPending || !runtime.aiEnabled || currentRole !== "admin"} onClick={toggleAi}><Sparkles size={14} />{aiPending ? "Saving..." : workspaceAiEnabled ? "Disable AI coach" : "Enable AI coach"}</button><button className="btn btn-primary" type="button" disabled={currentRole !== "admin"} onClick={() => setAiSetupOpen((value) => !value)}><KeyRound size={14} />{aiSetupOpen ? "Close setup" : "Configure OpenAI"}</button>{currentRole !== "admin" ? <small>Admin access is required to change AI settings.</small> : aiMessage ? <small>{aiMessage}</small> : null}</div>{aiSetupOpen && currentRole === "admin" ? <div className="ai-setup-panel"><div className="ai-setup-step"><b>1</b><span><strong>Create a project API key</strong><small>Use a dedicated project key with its own spend controls.</small></span><a className="btn btn-quiet" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Open API keys <ExternalLink size={13} /></a></div><div className="ai-setup-step"><b>2</b><span><strong>Add it to the server environment</strong><small>Use <code>.env.local</code> locally, or your VPS/CapRover secret variables in production.</small></span></div><code className="ai-env-block">AI_PROVIDER=openai{"\n"}AI_MODEL={runtime.aiModel}{"\n"}OPENAI_API_KEY=sk-proj-your-server-side-key</code><div className="ai-setup-actions"><button className="btn btn-quiet" type="button" onClick={copyAiConfiguration}>{aiConfigCopied ? <Check size={14} /> : <Copy size={14} />}{aiConfigCopied ? "Copied" : "Copy configuration"}</button><span><ShieldCheck size={14} />Never paste a live key into a browser form or commit it to Git. Restart the app after changing server variables.</span></div></div> : null}</article>
+        <article data-settings-tab="ai" className="surface settings-card ai-settings-card"><div className="settings-icon settings-icon-ai"><KeyRound /></div><div><h2>AI connections</h2><p>Voice capture, research and server-side configuration</p></div><div className="status-list"><StatusRow label="Provider" value={runtime.aiProvider === "openai" ? "OpenAI Responses API" : "Local mode (no voice preparation)"} good={runtime.aiEnabled} /><StatusRow label="OpenAI key" value={runtime.aiKeyConfigured ? "Configured on server" : "Not configured"} good={runtime.aiKeyConfigured || runtime.aiProvider === "local"} /><StatusRow label="Model" value={runtime.aiProvider === "openai" ? runtime.aiModel : "No API model used"} good /><StatusRow label="Workspace AI" value={workspaceAiEnabled && runtime.aiEnabled ? "Enabled" : "Disabled"} good={workspaceAiEnabled && runtime.aiEnabled} /></div><div className="settings-ai-control"><button className="btn btn-quiet" type="button" disabled={aiPending || !runtime.aiEnabled || currentRole !== "admin"} onClick={toggleAi}><Sparkles size={14} />{aiPending ? "Saving..." : workspaceAiEnabled ? "Disable AI tools" : "Enable AI tools"}</button><button className="btn btn-primary" type="button" disabled={currentRole !== "admin"} onClick={() => setAiSetupOpen((value) => !value)}><KeyRound size={14} />{aiSetupOpen ? "Close setup" : "Configure OpenAI"}</button>{currentRole !== "admin" ? <small>Admin access is required to change AI settings.</small> : aiMessage ? <small>{aiMessage}</small> : null}</div>{aiSetupOpen && currentRole === "admin" ? <div className="ai-setup-panel"><div className="ai-setup-step"><b>1</b><span><strong>Create a project API key</strong><small>Use a dedicated project key with its own spend controls.</small></span><a className="btn btn-quiet" href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Open API keys <ExternalLink size={13} /></a></div><div className="ai-setup-step"><b>2</b><span><strong>Add it to the server environment</strong><small>Use <code>.env.local</code> locally, or your VPS/CapRover secret variables in production.</small></span></div><code className="ai-env-block">AI_PROVIDER=openai{"\n"}AI_MODEL={runtime.aiModel}{"\n"}OPENAI_API_KEY=sk-proj-your-server-side-key</code><div className="ai-setup-actions"><button className="btn btn-quiet" type="button" onClick={copyAiConfiguration}>{aiConfigCopied ? <Check size={14} /> : <Copy size={14} />}{aiConfigCopied ? "Copied" : "Copy configuration"}</button><span><ShieldCheck size={14} />Never paste a live key into a browser form or commit it to Git. Restart the app after changing server variables.</span></div></div> : null}</article>
         <article data-settings-tab="system" className="surface settings-card settings-card-wide" id="import">
           <div className="settings-icon"><FileSpreadsheet /></div>
           <div><h2>Tracker import</h2><p>Review the local research file, then import it safely into this workspace</p></div>

@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  MonitorPlay,
   Building2,
   LayoutDashboard,
   ListChecks,
@@ -96,9 +97,9 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
             );
           })}
           <span className="nav-spacer" aria-hidden="true" />
-          <Link href="/playbook" aria-label="Sales guide" title={sidebarCollapsed ? "Sales guide" : undefined} aria-current={pathname === "/playbook" ? "page" : undefined}>
-            <Sparkles size={18} aria-hidden="true" />
-            <span>Sales guide</span>
+          <Link href="/playbook" aria-label="Video guides" title={sidebarCollapsed ? "Video guides" : undefined} aria-current={pathname === "/playbook" ? "page" : undefined}>
+            <MonitorPlay size={18} aria-hidden="true" />
+            <span>Video guides</span>
           </Link>
           {member.role === "admin" ? (
             <Link href="/settings" aria-label="Settings" title={sidebarCollapsed ? "Settings" : undefined} aria-current={pathname === "/settings" ? "page" : undefined}>

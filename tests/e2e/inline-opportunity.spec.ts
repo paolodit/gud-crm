@@ -7,6 +7,9 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await page.getByLabel("Opportunity title").fill("Inline editing test");
   await page.getByRole("button", { name: "Create opportunity", exact: true }).click();
   const panel = page.locator(".opportunity-panel");
+  await expect(panel.getByRole("button", { name: "Coach me" })).toHaveCount(0);
+  await expect(panel.getByRole("heading", { name: "AI coach" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Talk through an update", exact: true })).toBeVisible();
   const details = panel.locator(".inline-opportunity-details");
   await details.getByRole("button", { name: "Edit Priority", exact: true }).click();
   await expect(page.locator(".dialog-card")).toHaveCount(0);
