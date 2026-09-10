@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import type { CurrentMember } from "@/lib/session";
 import { BrandLogo } from "@/components/brand-logo";
+import { WorkspaceVoiceProvider } from "@/components/workspace-voice";
 
 const coreNavItems = [
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
@@ -51,6 +52,9 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
   }
 
   async function signOut() {
+    for (const prefix of ["gud-voice-draft:", "gud-voice-receipt:"]) {
+      try { sessionStorage.removeItem(`${prefix}${member.organisationId}:${member.id}`); } catch { /* Storage is optional. */ }
+    }
     if (member.storageMode !== "postgres") {
       router.push("/sign-in");
       return;
@@ -70,7 +74,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
   ];
 
   return (
-    <div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
+    <WorkspaceVoiceProvider key={`${member.organisationId}:${member.id}`} memberKey={`${member.organisationId}:${member.id}`}><div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
       <aside className="sidebar">
         <div className="brand">
           <BrandLogo size={44} priority />
@@ -131,7 +135,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
         </div>
       </aside>
       <main id="main-content" className="page-main">{children}</main>
-    </div>
+    </div></WorkspaceVoiceProvider>
   );
 }
 

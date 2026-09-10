@@ -120,6 +120,7 @@ export type ActivitySummary = {
   occurredAt: string;
   createdAt: string;
   createdBy: string;
+  createdById?: string;
 };
 
 export type TaskSummary = {

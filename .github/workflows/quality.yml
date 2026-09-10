@@ -35,6 +35,8 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Verify combined voice updates with the isolated AI fixture
+        run: node scripts/run-voice-e2e.mjs
       - run: npm run build
       - run: npm run build:runtime-tools
       - name: Exercise real PostgreSQL authentication

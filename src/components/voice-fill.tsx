@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { parseSpokenCrmDraftAction, type SpokenCrmDraft } from "@/app/actions/ai";
 import { useDialogFocus } from "./use-dialog-focus";
+import { useWorkspaceVoice, WorkspaceVoiceButton } from "./workspace-voice";
 
 type RecognitionResult = ArrayLike<{ transcript: string }> & { isFinal: boolean };
 type Recognition = {
@@ -23,10 +24,12 @@ type VoiceProps = {
 };
 
 export function VoiceFillButton({ prominent = false, initiallyOpen = false, ...props }: VoiceProps) {
+  const workspaceVoice = useWorkspaceVoice();
   const [open, setOpen] = useState(initiallyOpen);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { queueMicrotask(() => setMounted(true)); }, []);
   const [message, setMessage] = useState("");
+  if (workspaceVoice && props.kind === "activity_update" && props.opportunityId) return <WorkspaceVoiceButton target={{ kind: "sales", id: props.opportunityId }} initiallyOpen={initiallyOpen} />;
   return <div className="voice-fill" data-prominent={prominent}>
     <button className="btn btn-voice" type="button" onClick={() => setOpen(true)}><Mic size={16} />{props.creatingProject ? "Talk through adding a project" : props.kind.endsWith("_update") ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}</button>
     {message ? <span className="voice-fill-status" role="status">{message}</span> : null}
@@ -43,7 +46,7 @@ function VoiceCapture({ kind, creatingProject = false, onDraft, onClose, aiConfi
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
   const [hint, setHint] = useState(0);
-  const prompts = creatingProject ? ["Where is the project up to?", "What is the next milestone, and when is it due?", "What delivery notes will help the team?"] : kind === "delivery_update" ? ["What has changed on this project?", "Which delivery stage should it be in?", "What is the next milestone, and when is it due?"] : kind === "activity_update" ? ["What happened, and who was involved?", "Was it a call, an email, a meeting or a reply?", "What should happen next, and when?"] : ["What could you help them achieve?", "Who is the organisation and the contact?", "Why now? How warm is it, and what is it worth?", "What is the sensible next move?"];
+  const prompts = creatingProject ? ["Where is the project up to?", "What is the next milestone, and when is it due?", "What is the agreed project value, and what notes will help the team?"] : kind === "delivery_update" ? ["What has changed on this project?", "Which delivery stage should it be in? Has the agreed value changed?", "What is the next milestone, and when is it due?"] : kind === "activity_update" ? ["What happened, and who was involved?", "Was it a call, an email, a meeting or a reply?", "What should happen next, and when?"] : ["What could you help them achieve?", "Who is the organisation and the contact?", "Why now? How warm is it, and what is it worth?", "What is the sensible next move?"];
   useEffect(() => {
     active.current = true;
     const browser = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
@@ -88,9 +91,9 @@ function VoiceCapture({ kind, creatingProject = false, onDraft, onClose, aiConfi
     } catch { if (active.current) { setError("Could not prepare that update. Your transcript is still here; try again."); setState("idle"); } }
   }
   return <div className="dialog-backdrop voice-dialog-backdrop"><section ref={ref} className="dialog-card voice-dialog" role="dialog" aria-modal="true" aria-labelledby="voice-title">
-    <header className="dialog-header"><div><span className="eyebrow">Say it. Shape it. Save it.</span><h2 id="voice-title">{creatingProject ? "Describe the project setup" : kind.endsWith("_update") ? "What’s changed?" : "Tell us the story"}</h2><p>{creatingProject ? "Prepare its stage, milestone and delivery notes. Add the project name and client in the form, then review before saving." : kind === "delivery_update" ? "Prepare a delivery stage, milestone or note. Review before saving." : kind === "activity_update" ? "Log a touchpoint and set a next action in one update." : "Turn a rough thought into a useful record."}</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Cancel voice input"><X size={18} /></button></header>
+    <header className="dialog-header"><div><span className="eyebrow">Say it. Shape it. Save it.</span><h2 id="voice-title">{creatingProject ? "Describe the project setup" : kind.endsWith("_update") ? "What’s changed?" : "Tell us the story"}</h2><p>{creatingProject ? "Prepare its value, stage, milestone and delivery notes. Add the project name and client in the form, then review before saving." : kind === "delivery_update" ? "Prepare a project value, delivery stage, milestone or note. Review before saving." : kind === "activity_update" ? "Log a touchpoint and set a next action in one update." : "Turn a rough thought into a useful record."}</p></div><button className="icon-button" type="button" onClick={onClose} aria-label="Cancel voice input"><X size={18} /></button></header>
     <div className="dialog-form"><div className="voice-capture-stage" data-listening={state === "listening"}><Mic size={28} /><strong>{state === "listening" ? "Listening to you…" : "Speak naturally, or write it down"}</strong><p>{prompts[hint]}</p>{supported ? <button type="button" className="btn btn-voice" disabled={state === "thinking"} onClick={() => state === "listening" ? recognition.current?.stop() : start()}>{state === "listening" ? <Square size={16} /> : <Mic size={16} />}{state === "listening" ? "Stop recording" : transcript ? "Add more by voice" : "Start recording"}</button> : <p>Speech recognition isn’t available here. Typing works just as well.</p>}</div>
-      <label className="field-label">Your words — editable<textarea data-autofocus className="field-textarea voice-transcript" value={transcript} onChange={(event) => setTranscript(event.target.value)} readOnly={state !== "idle"} maxLength={12000} rows={5} placeholder={kind === "delivery_update" ? "Move this to client review. The next milestone is approval on 18 September. The first draft is ready…" : kind === "activity_update" ? "I spoke to Jamie this morning. They liked the proposal. Follow up next Tuesday at 10am…" : "We could build a booking website for Northbank. Jamie is interested; about £8,000…"} /></label>
+      <label className="field-label">Your words — editable<textarea data-autofocus className="field-textarea voice-transcript" value={transcript} onChange={(event) => setTranscript(event.target.value)} readOnly={state !== "idle"} maxLength={12000} rows={5} placeholder={kind === "delivery_update" ? "The agreed project value is £12,500. Move this to client review. Approval is due on 18 September…" : kind === "activity_update" ? "I spoke to Jamie this morning. They liked the proposal. Follow up next Tuesday at 10am…" : "We could build a booking website for Northbank. Jamie is interested; about £8,000…"} /></label>
       <p className="muted">Your browser handles speech recognition. Only the text you choose to prepare is sent to the workspace’s AI. Nothing is saved or sent to contacts automatically.</p>
       {!aiConfigured ? <p className="voice-setup-notice">An administrator needs to connect OpenAI in <Link href="/settings?tab=ai">Settings → AI connections</Link> before GUD can prepare fields. You can still copy your words and enter them manually.</p> : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}

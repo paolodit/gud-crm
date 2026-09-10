@@ -83,11 +83,14 @@ test.describe.serial("Service Sales workspace", () => {
   test("presents curated videos with topic and speaker filters instead of sales help", async ({ page }, testInfo) => {
     await page.goto("/playbook");
     await expect(page.getByRole("heading", { name: "Video guides", exact: true })).toBeVisible();
-    await expect(page.locator(".video-guide-card")).toHaveCount(6);
-    await expect.poll(() => page.locator(".video-guide-thumbnail img").evaluateAll((images) => images.filter((image) => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(6);
+    await expect(page.locator(".video-guide-card")).toHaveCount(7);
+    await expect.poll(() => page.locator(".video-guide-thumbnail img").evaluateAll((images) => images.filter((image) => (image as HTMLImageElement).naturalWidth > 0).length)).toBe(7);
     await page.screenshot({ path: testInfo.outputPath("video-library-desktop.png"), fullPage: true });
     await expect(page.locator(".video-guide-card").first()).toHaveAttribute("target", "_blank");
-    await expect(page.locator(".video-guide-card").first()).toHaveAttribute("href", "https://www.youtube.com/watch?v=lwipfn9znk0");
+    await expect(page.locator(".video-guide-card").first()).toHaveAttribute("href", "https://www.youtube.com/watch?v=YS9In813jJ0");
+    await page.getByRole("button", { name: "Enterprise sales", exact: true }).click();
+    await expect(page.locator(".video-guide-card")).toHaveCount(1);
+    await expect(page.locator(".video-guide-card")).toContainText("Jen Abel");
     await page.getByRole("button", { name: "Pricing", exact: true }).click();
     await expect(page.locator(".video-guide-card")).toHaveCount(2);
     await page.getByLabel("Search video guides").fill("April");

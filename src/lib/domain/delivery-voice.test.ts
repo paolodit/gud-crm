@@ -4,6 +4,16 @@ import { configuredDeliveryStages, deliveryDetails } from "./delivery";
 import { mergeDeliveryDraft } from "./delivery-voice";
 
 describe("delivery voice review", () => {
+  it("prepares explicit project values including zero, without treating missing values as clearing", () => {
+    const current = deliveryDetails({ projectValue: 12000, notes: "Agreed scope" });
+    const stages = configuredDeliveryStages(undefined);
+    const draft = (deliveryValue: number | null) => ({ kind: "delivery_update", deliveryValue }) as SpokenCrmDraft;
+    expect(mergeDeliveryDraft(current, draft(15000.50), stages)).toMatchObject({ count: 1, delivery: { projectValue: 15000.50 } });
+    expect(mergeDeliveryDraft(current, draft(0), stages)).toMatchObject({ count: 1, delivery: { projectValue: 0 } });
+    expect(mergeDeliveryDraft(current, draft(null), stages)).toEqual({ delivery: current, count: 0 });
+    expect(mergeDeliveryDraft(current, draft(-20), stages)).toEqual({ delivery: current, count: 0 });
+    expect(current.projectValue).toBe(12000);
+  });
   const current = deliveryDetails({ stage: "kickoff", notes: "Original notes", nextMilestone: "Brief", dueDate: "2026-09-20" });
   const stages = configuredDeliveryStages(undefined);
   const draft = (fields: Partial<SpokenCrmDraft>) => ({ kind: "delivery_update", ...fields }) as SpokenCrmDraft;

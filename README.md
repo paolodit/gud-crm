@@ -29,7 +29,7 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **The pipeline is the home screen.** Spread a busy stage across three lanes. Edit a card, talk through an update or change its stage directly from the board; dragging is optional.
 - **Research stays out of live sales.** Explore market ideas separately, build named targets before outreach, then promote only credible opportunities.
 - **One product or several services.** Focused Sales suits a single product or SaaS motion. Service Sales suits agencies and consultancies pitching different projects, retainers and advisory work.
-- **Say it, review it, save it.** A focused voice desk keeps an editable transcript, recognises your workspace's activity types and prepares a touchpoint and follow-up—or a task on its own. Nothing is saved until you review and confirm.
+- **Say it, review it, save it.** Talk to GUD combines record changes, an activity and a next action in one review. Edit or untick each change, apply together, and Undo safely. No CRM record is changed until you confirm.
 - **Delivery has its own home.** Won opportunities appear on Live projects automatically—or add an existing project without a sales cycle. Configure delivery stages, expand busy columns, track milestones and archive completed work independently of sales. [How it works](docs/LIVE-PROJECTS.md).
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
@@ -149,17 +149,33 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 All three integrations are off or local-first by default:
 
 - Voice-to-fields requires `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to Settings → AI connections when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name. The in-app sales coaching controls have been removed; existing historical AI records are retained.
-
-### Curated video guides
-
-- `/playbook` remains the stable route, now labelled **Video guides**. No database migration is needed.
-- Curate entries in `src/lib/video-guides.ts`: verified YouTube ID, original title, speaker, publisher, topic and a short editorial reason to watch. The initial six entries were checked against YouTube oEmbed on 10 September 2026.
-- Thumbnails are served through Next.js image optimisation, restricted to `i.ytimg.com/vi/`. A fallback is shown if an image fails. No YouTube player or script is loaded into the CRM; videos open on YouTube in a separate tab.
-- Search and topic filters run locally. The library needs no YouTube API key and sends no CRM records to YouTube. Check video availability periodically when maintaining the list.
 - Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`. Follow the [ChatGPT, Codex and MCP setup guide](docs/MCP.md) for the supported read/write actions, consent model and example requests.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 
 Nothing is auto-sent, auto-scheduled or silently promoted into the pipeline. External research is treated as untrusted evidence and remains subject to human review.
+
+### Shared voice updates
+
+- **Talk to GUD** is available throughout the workspace, including through `Ctrl/⌘ + Shift + Space`. Existing opportunity and live-project update buttons open the same review. Choose one record explicitly when outside a record, or when a client has both sales and delivery records.
+- Sales updates can change stage, estimate, priority and temperature, log an activity, and create a CRM next action. Sales-linked live projects support delivery changes plus the shared activity/task timeline. Direct projects use delivery notes and their next milestone instead. New-record voice forms remain available before a record exists.
+- Review only shows proposed changes. Each can be corrected or excluded. Missing next-action dates/times must be supplied; times are interpreted in the browser's IANA timezone, with ambiguous clock-change times rejected. No emails, calendar invitations or other external messages are sent.
+- Browser speech recognition is optional and may use the browser vendor's speech service; typing works too. Capture starts only on a click. The editable transcript stays in this browser tab for up to 24 hours and is cleared on sign-out. Only the transcript, selected record name/title and reference options are sent to the configured OpenAI model when requesting a review (`store: false`), not the record's contacts or history.
+- Prepared reviews and applied/undone receipts are retained in the existing workspace audit store; raw transcripts are not journalled. A prepared review lasts 30 minutes. Apply is transactional and idempotent across SQLite and PostgreSQL. Interrupted responses can be recovered by reopening voice; retries cannot duplicate a saved update.
+- The receipt offers **Undo for 15 minutes**, including after reload in the same tab. Undo reverses only that update and refuses if affected fields, its new activity, or its new task have changed. Unrelated newer work is preserved. No database migration is required.
+- Run `node scripts/run-voice-e2e.mjs` for browser tests with an isolated SQLite database, loopback AI fixture and synthetic speech events. They cover review, correction, combined saves, missing times, interrupted-save recovery, mobile layout and Undo. Real microphone permissions and the configured live provider still need an environment smoke check.
+
+### Curated video guides
+
+- `/playbook` remains the stable route, now labelled **Video guides**. No database migration is needed.
+- Curate entries in `src/lib/video-guides.ts`: verified YouTube ID, original title, speaker, publisher, topic and a short editorial reason to watch. The seven entries were checked against YouTube oEmbed on 10 September 2026.
+- Thumbnails are served through Next.js image optimisation, restricted to `i.ytimg.com/vi/`. A fallback is shown if an image fails. No YouTube player or script is loaded into the CRM; videos open on YouTube in a separate tab.
+- Search and topic filters run locally. The library needs no YouTube API key and sends no CRM records to YouTube. Check video availability periodically when maintaining the list.
+
+### Live project values
+
+Live projects support an optional agreed **Project value (£)**, stored as `delivery.projectValue` for both sales-linked and direct projects. It is separate from the original opportunity's sales estimate and does not change sales totals. Existing projects remain unset until a value is entered. Zero is valid; clearing the input stores `null`. Values support two decimal places and are shown on board cards. This uses existing JSON storage, with no database migration.
+
+Delivery voice capture can prepare an explicitly stated total GBP project value for review before saving. Omitted values do not clear existing amounts; budgets, costs, deposits, monthly rates and foreign currencies must not be treated as agreed GBP totals.
 
 ### Connect an AI assistant to your GUD
 
