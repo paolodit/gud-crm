@@ -1,7 +1,8 @@
 "use client";
 
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { Archive, ArchiveRestore, ArrowUpRight, CalendarDays, Check, Maximize2, Minimize2, Settings2, GripVertical, LoaderCircle, Plus, Search, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, CalendarDays, Check, Maximize2, Minimize2, Mic, Settings2, GripVertical, LoaderCircle, Plus, Search, X } from "lucide-react";
+import { format } from "date-fns";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent } from "react";
@@ -12,7 +13,9 @@ import { useDialogFocus } from "./use-dialog-focus";
 import { useExitTransition } from "./use-exit-transition";
 import { VoiceFillButton } from "./voice-fill";
 import { mergeDeliveryDraft } from "@/lib/domain/delivery-voice";
-import { WorkspaceVoiceButton } from "./workspace-voice";
+import { WorkspaceVoiceButton, useWorkspaceVoice } from "./workspace-voice";
+import { BoardHeaderArt } from "./board-header-art";
+import { CardDensityToggle } from "./card-density-toggle";
 
 export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: BoardSnapshot; voiceAiConfigured?: boolean }) {
   const dragContextId = useId();
@@ -21,6 +24,8 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("all");
   const [archived, setArchived] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(snapshot.generatedAt);
   const searchParams = useSearchParams();
   const [selected, setSelected] = useState<LiveProject | null>(() => liveProjectRecords(snapshot).find((project) => project.id === searchParams.get("project") && !project.delivery.archivedAt) ?? null);
   const [creating, setCreating] = useState(false);
@@ -29,7 +34,8 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-  useEffect(() => { queueMicrotask(() => setRecords(liveProjectRecords(snapshot))); }, [snapshot]);
+  useEffect(() => { queueMicrotask(() => { setRecords(liveProjectRecords(snapshot)); setLastUpdated(snapshot.generatedAt); }); }, [snapshot]);
+  const projectCount = records.filter((item) => !item.delivery.archivedAt).length;
   const visible = records.filter((item) => Boolean(item.delivery.archivedAt) === archived && (owner === "all" || item.ownerId === owner) && `${item.companyName} ${item.title} ${item.delivery.nextMilestone}`.toLowerCase().includes(query.toLowerCase()));
   async function save(project: LiveProject, create = false) {
     if (pending) return false;
@@ -40,6 +46,7 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
         : await updateDeliveryAction({ opportunityId: project.id, delivery: project.delivery });
       if (!result.ok) { setMessage(result.error); return false; }
       setRecords((items) => create ? [...items, project] : items.map((item) => item.id === project.id ? project : item));
+      setLastUpdated(new Date().toISOString());
       setMessage(`${project.title} saved`);
       return true;
     } catch { setMessage("The project could not be saved. Please try again."); return false; }
@@ -56,11 +63,11 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
     setSelected({ id: crypto.randomUUID(), source: "direct", companyName: "", title: "", ownerId: null, offerId: null, delivery: { ...deliveryDetails({}), stage: stages[0].id } });
   }
   return <>
-    <header className="page-header pipeline-page-header"><div className="page-title"><span className="eyebrow">Work in motion</span><h1>Live projects</h1><p>{records.filter((item) => !item.delivery.archivedAt).length} projects · Keep the next milestone clear</p></div><div className="button-row"><button className="btn btn-primary" onClick={add}><Plus size={16} />Add project</button></div></header>
-    <section className="pipeline-toolbar" aria-label="Live project filters"><label className="search-box"><Search size={15} /><input type="search" aria-label="Search live projects" placeholder="Search projects or milestones" value={query} onChange={(e) => setQuery(e.target.value)} /></label><label className="filter-chip">Owner<select aria-label="Live project owner" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="all">Everyone</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><button className="btn btn-quiet" aria-pressed={archived} onClick={() => setArchived(!archived)}>{archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}{archived ? "Show current projects" : "Archive"}</button><Link className="icon-button" aria-label="Edit stages" title="Edit stages" href="/settings?tab=delivery"><Settings2 size={17} /></Link><span className="muted">{visible.length} shown</span></section>
+    <header className="page-header pipeline-page-header"><BoardHeaderArt kind="delivery" /><div className="page-title"><h1>Live projects</h1><p>{projectCount} {projectCount === 1 ? "project" : "projects"} · Last updated: <time dateTime={lastUpdated} title="When this board was last refreshed or saved">{format(new Date(lastUpdated), "d MMM, HH:mm")}</time></p></div><div className="header-actions"><button className="btn btn-primary" aria-label="Add project" onClick={add}><Plus size={16} /><span className="mobile-hide">Add project</span></button></div></header>
+    <section className="pipeline-toolbar" aria-label="Live project filters"><label className="search-box"><Search size={15} /><input type="search" aria-label="Search live projects" placeholder="Search projects or milestones" value={query} onChange={(e) => setQuery(e.target.value)} /></label><div className="filter-row"><label className="filter-chip">Owner<select aria-label="Live project owner" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="all">Everyone</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><button className="filter-chip" aria-pressed={archived} onClick={() => setArchived(!archived)}>{archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}{archived ? "Show current projects" : "Archive"}</button><Link className="icon-button" aria-label="Edit stages" title="Edit stages" href="/settings?tab=delivery"><Settings2 size={17} /></Link><span className="filter-chip">{visible.length} shown</span><CardDensityToggle label="Live project card density" compact={compact} onChange={setCompact} /></div></section>
     {message ? <p className="live-board-message" role="status">{message}</p> : null}
     {!visible.length ? <p className="live-board-message">{archived ? "No archived projects match. Archived projects can be restored here." : "No projects match. Add an existing project directly, or mark a sales opportunity Won."}</p> : null}
-    <DndContext id={dragContextId} sensors={sensors} onDragStart={(e) => setDragged(String(e.active.id))} onDragEnd={drop} onDragCancel={() => setDragged(null)}><div className="live-board-viewport"><div className="live-board">{stages.map((stage) => {
+    <DndContext id={dragContextId} sensors={sensors} onDragStart={(e) => setDragged(String(e.active.id))} onDragEnd={drop} onDragCancel={() => setDragged(null)}><div className="live-board-viewport" data-density={compact ? "compact" : "comfortable"}><div className="live-board">{stages.map((stage) => {
       const projects = visible.filter((item) => item.delivery.stage === stage.id);
       return <LiveColumn key={stage.id} stage={stage} count={projects.length} expanded={expanded.includes(stage.id)} onExpand={() => setExpanded((ids) => ids.includes(stage.id) ? ids.filter((id) => id !== stage.id) : [...ids, stage.id])}>{projects.map((project) => <LiveCard key={project.id} project={project} owner={snapshot.users.find((user) => user.id === project.ownerId)?.name} onOpen={() => { setMessage(""); setCreating(false); setSelected(project); }} disabled={pending || archived} />)}</LiveColumn>;
     })}</div></div><DragOverlay>{dragged ? <div className="live-card live-drag">{records.find((item) => item.id === dragged)?.companyName}</div> : null}</DragOverlay></DndContext>
@@ -70,11 +77,14 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
 
 function LiveColumn({ stage, count, expanded, onExpand, children }: { stage: DeliveryStage; count: number; expanded: boolean; onExpand: () => void; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
-  return <section ref={setNodeRef} className="live-column" data-expanded={expanded} data-over={isOver} aria-label={stage.name} style={{ "--stage-colour": stage.colour } as React.CSSProperties}><header><div className="live-column-heading"><h2>{stage.name}</h2><button className="icon-button" aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${stage.name}${expanded ? " to one lane" : " to three lanes"}`} onClick={onExpand}>{expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button><span>{count}</span></div><p>{stage.description}</p></header><div className="live-column-cards">{children}</div></section>;
+  return <section ref={setNodeRef} className="live-column" data-expanded={expanded} data-over={isOver} aria-label={stage.name} style={{ "--stage-colour": stage.colour } as React.CSSProperties} onTransitionEnd={(event) => {
+    if (event.target === event.currentTarget && event.propertyName === "flex-basis" && !expanded) event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }}><header><div className="live-column-heading"><h2>{stage.name}</h2><button className="icon-button" aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${stage.name}${expanded ? " to one lane" : " to three lanes"}`} onClick={onExpand}>{expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button><span>{count}</span></div><p>{stage.description}</p></header><div className="live-column-cards">{children}</div></section>;
 }
 function LiveCard({ project, owner, onOpen, disabled }: { project: LiveProject; owner?: string; onOpen: () => void; disabled: boolean }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({ id: project.id, disabled });
-  return <article ref={setNodeRef} className="live-card" data-dragging={isDragging}><button className="live-card-open" onClick={onOpen}><strong>{project.companyName}</strong><span>{project.title}</span>{project.delivery.projectValue != null ? <span className="live-card-value">{new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(project.delivery.projectValue)}</span> : null}<p>{project.delivery.nextMilestone || "Set the next milestone"}</p><footer><small>{owner ?? "Unassigned"}</small>{project.delivery.dueDate ? <time dateTime={project.delivery.dueDate}><CalendarDays size={12} />{project.delivery.dueDate}</time> : null}</footer></button><button className="live-grip" aria-label={`Drag ${project.companyName}`} {...attributes} {...listeners}><GripVertical size={15} /></button></article>;
+  const voice = useWorkspaceVoice();
+  return <article ref={setNodeRef} className="live-card" data-dragging={isDragging}><button className="live-card-open" onClick={onOpen}><strong>{project.companyName}</strong><span>{project.title}</span>{project.delivery.projectValue != null ? <span className="live-card-value">{new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 2 }).format(project.delivery.projectValue)}</span> : null}<p>{project.delivery.nextMilestone || "Set the next milestone"}</p>{owner || project.delivery.dueDate ? <footer>{owner ? <small>{owner}</small> : null}{project.delivery.dueDate ? <time dateTime={project.delivery.dueDate}><CalendarDays size={12} />{project.delivery.dueDate}</time> : null}</footer> : null}</button><div className="live-card-actions"><button className="live-voice-action" type="button" aria-label={`Update ${project.companyName} project by voice or text`} title="Talk through a project update" disabled={disabled || !voice} onClick={() => voice?.open({ kind: project.source === "direct" ? "direct" : "delivery", id: project.id })}><Mic size={14} /></button><button className="live-grip" aria-label={`Drag ${project.companyName}`} {...attributes} {...listeners}><GripVertical size={15} /></button></div></article>;
 }
 function DeliveryEditor({ project, snapshot, stages, creating, pending, message, voiceAiConfigured, onClose, onSave }: { project: LiveProject; snapshot: BoardSnapshot; stages: DeliveryStage[]; creating: boolean; pending: boolean; message: string; voiceAiConfigured: boolean; onClose: () => void; onSave: (project: LiveProject) => Promise<void> }) {
   const { closing, close } = useExitTransition(onClose);
