@@ -15,6 +15,13 @@ const project = { id: "00000000-0000-4000-8000-000000000003", title: "Existing w
 beforeEach(() => vi.clearAllMocks());
 
 describe("standalone projects and stage settings", () => {
+  it("preserves server-side order when saving an older direct-project form", async () => {
+    const snapshot = demoBoardForEdition("service");
+    snapshot.directProjects = [{ ...project, delivery: { ...project.delivery, position: 3000 } }];
+    vi.mocked(updateLocalBoardSnapshot).mockImplementation((fn) => fn(snapshot));
+    await mutateLiveWorkspace(actor, { kind: "project", project: { ...project, delivery: { ...project.delivery, position: 1000, notes: "Updated brief" } }, create: false });
+    expect(snapshot.directProjects[0].delivery).toMatchObject({ position: 3000, notes: "Updated brief" });
+  });
   it("creates, archives and restores direct work without creating sales records", async () => {
     const snapshot = demoBoardForEdition("service");
     const before = structuredClone(snapshot.opportunities);

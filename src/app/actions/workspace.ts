@@ -54,7 +54,7 @@ const saveStageSchema = z.object({
   stageId: z.uuid().nullable().optional(),
   name: z.string().trim().min(2).max(120),
   colour: z.string().regex(/^#[0-9a-f]{6}$/i, "Choose a valid colour."),
-  terminalType: z.enum(["open", "won", "lost"]),
+  terminalType: z.enum(["open", "won", "lost", "nurture"]),
 });
 const archiveStageSchema = z.object({ stageId: z.uuid(), destinationStageId: z.uuid() });
 const reorderStagesSchema = z.object({ stageIds: z.array(z.uuid()).min(1).max(40) });
@@ -72,6 +72,27 @@ async function requireAdmin() {
   if (!member) throw new Error("You must be signed in.");
   if (member.role !== "admin") throw new Error("Only workspace admins can manage this setting.");
   return member;
+}
+
+export async function saveSoloModeAction(input: unknown): Promise<Result> {
+  const parsed = z.object({ soloMode: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose solo or team mode." };
+  try {
+    const member = await requireAdmin();
+    if (member.storageMode === "demo") throw new Error("Use a saved workspace to change this setting.");
+    if (member.storageMode === "sqlite") {
+      updateLocalBoardSnapshot((snapshot) => { snapshot.soloMode = parsed.data.soloMode; });
+      recordLocalAuditEvent({ actorId: member.id, action: "workspace.solo_mode_changed", entityType: "workspace", entityId: member.organisationId, detail: parsed.data });
+    } else {
+      await db.transaction(async (tx) => {
+        const rows = await tx.update(organisations).set({ settings: sql`${organisations.settings} || ${JSON.stringify(parsed.data)}::jsonb`, updatedAt: new Date() }).where(eq(organisations.id, member.organisationId)).returning({ id: organisations.id });
+        if (!rows.length) throw new Error("Workspace not found.");
+        await tx.insert(auditEvents).values({ organisationId: member.organisationId, actorId: member.id, action: "workspace.solo_mode_changed", entityType: "workspace", entityId: member.organisationId, after: parsed.data });
+      });
+    }
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (error) { return { ok: false, error: publicActionError(error, "Working mode could not be saved.") }; }
 }
 
 export async function savePipelineNameAction(input: unknown): Promise<Result> {

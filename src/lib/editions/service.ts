@@ -24,6 +24,7 @@ export const serviceEdition: EditionDefinition = {
     "Outreach active",
     "Conversation active",
     "Proposal / decision",
+    "Gone Cold",
     "Won",
     "Lost",
   ],

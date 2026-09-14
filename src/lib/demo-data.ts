@@ -20,6 +20,7 @@ const stages: StageSummary[] = [
   ["10000000-0000-4000-8000-000000000007", "Proposal / decision", "#D98200", "open"],
   ["10000000-0000-4000-8000-000000000009", "Won", "#12805C", "won"],
   ["10000000-0000-4000-8000-000000000010", "Lost", "#D83A52", "lost"],
+  ["10000000-0000-4000-8000-000000000013", "Gone Cold", "#98A2B3", "nurture"],
 ].map(([id, name, colour, terminalType], position) => ({ id, name, colour, terminalType, position })) as StageSummary[];
 
 const activityTypes: ActivityTypeSummary[] = [
@@ -133,7 +134,7 @@ export const demoBoard: BoardSnapshot = {
   edition: "focused",
   pipeline: { id: "01000000-0000-4000-8000-000000000001", name: "Focused Sales" },
   offers: [coreOffer],
-  stages,
+  stages: [...stages.slice(0, 5), stages[7], ...stages.slice(5, 7)].map((stage, position) => ({ ...stage, position })),
   opportunities,
   researchThemes: [],
   activityTypes,

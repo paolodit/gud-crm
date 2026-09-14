@@ -301,6 +301,7 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
   });
 
   return {
+    soloMode: organisation?.settings.soloMode === true,
     deliveryStages: configuredDeliveryStages(organisation?.settings.deliveryStages),
     directProjects: directProjects(organisation?.settings.directProjects),
     edition: organisation ? normaliseEditionKey(organisation.settings.edition) : getEdition(env.defaultEdition).key,

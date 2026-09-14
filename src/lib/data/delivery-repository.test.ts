@@ -14,6 +14,19 @@ const original = { stage: "kickoff" as const, dueDate: "2026-10-15", nextMilesto
 beforeEach(() => { vi.clearAllMocks(); });
 
 describe("delivery persistence safety", () => {
+  it("stores a project checklist separately from sales next actions and preserves it in partial updates", async () => {
+    const snapshot = demoBoardForEdition("service");
+    const record = snapshot.opportunities[0];
+    record.stageId = snapshot.stages.find((stage) => stage.terminalType === "won")!.id;
+    record.delivery = { ...original, position: 3000 };
+    const salesTasks = structuredClone(record.tasks);
+    const tasks = [{ id: "00000000-0000-4000-8000-000000000008", text: "Check design", completed: false }];
+    vi.mocked(updateLocalBoardSnapshot).mockImplementation((update) => { update(snapshot); return snapshot; });
+    await updateDelivery({ ...actor, storageMode: "sqlite" }, { opportunityId: record.id, delivery: { tasks } });
+    await updateDelivery({ ...actor, storageMode: "sqlite" }, { opportunityId: record.id, delivery: { notes: "Updated brief" } });
+    expect(record.delivery).toMatchObject({ tasks, position: 3000, notes: "Updated brief" });
+    expect(record.tasks).toEqual(salesTasks);
+  });
   it("stores and clears agreed delivery value without touching the sales estimate", async () => {
     const snapshot = demoBoardForEdition("service");
     const record = snapshot.opportunities[0];

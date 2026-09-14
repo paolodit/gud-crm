@@ -149,6 +149,7 @@ test("opens the shared review from a live project and preserves sales figures", 
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   await page.getByLabel("Project name", { exact: true }).fill("Voice delivery test");
   await page.getByLabel("Organisation / client", { exact: true }).fill("DEMO · Voice Delivery Studio");
+  await page.getByLabel("Add a project task", { exact: true }).fill("Keep this project checklist");
   await page.getByRole("button", { name: "Save project", exact: true }).click();
   const before = snapshot().opportunities;
   await page.locator(".live-card-open").filter({ hasText: "Voice delivery test" }).click();
@@ -159,8 +160,10 @@ test("opens the shared review from a live project and preserves sales figures", 
   await dialog.getByRole("button", { name: "Review changes", exact: true }).click();
   await dialog.getByRole("button", { name: "Apply 5 changes" }).click();
   await expect(page.locator(".live-card-open").filter({ hasText: "Voice delivery test" })).toContainText("£12,500.50");
+  expect(snapshot().directProjects?.find((item) => item.title === "Voice delivery test")?.delivery.tasks).toEqual([expect.objectContaining({ text: "Keep this project checklist", completed: false })]);
   expect(snapshot().opportunities).toEqual(before);
   await page.getByRole("button", { name: "Undo update", exact: true }).click();
   await expect(page.getByText("Voice update undone", { exact: true })).toBeVisible();
   expect(snapshot().directProjects?.find((item) => item.title === "Voice delivery test")?.delivery.projectValue).toBeNull();
+  expect(snapshot().directProjects?.find((item) => item.title === "Voice delivery test")?.delivery.tasks).toEqual([expect.objectContaining({ text: "Keep this project checklist", completed: false })]);
 });

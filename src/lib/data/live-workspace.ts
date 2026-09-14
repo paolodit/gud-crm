@@ -26,7 +26,11 @@ export async function mutateLiveWorkspace(actor: CurrentMember, input: unknown) 
       if (data.project.offerId && !offerIds.includes(data.project.offerId)) throw new Error("Choose a workspace offer.");
       const exists = projects.some((project) => project.id === data.project.id);
       if (data.create === exists) throw new Error(exists ? "Project already exists." : "Project was not found.");
-      projects = data.create ? [...projects, data.project] : projects.map((project) => project.id === data.project.id ? data.project : project);
+      const saved = { ...data.project, delivery: { ...data.project.delivery } };
+      delete saved.delivery.position;
+      const position = projects.find((project) => project.id === saved.id)?.delivery.position;
+      if (position !== undefined) saved.delivery.position = position;
+      projects = data.create ? [...projects, saved] : projects.map((project) => project.id === saved.id ? saved : project);
       return { ...settings, deliveryStages: stages, directProjects: projects };
     }
     for (const old of stages) {

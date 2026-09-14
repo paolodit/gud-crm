@@ -15,6 +15,7 @@ export const focusedEdition: EditionDefinition = {
     "Outreach active",
     "Conversation active",
     "Proposal / decision",
+    "Gone Cold",
     "Won",
     "Lost",
   ],

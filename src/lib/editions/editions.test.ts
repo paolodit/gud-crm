@@ -5,6 +5,13 @@ import { createInitialSnapshot } from "@/lib/editions/bootstrap";
 import { getEdition, isEditionKey } from "@/lib/editions";
 
 describe("sales editions", () => {
+  it.each(["focused", "service"] as const)("includes Gone Cold in new and demo %s workspaces without changing Won/Lost meanings", (edition) => {
+    for (const snapshot of [createInitialSnapshot(edition, "sqlite"), demoBoardForEdition(edition)]) {
+      expect(snapshot.stages.find((stage) => stage.name === "Gone Cold")?.terminalType).toBe("nurture");
+      expect(snapshot.stages.find((stage) => stage.name === "Won")?.terminalType).toBe("won");
+      expect(snapshot.stages.find((stage) => stage.name === "Lost")?.terminalType).toBe("lost");
+    }
+  });
   it("keeps Focused Sales as the safe fallback for existing workspaces", () => {
     expect(getEdition(undefined).key).toBe("focused");
     expect(isEditionKey("focused")).toBe(true);

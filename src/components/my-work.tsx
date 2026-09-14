@@ -54,10 +54,10 @@ export function MyWork({
     () => opportunities
       .flatMap((opportunity) => opportunity.tasks
         .filter((task) => task.status === "open" && !completedIds.includes(task.id))
-        .filter((task) => initialSnapshot.demoMode || task.owner?.id === memberId)
+        .filter((task) => initialSnapshot.demoMode || initialSnapshot.soloMode || task.owner?.id === memberId)
         .map((task) => ({ task, opportunity })))
       .sort((left, right) => compareWorkItems(left, right, now, stageById)),
-    [completedIds, initialSnapshot.demoMode, memberId, now, opportunities, stageById],
+    [completedIds, initialSnapshot.demoMode, initialSnapshot.soloMode, memberId, now, opportunities, stageById],
   );
 
   const overdue = allTasks.filter(({ task }) => new Date(task.dueAt) < startOfToday(now));

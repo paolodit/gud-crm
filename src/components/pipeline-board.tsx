@@ -97,7 +97,7 @@ import type {
 } from "@/lib/domain/types";
 
 const CardActionsContext = createContext<{
-  stages: StageSummary[];
+  stages: StageSummary[]; soloMode?: boolean;
   edit: (id: string) => void;
   talk: (id: string) => void;
   move: (id: string, stageId: string) => Promise<void>;
@@ -154,13 +154,13 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
         item.company.name.toLowerCase().includes(normalisedQuery) ||
         item.title.toLowerCase().includes(normalisedQuery) ||
         item.contacts.some((contact) => contact.name.toLowerCase().includes(normalisedQuery));
-      const matchesOwner = owner === "all" || item.owner?.id === owner;
+      const matchesOwner = initialSnapshot.soloMode || owner === "all" || item.owner?.id === owner;
       const matchesOffer = offerFilter === "all" || item.offer?.id === offerFilter;
       const state = getDueState(item.nextActionAt, now);
       const needsAttention = state === "overdue" || state === "missing" || item.temperature === "at_risk";
       return matchesText && matchesOwner && matchesOffer && (!attentionOnly || needsAttention);
     });
-  }, [attentionOnly, now, offerFilter, opportunities, owner, query, showArchived]);
+  }, [attentionOnly, now, offerFilter, opportunities, owner, query, showArchived, initialSnapshot.soloMode]);
 
   function openOpportunity(id: string, action?: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -350,7 +350,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
         </div>
         <div className="filter-row">
           {availableOffers.length > 1 ? <label className="filter-chip offer-filter-chip"><Target size={14} /><select aria-label="Filter by offer" value={offerFilter} onChange={(event) => setOfferFilter(event.target.value)}><option value="all">All offers</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}{offer.active ? "" : " · Archived"}</option>)}</select></label> : null}
-          <label className="filter-chip">
+          <label className="filter-chip owner-control" hidden={initialSnapshot.soloMode}>
             <CircleUserRound size={14} />
             <select
               aria-label="Filter by owner"
@@ -382,7 +382,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
         </div>
       </section>
 
-      <CardActionsContext.Provider value={{ stages: initialSnapshot.stages, edit: setEditingId, talk: (id) => openOpportunity(id, "update"), move: moveFromCard }}>
+      <CardActionsContext.Provider value={{ soloMode: initialSnapshot.soloMode, stages: initialSnapshot.stages, edit: setEditingId, talk: (id) => openOpportunity(id, "update"), move: moveFromCard }}>
       <DndContext id="gud-crm-pipeline" sensors={sensors} onDragStart={onDragStart} onDragCancel={() => setActiveDragId(null)} onDragEnd={onDragEnd}>
         <div className="board-shell">
           <div
@@ -515,7 +515,7 @@ function BoardColumn({
   const { isOver, setNodeRef } = useDroppable({ id: stage.id });
   return (
     <section className="board-column" ref={setNodeRef} data-over={isOver} data-expanded={expanded} aria-label={`${stage.name}, ${opportunities.length} opportunities`}>
-      <header className="column-header" style={{ backgroundColor: stage.colour }}>
+      <header className="column-header" style={{ backgroundColor: stage.colour }} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest("button") && opportunities.length >= 2) onToggleExpanded(); }}>
         <strong>{stage.name}</strong>
         {opportunities.length >= 2 ? (
           <button
@@ -566,7 +566,7 @@ function OpportunityCard({
   compact: boolean;
   showOffer: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const soloMode = useContext(CardActionsContext)?.soloMode; const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: opportunity.id,
     data: { stageId: opportunity.stageId },
   });
@@ -591,33 +591,32 @@ function OpportunityCard({
         <p className="opportunity-title">{opportunity.title}</p>
         {showOffer && opportunity.offer ? <span className="offer-chip card-offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
         {compact ? <div className="compact-card-summary">
-          <span><CalendarClock size={12} />{opportunity.lastActivityAt ? `Touched ${relative(opportunity.lastActivityAt, now)}` : "No activity"}</span>
-          <span className={dueState === "overdue" ? "due-overdue" : dueState === "soon" ? "due-soon" : ""}><ListPlus size={12} />{nextTask ? nextTask.title : "No next action"}</span>
+          {opportunity.lastActivityAt ? <span><CalendarClock size={12} />Touched {relative(opportunity.lastActivityAt, now)}</span> : null}
+          {nextTask ? <span className={dueState === "overdue" ? "due-overdue" : dueState === "soon" ? "due-soon" : ""}><ListPlus size={12} />{nextTask.title}</span> : null}
         </div> : <><div className="card-contact">
           <UserRound size={13} />
-          <span>{primaryContact ? `${primaryContact.name} · ${primaryContact.title}` : "No contact yet"}</span>
+          <span>{primaryContact ? [primaryContact.name, primaryContact.title].filter((part) => part && !/^(null|undefined)$/i.test(part.trim())).join(" · ") : "No contact yet"}</span>
         </div>
-        <div className="card-detail">
+        {opportunity.lastActivityAt ? <div className="card-detail">
           <span className="truncate">
             <CalendarClock size={13} />
-            {opportunity.lastActivityAt ? `Last touch ${relative(opportunity.lastActivityAt, now)}` : "No activity yet"}
+            Last touch {relative(opportunity.lastActivityAt, now)}
           </span>
-        </div>
-        <div className="card-detail">
+        </div> : null}
+        {nextTask ? <div className="card-detail">
           <span className={`truncate ${dueState === "overdue" ? "due-overdue" : dueState === "soon" ? "due-soon" : ""}`}>
             <CalendarClock size={13} />
-            {nextTask ? nextTask.title : opportunity.noNextActionReason || "No next action"}
+            {nextTask.title}
           </span>
           {nextTask ? <span>{formatShortDate(nextTask.dueAt)}</span> : null}
-        </div>
+        </div> : null}
         <div className="card-footer">
           <div className="channel-row">
             {opportunity.recentChannels.map((channel) => <ChannelIcon key={channel} channel={channel} size={13} />)}
-            {opportunity.recentChannels.length === 0 ? <span>No touches</span> : null}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className={`badge badge-${opportunity.temperature}`}>{opportunity.temperature.replace("_", " ")}</span>
-            <span className="mini-avatar">{initials(opportunity.owner?.name ?? "Unassigned")}</span>
+            {!soloMode && opportunity.owner ? <span className="mini-avatar" title={opportunity.owner.name}>{initials(opportunity.owner.name)}</span> : null}
           </div>
         </div></>}
       </button>
@@ -889,7 +888,7 @@ function OpportunityEditor({ opportunity, snapshot, onClose, onSaved }: { opport
           <div className="form-grid">
             <label className="field-label form-span-2">Opportunity title<input data-autofocus className="field" name="title" defaultValue={opportunity.title} required minLength={2} /></label>
             {offers.length > 1 ? <label className="field-label form-span-2">What are you pitching?<select className="field-select" name="offerId" defaultValue={opportunity.offer?.id ?? ""} required><option value="" disabled>Choose an offer</option>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : <input type="hidden" name="offerId" value={opportunity.offer?.id ?? offers[0]?.id ?? ""} />}
-            <label className="field-label">Owner<select className="field-select" name="ownerId" defaultValue={opportunity.owner?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+            <label className="field-label owner-control" hidden={snapshot.soloMode}>Owner<select className="field-select" name="ownerId" defaultValue={opportunity.owner?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
             <label className="field-label">Priority<select className="field-select" name="priority" defaultValue={opportunity.priority}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
             <label className="field-label">Temperature<select className="field-select" name="temperature" defaultValue={opportunity.temperature}><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option><option value="at_risk">At risk</option><option value="unresponsive">Unresponsive</option></select></label>
             <label className="field-label">Potential value (£)<input className="field" name="expectedValue" type="number" min="0" step="100" defaultValue={opportunity.expectedValue ?? ""} /></label>

@@ -5,13 +5,24 @@ import { getCurrentMember } from "@/lib/session";
 import { updateDelivery } from "@/lib/data/delivery-repository";
 import { publicActionError } from "@/lib/action-error";
 import { mutateLiveWorkspace } from "@/lib/data/live-workspace";
+import { reorderLiveProject } from "@/lib/data/live-order-repository";
+
+export async function reorderLiveProjectAction(input: unknown) {
+  try {
+    const member = await getCurrentMember();
+    if (!member) throw new Error("You must be signed in.");
+    const projects = await reorderLiveProject(member, input);
+    for (const path of ["/live", "/my-work", "/reports"]) revalidatePath(path);
+    return { ok: true as const, projects };
+  } catch (error) { return { ok: false as const, error: publicActionError(error, "Project order could not be saved.") }; }
+}
 
 export async function mutateLiveAction(input: unknown) {
   try {
     const member = await getCurrentMember();
     if (!member) throw new Error("You must be signed in.");
     await mutateLiveWorkspace(member, input);
-    for (const path of ["/live", "/settings", "/reports"]) revalidatePath(path);
+    for (const path of ["/live", "/settings", "/reports", "/my-work"]) revalidatePath(path);
     return { ok: true as const };
   } catch (error) {
     return { ok: false as const, error: publicActionError(error, "Live workspace could not be saved.") };
@@ -26,6 +37,7 @@ export async function updateDeliveryAction(input: unknown) {
     revalidatePath("/live");
     revalidatePath("/pipeline");
     revalidatePath("/reports");
+    revalidatePath("/my-work");
     return { ok: true as const, ...result };
   } catch (error) {
     return { ok: false as const, error: publicActionError(error, "Project could not be updated.") };

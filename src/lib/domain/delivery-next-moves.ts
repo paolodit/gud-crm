@@ -5,7 +5,7 @@ export function deliveryNextMoves(snapshot: BoardSnapshot, memberId: string, off
   const today = snapshot.generatedAt.slice(0, 10);
   return liveProjectRecords(snapshot)
     .filter((project) => !project.delivery.archivedAt && project.delivery.stage !== "complete")
-    .filter((project) => snapshot.demoMode || project.ownerId === memberId)
+    .filter((project) => snapshot.demoMode || snapshot.soloMode || project.ownerId === memberId)
     .filter((project) => offerId === "all" || project.offerId === offerId)
     .map((project) => {
       const { dueDate, nextMilestone } = project.delivery;

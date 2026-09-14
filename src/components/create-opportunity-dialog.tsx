@@ -238,7 +238,7 @@ export function CreateOpportunityDialog({
                 <legend>Priority</legend>
                 {(["low", "medium", "high"] as Priority[]).map((value) => <label key={value}><input type="radio" name="priority" value={value} defaultChecked={value === "medium"} /><span>{sentenceCase(value)}</span></label>)}
               </fieldset>
-              <span className="owner-default">Owned by <strong>{snapshot.users.find((user) => user.id === ownerId)?.name ?? "you"}</strong></span>
+              <span className="owner-default owner-control" hidden={snapshot.soloMode}>Owned by <strong>{snapshot.users.find((user) => user.id === ownerId)?.name ?? "you"}</strong></span>
             </div>
           </section>
 
@@ -254,9 +254,9 @@ export function CreateOpportunityDialog({
             </details>
 
             <details>
-              <summary><span><ContactRound size={17} /><strong>Contact and ownership</strong><small>Add a person or hand it to a teammate</small></span><ChevronDown size={17} /></summary>
+              <summary><span><ContactRound size={17} /><strong>{snapshot.soloMode ? "Contact" : "Contact and ownership"}</strong><small>{snapshot.soloMode ? "Add a person" : "Add a person or hand it to a teammate"}</small></span><ChevronDown size={17} /></summary>
               <div className="form-grid">
-                <label className="field-label">Owner<select name="ownerId" defaultValue={ownerId}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+                <label className="field-label owner-control" hidden={snapshot.soloMode}>Owner<select name="ownerId" defaultValue={ownerId}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
                 <label className="field-label">Contact name<input name="contactName" placeholder="Optional" /></label>
                 <label className="field-label">Contact role<input name="contactTitle" placeholder="Head of Operations" /></label>
                 <label className="field-label">Contact email<input name="contactEmail" type="email" placeholder="name@example.com" /></label>

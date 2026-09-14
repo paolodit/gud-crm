@@ -37,7 +37,7 @@ export function OpportunityInlineDetails({ opportunity: item, snapshot, onUpdate
     else Object.assign(next, { [spec.field]: value });
     onUpdate(next); finishEditing(); setStatus(spec.label + " saved."); return null;
   }
-  return <div ref={container} className="inline-opportunity-details"><span className="eyebrow">The opportunity</span><div className="inline-detail-grid">{specs.map((spec) => <InlineField key={spec.field} spec={spec} editing={active === spec.field} disabled={false} onEdit={() => { setStatus(""); if (active) { nextField.current = spec.field; container.current?.querySelector<HTMLFormElement>("form")?.requestSubmit(); } else setActive(spec.field); }} onCancel={finishEditing} onSave={(value) => save(spec, value)} />)}</div>{status ? <p className="inline-save-status" role="status">{status}</p> : null}</div>;
+  return <div ref={container} className="inline-opportunity-details"><span className="eyebrow">The opportunity</span><div className="inline-detail-grid">{specs.filter((spec) => !snapshot.soloMode || spec.field !== "ownerId").map((spec) => <InlineField key={spec.field} spec={spec} editing={active === spec.field} disabled={false} onEdit={() => { setStatus(""); if (active) { nextField.current = spec.field; container.current?.querySelector<HTMLFormElement>("form")?.requestSubmit(); } else setActive(spec.field); }} onCancel={finishEditing} onSave={(value) => save(spec, value)} />)}</div>{status ? <p className="inline-save-status" role="status">{status}</p> : null}</div>;
 }
 
 function InlineField({ spec, editing, disabled, onEdit, onCancel, onSave }: { spec: Spec; editing: boolean; disabled: boolean; onEdit: () => void; onCancel: () => void; onSave: (value: string) => Promise<string | null> }) {

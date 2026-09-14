@@ -1,0 +1,120 @@
+import { expect, test, type Page } from "@playwright/test";
+
+async function createProject(page: Page, name: string) {
+  await page.getByRole("button", { name: "Add project", exact: true }).click();
+  await page.getByLabel("Project name", { exact: true }).fill(name);
+  await page.getByLabel("Organisation / client", { exact: true }).fill(name);
+  await page.getByRole("button", { name: "Save project", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+}
+
+test.describe.serial("Project tasks and cleaner boards", () => {
+  test("adds, completes, reorders and removes checklist tasks without losing notes", async ({ page }, info) => {
+    await page.goto("/live");
+    await createProject(page, "DEMO · Checklist client");
+    await page.locator(".live-card-open").filter({ hasText: "DEMO · Checklist client" }).click();
+    await page.getByLabel("Delivery notes", { exact: true }).fill("Keep this delivery brief.");
+    const input = page.getByLabel("Add a project task", { exact: true });
+    for (const task of ["Confirm brief", "Design review", "Temporary task"]) { await input.fill(task); await input.press("Enter"); }
+    await expect(page.locator(".project-task-row")).toHaveCount(3);
+    await page.getByRole("button", { name: "Complete task Confirm brief", exact: true }).click();
+    await expect(page.locator('.project-task-row[data-completed="true"]')).toHaveCount(1);
+    await page.getByRole("button", { name: "Remove task Temporary task", exact: true }).click();
+    const handle = page.getByRole("button", { name: "Reorder task Confirm brief", exact: true });
+    const targetId = await page.locator(".project-task-row").nth(1).getAttribute("data-task-id");
+    await handle.focus(); await page.keyboard.press("Space");
+    await expect(handle).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("status").filter({ hasText: `was moved over droppable area ${targetId}.` })).toBeVisible();
+    await page.keyboard.press("Space");
+    await expect(page.getByLabel("Task text", { exact: true }).first()).toHaveValue("Design review");
+    await input.fill("Awaiting client sign-off");
+    await page.getByRole("button", { name: "Save project", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.reload();
+    await page.locator(".live-card-open").filter({ hasText: "DEMO · Checklist client" }).click();
+    await expect(page.getByLabel("Task text", { exact: true }).first()).toHaveValue("Design review");
+    await expect(page.getByLabel("Task text", { exact: true }).last()).toHaveValue("Awaiting client sign-off");
+    await expect(page.getByLabel("Delivery notes", { exact: true })).toHaveValue("Keep this delivery brief.");
+    await expect(page.getByRole("button", { name: "Reopen task Confirm brief", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const tasks = await page.locator(".project-tasks").boundingBox(), notes = await page.getByLabel("Delivery notes").boundingBox();
+    expect(tasks!.y + tasks!.height).toBeLessThan(notes!.y);
+    await page.screenshot({ path: info.outputPath("project-checklist.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
+    await page.locator(".project-tasks").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("project-checklist-mobile.png") });
+  });
+
+  test("persists same-column live card order and makes compact lanes slimmer", async ({ page }) => {
+    await page.goto("/live");
+    await createProject(page, "DEMO · Order first"); await createProject(page, "DEMO · Order second");
+    await page.getByRole("searchbox", { name: "Search live projects" }).fill("DEMO · Order");
+    const column = page.getByRole("region", { name: "Kickoff", exact: true });
+    const handle = page.getByRole("button", { name: "Drag DEMO · Order first", exact: true });
+    const targetId = await column.locator(".live-card").nth(1).getAttribute("data-project-id");
+    await handle.focus(); await page.keyboard.press("Space");
+    await expect(handle).toHaveAttribute("aria-pressed", "true");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("status").filter({ hasText: `was moved over droppable area ${targetId}.` })).toBeVisible();
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("status").filter({ hasText: "Project order saved" })).toBeVisible();
+    await expect(column.locator(".live-card-open").first()).toContainText("DEMO · Order second");
+    await page.reload(); await page.getByRole("searchbox", { name: "Search live projects" }).fill("DEMO · Order");
+    await expect(column.locator(".live-card-open").first()).toContainText("DEMO · Order second");
+    const from = (await handle.boundingBox())!, to = (await column.locator(".live-card").first().boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down(); await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 }); await page.mouse.up();
+    await expect(page.locator(".live-board-message").filter({ hasText: "Project order saved" })).toBeVisible();
+    await expect(column.locator(".live-card-open").first()).toContainText("DEMO · Order first");
+    await page.reload(); await page.getByRole("searchbox", { name: "Search live projects" }).fill("DEMO · Order");
+    await expect(column.locator(".live-card-open").first()).toContainText("DEMO · Order first");
+    await page.getByRole("button", { name: "Comfortable", exact: true }).click();
+    const wide = (await column.boundingBox())!.width;
+    await page.getByRole("button", { name: "Compact", exact: true }).click();
+    await expect(column).toHaveCSS("flex-basis", "220px");
+    await expect.poll(async () => (await column.boundingBox())!.width).toBeLessThan(wide);
+    const cards = await column.locator(".live-card").all();
+    const first = await cards[0].boundingBox(), second = await cards[1].boundingBox();
+    expect(second!.y - first!.y - first!.height).toBeLessThanOrEqual(11);
+    await column.locator("header").dblclick(); await expect(column).toHaveAttribute("data-expanded", "true");
+    await column.locator("header").dblclick(); await expect(column).toHaveAttribute("data-expanded", "false");
+  });
+
+  test("solo mode hides ownership without changing assignments and fixes Today delivery rows", async ({ page }, info) => {
+    await page.goto("/settings?tab=workspace");
+    const solo = page.getByRole("checkbox", { name: /It’s just me!/ });
+    await solo.check(); await expect(page.getByRole("status").filter({ hasText: "Working mode saved" })).toBeVisible();
+    await page.goto("/live");
+    await expect(page.getByRole("combobox", { name: "Live project owner" })).toBeHidden();
+    await page.locator(".live-card-open").filter({ hasText: "DEMO · Checklist client" }).click();
+    await expect(page.getByLabel("Owner", { exact: true })).toBeHidden();
+    await page.getByRole("button", { name: "Close project", exact: true }).click();
+    await page.goto("/my-work");
+    const row = page.locator(".delivery-next-moves .focus-item").filter({ hasText: "DEMO · Checklist client" });
+    await expect(row).toBeVisible();
+    expect((await row.locator(".focus-copy").boundingBox())!.width).toBeGreaterThan(200);
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath("today-delivery-fixed.png") });
+    await page.goto("/pipeline");
+    await expect(page.getByRole("combobox", { name: "Filter by owner" })).toBeHidden();
+    await page.getByRole("button", { name: "Create a new opportunity" }).click();
+    await page.getByLabel("Company name").fill("DEMO · Quiet card");
+    await page.getByLabel("Opportunity title", { exact: true }).fill("Clean board");
+    await page.getByText("Contact", { exact: true }).click();
+    await page.getByLabel("Contact name", { exact: true }).fill("Stuart");
+    await page.getByLabel("Contact role", { exact: true }).fill("null");
+    await page.getByRole("button", { name: "Create opportunity", exact: true }).click();
+    await expect(page.locator(".opportunity-panel")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit Owner", exact: true })).toHaveCount(0);
+    await page.goto("/pipeline");
+    const card = page.locator(".opportunity-card").filter({ hasText: "DEMO · Quiet card" });
+    await expect(card).toContainText("Stuart");
+    await expect(card).not.toContainText(/null|No activity|No next action|No touches/);
+    await expect(card.locator(".mini-avatar")).toHaveCount(0);
+    await page.goto("/settings?tab=workspace"); await solo.uncheck();
+    await expect(page.getByRole("status").filter({ hasText: "Working mode saved" })).toBeVisible();
+    await page.goto("/pipeline"); await expect(card.locator(".mini-avatar")).toHaveCount(1);
+    await expect(page.getByRole("combobox", { name: "Filter by owner" })).toBeVisible();
+  });
+});

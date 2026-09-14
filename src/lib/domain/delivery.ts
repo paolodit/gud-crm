@@ -11,6 +11,10 @@ export const deliveryStages = [
 
 export const projectValueSchema = z.number().min(0).max(999_999_999_999.99).multipleOf(0.01);
 
+export const projectTaskSchema = z.object({ id: z.uuid(), text: z.string().trim().min(1).max(500), completed: z.boolean().default(false) });
+export const projectTasksSchema = z.array(projectTaskSchema).max(200).refine((tasks) => new Set(tasks.map((task) => task.id)).size === tasks.length, "Task IDs must be unique.");
+export type ProjectTask = z.infer<typeof projectTaskSchema>;
+
 export const deliverySchema = z.object({
   // GBP agreed delivery value, independent of the sales opportunity's estimate.
   // Optional for existing records; null explicitly clears a previously saved value.
@@ -19,6 +23,8 @@ export const deliverySchema = z.object({
   dueDate: z.iso.date().nullable().default(null),
   nextMilestone: z.string().trim().max(240).default(""),
   notes: z.string().trim().max(10_000).default(""),
+  tasks: projectTasksSchema.optional(),
+  position: z.number().int().nonnegative().max(1_000_000_000).optional(),
   archivedAt: z.iso.datetime().nullable().optional(),
 });
 export type DeliveryDetails = z.infer<typeof deliverySchema>;
@@ -28,6 +34,7 @@ export const deliveryPatchSchema = z.object({
   dueDate: z.iso.date().nullable().optional(),
   nextMilestone: z.string().trim().max(240).optional(),
   notes: z.string().trim().max(10_000).optional(),
+  tasks: projectTasksSchema.optional(),
   archivedAt: z.iso.datetime().nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "Provide at least one delivery field.");
 export const deliveryUpdateSchema = z.object({ opportunityId: z.uuid(), delivery: deliveryPatchSchema });
@@ -71,5 +78,5 @@ export function liveProjectRecords(snapshot: BoardSnapshot): LiveProject[] {
   return [
     ...getLiveProjects(snapshot.opportunities, snapshot.stages).map((item): LiveProject => ({ id: item.id, title: item.title, companyName: item.company.name, ownerId: item.owner?.id ?? null, offerId: item.offer?.id ?? null, delivery: deliveryDetails(item.delivery ?? { stage: configuredDeliveryStages(snapshot.deliveryStages)[0].id }), source: "sales" })),
     ...directProjects(snapshot.directProjects).map((item): LiveProject => ({ ...item, source: "direct" })),
-  ];
+  ].sort((a, b) => (a.delivery.position ?? Number.MAX_SAFE_INTEGER) - (b.delivery.position ?? Number.MAX_SAFE_INTEGER));
 }

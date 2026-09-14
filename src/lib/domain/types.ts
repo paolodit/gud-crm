@@ -182,6 +182,7 @@ export type StageSummary = {
 };
 
 export type BoardSnapshot = {
+  soloMode?: boolean;
   deliveryStages?: import("./delivery").DeliveryStage[];
   directProjects?: import("./delivery").DirectProject[];
   edition: EditionKey;

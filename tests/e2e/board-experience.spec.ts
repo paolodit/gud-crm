@@ -22,6 +22,8 @@ test("live cards, density, motion and page-aware voice work together", async ({ 
   await expect(card.locator(".live-card-open p")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(card.locator(".live-card-open p")).toHaveCSS("padding", "0px");
   const comfortableHeight = (await card.boundingBox())!.height;
+  const column = page.getByRole("region", { name: "Kickoff", exact: true });
+  const initialWidth = (await column.boundingBox())!.width;
   const density = page.getByRole("group", { name: "Live project card density" });
   await density.getByRole("button", { name: "Compact", exact: true }).click();
   await expect(density.getByRole("button", { name: "Compact", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -30,8 +32,7 @@ test("live cards, density, motion and page-aware voice work together", async ({ 
   await expect(card).toContainText("£1,590.00");
   await expect(card).toContainText("Review the first website draft");
   await density.getByRole("button", { name: "Comfortable", exact: true }).click();
-  const column = page.getByRole("region", { name: "Kickoff", exact: true });
-  const initialWidth = (await column.boundingBox())!.width;
+  await expect.poll(async () => Math.round((await column.boundingBox())!.width)).toBe(Math.round(initialWidth));
   await expect(column).toHaveCSS("transition-property", "flex-basis");
   await column.getByRole("button", { name: "Expand Kickoff to three lanes" }).click();
   await expect.poll(async () => (await column.boundingBox())!.width).toBeGreaterThan(initialWidth * 2);
