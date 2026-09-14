@@ -20,9 +20,11 @@ import { mergeDeliveryDraft } from "@/lib/domain/delivery-voice";
 import { WorkspaceVoiceButton, useWorkspaceVoice } from "./workspace-voice";
 import { BoardHeaderArt } from "./board-header-art";
 import { CardDensityToggle } from "./card-density-toggle";
+import { useBoardPan } from "./use-board-pan";
 
 export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: BoardSnapshot; voiceAiConfigured?: boolean }) {
   const dragContextId = useId();
+  const boardPan = useBoardPan();
   const stages = configuredDeliveryStages(snapshot.deliveryStages);
   const [records, setRecords] = useState(() => liveProjectRecords(snapshot));
   const [query, setQuery] = useState("");
@@ -87,7 +89,7 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
     <section className="pipeline-toolbar" aria-label="Live project filters"><label className="search-box"><Search size={15} /><input type="search" aria-label="Search live projects" placeholder="Search projects or milestones" value={query} onChange={(e) => setQuery(e.target.value)} /></label><div className="filter-row"><label className="filter-chip owner-control" hidden={snapshot.soloMode}>Owner<select aria-label="Live project owner" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="all">Everyone</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label><button className="filter-chip" aria-pressed={archived} onClick={() => setArchived(!archived)}>{archived ? <ArchiveRestore size={15} /> : <Archive size={15} />}{archived ? "Show current projects" : "Archive"}</button><Link className="icon-button" aria-label="Edit stages" title="Edit stages" href="/settings?tab=delivery"><Settings2 size={17} /></Link><span className="filter-chip">{visible.length} shown</span><CardDensityToggle label="Live project card density" compact={compact} onChange={setCompact} /></div></section>
     {message ? <p className="live-board-message" role="status">{message}</p> : null}
     {!visible.length ? <p className="live-board-message">{archived ? "No archived projects match. Archived projects can be restored here." : "No projects match. Add an existing project directly, or mark a sales opportunity Won."}</p> : null}
-    <DndContext id={dragContextId} sensors={sensors} onDragStart={(e) => setDragged(String(e.active.id))} onDragEnd={drop} onDragCancel={() => setDragged(null)}><div className="live-board-viewport" data-density={compact ? "compact" : "comfortable"}><div className="live-board">{stages.map((stage) => {
+    <DndContext id={dragContextId} sensors={sensors} onDragStart={(e) => setDragged(String(e.active.id))} onDragEnd={drop} onDragCancel={() => setDragged(null)}><div className="live-board-viewport" data-density={compact ? "compact" : "comfortable"} aria-label="Live projects. Drag empty space sideways or use the horizontal scrollbar to see later stages." {...boardPan}><div className="live-board">{stages.map((stage) => {
       const projects = visible.filter((item) => item.delivery.stage === stage.id).sort((a, b) => (a.delivery.position ?? Number.MAX_SAFE_INTEGER) - (b.delivery.position ?? Number.MAX_SAFE_INTEGER));
       return <LiveColumn key={stage.id} stage={stage} count={projects.length} expanded={expanded.includes(stage.id)} onExpand={() => setExpanded((ids) => ids.includes(stage.id) ? ids.filter((id) => id !== stage.id) : [...ids, stage.id])}><SortableContext items={projects.map((project) => project.id)} strategy={expanded.includes(stage.id) ? rectSortingStrategy : verticalListSortingStrategy}>{projects.map((project) => <LiveCard key={project.id} project={project} owner={snapshot.soloMode ? undefined : snapshot.users.find((user) => user.id === project.ownerId)?.name} onOpen={() => { setMessage(""); setCreating(false); setSelected(project); }} disabled={pending || archived} />)}</SortableContext></LiveColumn>;
     })}</div></div><DragOverlay>{dragged ? <div className="live-card live-drag">{records.find((item) => item.id === dragged)?.companyName}</div> : null}</DragOverlay></DndContext>

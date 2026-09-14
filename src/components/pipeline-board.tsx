@@ -53,8 +53,6 @@ import { format, formatDistanceStrict } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   FormEvent,
-  MouseEvent as ReactMouseEvent,
-  PointerEvent as ReactPointerEvent,
   startTransition,
   createContext,
   useContext,
@@ -84,6 +82,7 @@ import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { BoardHeaderArt } from "./board-header-art";
 import { CardDensityToggle } from "./card-density-toggle";
+import { useBoardPan } from "./use-board-pan";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
 import { safeExternalUrl } from "@/lib/domain/normalise";
@@ -127,13 +126,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
   const [editingId, setEditingId] = useState<string | null>(null);
   useEffect(() => { queueMicrotask(() => setOpportunities(initialSnapshot.opportunities)); }, [initialSnapshot.opportunities]);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const boardPan = useRef<{
-    pointerId: number;
-    startX: number;
-    scrollLeft: number;
-    moved: boolean;
-  } | null>(null);
-  const suppressBoardClick = useRef(false);
+  const boardPan = useBoardPan();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -272,49 +265,6 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
     openOpportunity(opportunity.id);
   }
 
-  function beginBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== "mouse" || event.button !== 0) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("button, a, input, select, textarea, [role='button'], .opportunity-card")) return;
-    const viewport = event.currentTarget;
-    boardPan.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      scrollLeft: viewport.scrollLeft,
-      moved: false,
-    };
-    viewport.setPointerCapture(event.pointerId);
-    viewport.dataset.panning = "true";
-  }
-
-  function moveBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
-    const pan = boardPan.current;
-    if (!pan || pan.pointerId !== event.pointerId) return;
-    const delta = event.clientX - pan.startX;
-    if (!pan.moved && Math.abs(delta) < 4) return;
-    pan.moved = true;
-    event.preventDefault();
-    event.currentTarget.scrollLeft = pan.scrollLeft - delta;
-  }
-
-  function endBoardPan(event: ReactPointerEvent<HTMLDivElement>) {
-    const pan = boardPan.current;
-    if (!pan || pan.pointerId !== event.pointerId) return;
-    suppressBoardClick.current = pan.moved;
-    boardPan.current = null;
-    delete event.currentTarget.dataset.panning;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }
-
-  function blockClickAfterPan(event: ReactMouseEvent<HTMLDivElement>) {
-    if (!suppressBoardClick.current) return;
-    suppressBoardClick.current = false;
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
   return (
     <>
       <header className="page-header pipeline-page-header">
@@ -389,11 +339,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
             className="board-viewport"
             data-density={compact ? "compact" : "comfortable"}
             aria-label="Sales pipeline. Drag empty space sideways or use the horizontal scrollbar to see later stages."
-            onPointerDown={beginBoardPan}
-            onPointerMove={moveBoardPan}
-            onPointerUp={endBoardPan}
-            onPointerCancel={endBoardPan}
-            onClickCapture={blockClickAfterPan}
+            {...boardPan}
           >
             <div className="board" data-archive-view={showArchived}>
               {showArchived ? <ArchivedOpportunityBrowser opportunities={filtered} stages={initialSnapshot.stages} onOpen={openOpportunity} onRestore={restoreArchivedOpportunity} /> : initialSnapshot.stages.map((stage) => (
