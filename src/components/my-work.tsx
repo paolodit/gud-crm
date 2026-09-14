@@ -121,10 +121,12 @@ export function MyWork({
       {initialSnapshot.demoMode ? <div className="demo-banner"><Sparkles size={14} /> Showing all owners in demo mode</div> : null}
 
       <div className="today-page">
+        <section className="today-section" aria-labelledby="today-pipeline-heading">
+        <header className="today-section-heading"><h2 id="today-pipeline-heading">Pipeline</h2><p>Your next actions, conversations and decisions.</p></header>
         <div className="today-grid">
           <section className="surface focus-surface" aria-labelledby="focus-heading">
             <header className="focus-header">
-              <div><span className="eyebrow">Start here</span><h2 id="focus-heading">Your next moves</h2></div>
+              <div><h3 id="focus-heading">Your next moves</h3></div>
               <span className="focus-count">{allTasks.length} open</span>
             </header>
             {focusItems.length ? (
@@ -138,7 +140,7 @@ export function MyWork({
 
           <aside className="today-rail">
             <section className="surface pulse-card" aria-labelledby="pulse-heading">
-              <header><div><span className="eyebrow">Where things stand</span><h2 id="pulse-heading">Pipeline pulse</h2></div><Link href="/pipeline">View board <ArrowRight size={14} /></Link></header>
+              <header><div><h3 id="pulse-heading">Pipeline pulse</h3></div><Link href="/pipeline">View board <ArrowRight size={14} /></Link></header>
               <div className="pulse-track" aria-label={`${outreachCount} in outreach, ${conversationCount} in conversation, ${proposalCount} at proposal or decision`}>
                 <i style={{ flexGrow: Math.max(outreachCount, 0), background: "#087bed" }} />
                 <i style={{ flexGrow: Math.max(conversationCount, 0), background: "#08a878" }} />
@@ -152,7 +154,7 @@ export function MyWork({
             </section>
 
             <section className="surface attention-card" aria-labelledby="attention-heading">
-              <header><div><span className="eyebrow">Keep honest</span><h2 id="attention-heading">Needs a decision</h2></div><span>{attention.length}</span></header>
+              <header><div><h3 id="attention-heading">Needs a decision</h3></div><span>{attention.length}</span></header>
               {attention.length ? attention.slice(0, 4).map((opportunity) => (
                 <Link href={`/pipeline?opportunity=${opportunity.id}`} key={opportunity.id}>
                   <span><strong>{opportunity.company.name}</strong><small>{attentionReason(opportunity, now)}</small></span>
@@ -162,11 +164,6 @@ export function MyWork({
             </section>
           </aside>
         </div>
-
-        <section className="surface delivery-next-moves" aria-labelledby="delivery-next-heading">
-          <header className="focus-header"><div><span className="eyebrow">Keep delivery moving</span><h2 id="delivery-next-heading">Live projects · next milestones</h2></div><Link className="btn btn-quiet" href="/live">View live board <ArrowRight size={14} /></Link></header>
-          {deliveryMoves.length ? <div className="focus-list">{deliveryMoves.slice(0, 5).map(({ project, title, timing, overdue: urgent }) => <article key={project.id} className="focus-item" data-urgent={urgent}><CalendarDays size={17} /><div className="focus-copy"><Link href={`/live?project=${project.id}`}>{title}</Link><p><strong>{project.companyName}</strong><span>{project.title}</span><span>{timing}</span></p></div><Link className="focus-open" href={`/live?project=${project.id}`} aria-label={`Update ${project.companyName} delivery`}><ArrowRight size={17} /></Link></article>)}{deliveryMoves.length > 5 ? <p className="settings-hint">{deliveryMoves.length - 5} more projects on the live board.</p> : null}</div> : <div className="all-clear"><Check size={17} />No active delivery projects assigned to you{offerFilter !== "all" ? " for this offer" : ""}.</div>}
-        </section>
 
         <details className="surface queue-details">
           <summary>
@@ -181,6 +178,14 @@ export function MyWork({
             {laterTasks.length ? <WorkGroup title="Later" icon={<TrendingUp size={15} />} items={laterTasks} onComplete={complete} empty="" showOffer={availableOffers.length > 1 && offerFilter === "all"} /> : null}
           </div>
         </details>
+        </section>
+        <section className="today-section" aria-labelledby="today-delivery-heading">
+          <header className="today-section-heading"><h2 id="today-delivery-heading">Live projects</h2><p>What needs to happen next in delivery.</p></header>
+          <section className="surface delivery-next-moves" aria-labelledby="delivery-next-heading">
+            <header className="focus-header"><div><h3 id="delivery-next-heading">Next milestones</h3></div><Link className="btn btn-quiet" href="/live">View live board <ArrowRight size={14} /></Link></header>
+            {deliveryMoves.length ? <div className="focus-list">{deliveryMoves.slice(0, 5).map(({ project, title, timing, overdue: urgent }) => <article key={project.id} className="focus-item" data-urgent={urgent}><CalendarDays size={17} /><div className="focus-copy"><Link href={`/live?project=${project.id}`}>{title}</Link><p><strong>{project.companyName}</strong><span>{project.title}</span><span>{timing}</span></p></div><Link className="focus-open" href={`/live?project=${project.id}`} aria-label={`Update ${project.companyName} delivery`}><ArrowRight size={17} /></Link></article>)}{deliveryMoves.length > 5 ? <p className="settings-hint">{deliveryMoves.length - 5} more projects on the live board.</p> : null}</div> : <div className="all-clear"><Check size={17} />No active delivery projects assigned to you{offerFilter !== "all" ? " for this offer" : ""}.</div>}
+          </section>
+        </section>
       </div>
       {toast ? <div className="toast" role="status">{toast}</div> : null}
     </>

@@ -32,7 +32,6 @@ import {
   FileUp,
   Globe2,
   GripVertical,
-  KeyRound,
   LoaderCircle,
   Mail,
   Pencil,
@@ -47,15 +46,16 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { FormEvent, useMemo, useRef, useState } from "react";
 
 import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { FreeMaxSettingsCard } from "@/components/freemax-settings-card";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
 import { getResearchTargets, isResearchStage, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
+import { emailFindingSettingsHref } from "@/lib/domain/email-finding-links";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import type { BoardSnapshot, ContactSummary, OpportunitySummary, Priority, ResearchThemeSummary, Temperature } from "@/lib/domain/types";
 import type { FreeMaxStatus } from "@/lib/enrichment/freemax";
@@ -93,7 +93,6 @@ export function ResearchHub({
   const availableOffers = activeOffers(snapshot.offers);
   const [offerFilter, setOfferFilter] = useState("all");
   const [showHandoff, setShowHandoff] = useState(false);
-  const [showEnrichment, setShowEnrichment] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
   const [editingContact, setEditingContact] = useState<ContactSummary | "new" | null>(null);
@@ -245,7 +244,7 @@ export function ResearchHub({
   async function enrichContact() {
     if (!selected || !enrichableContact) return;
     if (!freeMaxConfigured) {
-      setNotice("Add a Hunter or Voila Norbert key to the server environment to connect FreeMax securely.");
+      setNotice("Connect an email provider in Settings → AI & connections → Email finding first.");
       return;
     }
     setPendingAction(`enrich-${enrichableContact.id}`);
@@ -303,7 +302,6 @@ export function ResearchHub({
         </div>
         <div className="research-hero-actions">
           <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowHandoff(true)}><Bot size={17} />Research with AI</button>
-          {researchView === "accounts" ? <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowEnrichment(true)}><KeyRound size={17} />Find emails</button> : null}
           <button className="btn btn-primary" type="button" onClick={() => researchView === "themes" ? setThemeEditor("new") : setAddingCompany(true)}><Plus size={17} />{researchView === "themes" ? "Add idea" : "Add target"}</button>
         </div>
         {researchView === "accounts" ? <div className="research-hero-meta" aria-label="Target summary"><strong>{targets.length} targets</strong><span><Check size={13} />{counts.ready} ready</span><span><Users size={13} />{counts.needs_contact} need a contact</span><span><CirclePause size={13} />{counts.held} on hold</span></div> : null}
@@ -376,8 +374,11 @@ export function ResearchHub({
               </section>
 
               <section className="research-section">
-                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? freeMaxConfigured ? <button className="btn btn-quiet btn-compact" type="button" disabled={pendingAction !== null} onClick={enrichContact} title={`FreeMax tries Hunter first, then Norbert only if needed, for ${enrichableContact.name}`}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : <button className="btn btn-quiet btn-compact" type="button" onClick={() => setShowEnrichment(true)}><KeyRound size={14} />Connect FreeMax</button> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
-                {freeMaxConfigured ? <FreeMaxSummary status={freeMaxStatus} /> : null}
+                <div className="research-section-head"><div><span className="eyebrow">People</span><h3>Contact routes</h3></div><div className="research-contact-actions">{enrichableContact && selected.company.websiteUrl ? <button className="btn btn-quiet btn-compact" type="button" disabled={!freeMaxConfigured || pendingAction !== null} onClick={enrichContact} title={freeMaxConfigured ? `Find a work email for ${enrichableContact.name} using your configured providers` : "Connect an email provider in Settings first"}>{pendingAction === `enrich-${enrichableContact.id}` ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}Find work email</button> : null}<button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingContact("new")}><Plus size={14} />Add</button></div></div>
+                <div className="email-finding-status">
+                  <span>{freeMaxConfigured ? "Email finding connected" : canManage ? "No email provider connected" : "Ask an admin to connect an email provider."}</span>
+                  <Link href={emailFindingSettingsHref(selected.id)}>{freeMaxConfigured || !canManage ? "Email settings" : "Set up email finding"}<ArrowRight size={12} /></Link>
+                </div>
                 <div className="research-contacts">
                   {selected.contacts.map((contact) => (
                     <button type="button" key={contact.id} onClick={() => setEditingContact(contact)}>
@@ -422,7 +423,6 @@ export function ResearchHub({
 
       {confirmingArchive && selected ? <div className="dialog-backdrop dialog-backdrop-raised" role="presentation"><section className="dialog-card archive-target-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="archive-target-title" aria-describedby="archive-target-description"><header><span><Archive size={22} /></span><div><span className="eyebrow">Leave the active workspace</span><h2 id="archive-target-title">Archive {selected.company.name}?</h2></div></header><div id="archive-target-description"><p>This target will leave Targets and the live pipeline. Nothing is deleted.</p><ul><li>The organisation and contact records stay intact.</li><li>Research, activity, tasks and audit history are preserved.</li><li>You can restore the opportunity later from the pipeline Archive view.</li></ul></div><div className="dialog-actions"><button className="btn btn-quiet" type="button" disabled={pendingAction === "archive-target"} onClick={() => setConfirmingArchive(false)}>Keep target</button><button className="btn btn-danger" type="button" disabled={pendingAction === "archive-target"} onClick={archiveSelectedTarget}>{pendingAction === "archive-target" ? <LoaderCircle className="spin" size={15} /> : <Archive size={15} />}{pendingAction === "archive-target" ? "Archiving…" : "Archive target"}</button></div></section></div> : null}
 
-      {showEnrichment ? <div className="dialog-backdrop" role="presentation"><section className="dialog-card enrichment-dialog" role="dialog" aria-modal="true" aria-labelledby="enrichment-dialog-title"><header className="dialog-header enrichment-dialog-header"><div><span className="eyebrow">FreeMax your allowances</span><h2 id="enrichment-dialog-title">Find verified work emails</h2><p>Connect Hunter or Voila Norbert once, choose which goes first, and spend free credits only after a real person has been identified.</p></div><button className="icon-button" type="button" onClick={() => setShowEnrichment(false)} aria-label="Close email enrichment"><X size={17} /></button></header><div className="enrichment-dialog-body"><div className="enrichment-principle"><ShieldCheck size={19} /><span><strong>A named person and company domain come first.</strong><small>GUD never invents a private address. It uses your provider keys server-side and records only successful lookups against the safety cap.</small></span></div><FreeMaxSettingsCard status={freeMaxStatus} canManage={canManage} context="targets" initiallyOpen /></div></section></div> : null}
 
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
       {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
@@ -493,18 +493,6 @@ function themeStatusLabel(status: ResearchThemeSummary["status"]) {
 
 function ResearchStatus({ status }: { status: ResearchReadiness }) {
   return <span className="research-status" data-status={status}>{statusCopy[status].label}</span>;
-}
-
-function FreeMaxSummary({ status }: { status: FreeMaxStatus }) {
-  return (
-    <div className="freemax-summary" title="Tracked GUD CRM usage only. Provider dashboards remain authoritative.">
-      <Sparkles size={13} />
-      <strong>FreeMax</strong>
-      {status.hunter.configured ? <span>Hunter {status.hunter.used}/{status.hunter.limit} this month</span> : null}
-      {status.norbert.configured ? <span>Norbert {status.norbert.used}/{status.norbert.limit} starter</span> : null}
-      <small>Free-first caps</small>
-    </div>
-  );
 }
 
 function ContactRoutes({ contact }: { contact: ContactSummary }) {

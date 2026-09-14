@@ -49,7 +49,7 @@ test.describe.serial("Live project refinements", () => {
     await expect(column).toHaveAttribute("data-expanded", "true");
     await page.screenshot({ path: testInfo.outputPath("live-board.png") });
     await page.goto("/my-work");
-    const delivery = page.getByRole("region", { name: "Live projects · next milestones" });
+    const delivery = page.getByRole("region", { name: "Next milestones", exact: true });
     await expect(delivery).toContainText("Demo delivery client");
     await page.screenshot({ path: testInfo.outputPath("today-delivery.png") });
     await delivery.getByRole("link", { name: "Set the next milestone", exact: true }).click();

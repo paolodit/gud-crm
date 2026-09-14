@@ -5,7 +5,7 @@ test.describe.serial("Service Sales workspace", () => {
     await page.goto("/");
 
     await expect(page).toHaveURL(/\/pipeline$/);
-    await expect(page.getByRole("heading", { name: "Service Sales" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pipeline", exact: true })).toBeVisible();
   });
 
   test("starts with the Service Sales model", async ({ page }) => {
@@ -50,7 +50,7 @@ test.describe.serial("Service Sales workspace", () => {
     await expect(page).toHaveURL(/\/targets$/);
     await expect(page.getByRole("heading", { name: "Targets", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Research with AI" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Find emails" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Find emails" })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Research targets" })).toBeVisible();
     await expect(page.locator(".research-inspector")).toHaveCount(0);
   });

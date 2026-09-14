@@ -43,8 +43,6 @@ import {
   Mic,
   Phone,
   Plus,
-  Columns3,
-  Rows3,
   Search,
   Sparkles,
   Target,
@@ -84,6 +82,8 @@ import { useExitTransition } from "./use-exit-transition";
 import { AnimatedReveal } from "./animated-reveal";
 import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
+import { BoardHeaderArt } from "./board-header-art";
+import { CardDensityToggle } from "./card-density-toggle";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
 import { safeExternalUrl } from "@/lib/domain/normalise";
@@ -318,8 +318,9 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
   return (
     <>
       <header className="page-header pipeline-page-header">
+        <BoardHeaderArt kind="pipeline" />
         <div className="page-title">
-          <h1>{initialSnapshot.pipeline.name}</h1>
+          <h1>Pipeline</h1>
           <p>{activeCount} active opportunities{archivedCount ? ` · ${archivedCount} archived` : ""} · Updated {formatTime(now)}</p>
         </div>
         <div className="header-actions">
@@ -377,10 +378,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           <button className="filter-chip" type="button" data-active={showArchived} onClick={() => setShowArchived((value) => !value)}>
             {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />} {showArchived ? "Back to pipeline" : `Archive${archivedCount ? ` ${archivedCount}` : ""}`}
           </button>
-          <div className="view-toggle" role="group" aria-label="Pipeline card density">
-            <button type="button" aria-pressed={!compact} onClick={() => setCompact(false)} title="Comfortable cards"><Columns3 size={14} />Comfortable</button>
-            <button type="button" aria-pressed={compact} onClick={() => setCompact(true)} title="Compact cards"><Rows3 size={14} />Compact</button>
-          </div>
+          <CardDensityToggle label="Pipeline card density" compact={compact} onChange={setCompact} />
         </div>
       </section>
 

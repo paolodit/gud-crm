@@ -41,6 +41,14 @@ export type VoiceRecord = {
 };
 export type VoiceContext = { record: VoiceRecord; salesStages: StageSummary[]; deliveryStages: DeliveryStage[]; activityTypes: ActivityTypeSummary[] };
 export type VoiceChoice = { target: VoiceTarget; companyName: string; title: string };
+export type VoiceScope = "sales" | "delivery" | "all";
+export const voiceScopeLabel = (scope: VoiceScope) => scope === "sales" ? "Pipeline" : scope === "delivery" ? "Live projects" : "All records";
+export const voiceScopeForTarget = (target: VoiceTarget): VoiceScope => target.kind === "sales" ? "sales" : "delivery";
+export const voiceScopeForPath = (pathname: string): VoiceScope => pathname === "/live" ? "delivery" : pathname === "/pipeline" || pathname === "/targets" ? "sales" : "all";
+export function voiceChoicesForScope(choices: VoiceChoice[], scope: VoiceScope, search = "") {
+  const query = search.trim().toLowerCase();
+  return choices.filter((choice) => (scope === "all" || voiceScopeForTarget(choice.target) === scope) && `${choice.companyName} ${choice.title}`.toLowerCase().includes(query));
+}
 export type VoicePlan = {
   id: string; receiptId: string; undoId: string; target: VoiceTarget; companyName: string; title: string;
   before: VoiceFields; changes: VoiceChanges; createdAt: string; expiresAt: string; taskDateHint: string | null;
