@@ -40,8 +40,8 @@ describe("guarded migrations", () => {
       ALTER TYPE "status" ADD VALUE 'waiting';
     `)])).not.toThrow();
   });
-  it("accepts the pending Thoughts schema without modifying existing records", () => {
-    const sql = readFileSync("drizzle/0011_famous_winter_soldier.sql", "utf8");
+  it("accepts the committed delivery schema addition without modifying existing records", () => {
+    const sql = readFileSync("drizzle/0010_live_delivery.sql", "utf8");
     expect(() => assertAdditiveMigrations([migration(sql)])).not.toThrow();
   });
 });

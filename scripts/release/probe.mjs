@@ -13,7 +13,7 @@ async function main() {
       await client.query("SET LOCAL statement_timeout = '45s'");
       const migrations = (await client.query("SELECT hash, created_at FROM drizzle.__drizzle_migrations ORDER BY created_at, id")).rows;
       const tables = (await client.query(`
-        SELECT c.relname AS name, array_agg(a.attname ORDER BY k.ordinality) AS columns
+        SELECT c.relname AS name, array_agg(a.attname::text ORDER BY k.ordinality) AS columns
         FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
         CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS k(attnum, ordinality)
@@ -39,7 +39,9 @@ async function main() {
           for (const task of project.delivery?.tasks ?? []) keys.delivery_checklist.push(hash(`direct:${org.id}:${project.id}:${task.id}`));
         }
       }
-      const opportunities = (await client.query("SELECT id, delivery->'tasks' AS tasks FROM opportunities")).rows;
+      // The upgrade fixture also probes the schema before delivery was added.
+      // JSON extraction treats an absent delivery column as null without altering the schema.
+      const opportunities = (await client.query("SELECT id, to_jsonb(o)->'delivery'->'tasks' AS tasks FROM opportunities o")).rows;
       for (const opportunity of opportunities) {
         for (const task of opportunity.tasks ?? []) keys.delivery_checklist.push(hash(`opportunity:${opportunity.id}:${task.id}`));
       }
