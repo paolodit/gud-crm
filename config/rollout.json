@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "captainUrl": "https://captain.captain.testkitten.com",
+  "imageRepository": "gud-release",
+  "targets": [
+    { "id": "demo", "app": "gud-demo", "tokenEnv": "GUD_DEPLOY_TOKEN_DEMO" },
+    { "id": "refresh", "app": "gud-refresh", "tokenEnv": "GUD_DEPLOY_TOKEN_REFRESH" },
+    { "id": "hsm", "app": "gud-hsm", "tokenEnv": "GUD_DEPLOY_TOKEN_HSM" }
+  ]
+}

@@ -231,6 +231,7 @@ Before proposing a change, run the quality commands above and keep the interface
 - [Operations and backups](docs/OPERATIONS.md)
 - [Security model](docs/SECURITY.md)
 - [Public-release privacy checklist](docs/PUBLIC-RELEASE.md)
+- [Unified Demo / Refresh / HSM rollout](docs/UNIFIED-ROLLOUT.md)
 - [Product charter](docs/product/PRODUCT-CHARTER.md)
 - [Sales models](docs/product/EDITIONS.md)
 

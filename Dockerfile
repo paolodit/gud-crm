@@ -11,10 +11,18 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG GUD_RELEASE_GUARDED=false
+RUN if [ "$GUD_RELEASE_GUARDED" = "true" ]; then npm run lint && npm test && npm run test:release; fi
 RUN npm run build
 RUN npm run build:runtime-tools
 
 FROM base AS runner
+ARG GUD_BUILD_REVISION=local
+ARG GUD_RELEASE_GUARDED=false
+ENV GUD_BUILD_REVISION=${GUD_BUILD_REVISION}
+ENV GUD_RELEASE_GUARDED=${GUD_RELEASE_GUARDED}
+LABEL org.opencontainers.image.revision=${GUD_BUILD_REVISION}
+LABEL com.gud.guarded-release=${GUD_RELEASE_GUARDED}
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN apk add --no-cache libstdc++

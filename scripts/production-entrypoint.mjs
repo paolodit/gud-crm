@@ -7,6 +7,13 @@ const bootstrapMode = process.env.GUD_BOOTSTRAP ?? "off";
 
 configureRenderPublicOrigin();
 
+if (process.env.GUD_RELEASE_GUARDED === "true" && (
+  backend !== "postgres" || bootstrapMode !== "off" ||
+  process.env.SEED_ALLOW_EXISTING === "true" || process.env.SEED_IF_EMPTY === "true"
+)) {
+  throw new Error("Guarded releases require an existing PostgreSQL database with bootstrap and seeding disabled.");
+}
+
 if (!["off", "if-empty"].includes(bootstrapMode)) {
   throw new Error("GUD_BOOTSTRAP must be either off or if-empty.");
 }

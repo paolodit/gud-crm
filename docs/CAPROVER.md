@@ -2,6 +2,8 @@
 
 GUD ships one Docker image for every sales model. Deploy that image as one stateless CapRover app per private organisation and give every app its own PostgreSQL database, authentication secret, hostname and backup stream.
 
+For routine updates of the existing **Demo, Refresh and HSM** instances, use the [unified rollout runbook](UNIFIED-ROLLOUT.md): one committed image, full database backups, guarded migrations and staged health/data checks. The first-install instructions below are not the upgrade process for those existing databases.
+
 ## The shortest safe install
 
 If you already have CapRover and PostgreSQL, a clean first instance is five deliberate steps:
