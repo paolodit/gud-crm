@@ -1,0 +1,14 @@
+# Historical migrations were applied from Windows CRLF tarballs on all three
+# production databases. Keep their original bytes (and Drizzle SHA-256 hashes)
+# identical in Git archives, Linux builds and Windows checkouts.
+/drizzle/0000_lowly_ultron.sql -text
+/drizzle/0001_auth_admin.sql -text
+/drizzle/0002_charming_morlun.sql -text
+/drizzle/0003_black_molly_hayes.sql -text
+/drizzle/0004_ordered_opportunities.sql -text
+/drizzle/0005_research_themes.sql -text
+/drizzle/0006_mature_vivisector.sql -text
+/drizzle/0007_pretty_blindfold.sql -text
+/drizzle/0008_simpler_sales_stages.sql -text
+/drizzle/0009_archive_records.sql -text
+/drizzle/0010_live_delivery.sql -text
