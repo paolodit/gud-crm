@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import { Archive, Check, Circle, Grip, Library, LockKeyhole, Maximize2, Mic, Minimize2, Plus, RefreshCw, Search, Sparkles, Square, StickyNote, X } from "lucide-react";
 import { exploreThoughtAction, loadThoughtsAction, saveThoughtAction } from "@/app/actions/thoughts";
@@ -12,6 +12,7 @@ import { useSpeechCapture } from "./use-speech-capture";
 import { ThoughtBodyEditor } from "./thought-body-editor";
 import { ThoughtText } from "./thought-text";
 import { ThoughtDictation } from "./thought-dictation";
+import { nextThoughtPosition } from "@/lib/domain/thought-placement";
 
 type BoardData = Extract<Awaited<ReturnType<typeof loadThoughtsAction>>, { ok: true }>;
 const contentOf = (note: Thought): ThoughtContent => ({ title: note.title, body: note.body, checklist: note.checklist, colour: note.colour, category: note.category, x: note.x, y: note.y });
@@ -21,6 +22,7 @@ export function ThoughtsBoard({ initial }: { initial: BoardData }) {
   const [explorations, setExplorations] = useState(initial.explorations);
   const [compact, setCompact] = useState(false);
   const [lanes, setLanes] = useState(false);
+  const [dots, setDots] = useState(true);
   const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
   const [draft, setDraft] = useState("");
@@ -39,13 +41,13 @@ export function ThoughtsBoard({ initial }: { initial: BoardData }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor));
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      try { const value = JSON.parse(localStorage.getItem(initial.preferencesKey) ?? "null"); if (value) { setCompact(value.compact === true); setLanes(value.lanes === true); } } catch { /* Preferences are optional; no note content is stored here. */ }
+      try { const value = JSON.parse(localStorage.getItem(initial.preferencesKey) ?? "null"); if (value) { setCompact(value.compact === true); setLanes(value.lanes === true); setDots(value.dots !== false); } } catch { /* Preferences are optional; no note content is stored here. */ }
     });
     return () => cancelAnimationFrame(frame);
   }, [initial.preferencesKey]);
-  function viewPreference(nextCompact: boolean, nextLanes: boolean) {
-    setCompact(nextCompact); setLanes(nextLanes);
-    try { localStorage.setItem(initial.preferencesKey, JSON.stringify({ compact: nextCompact, lanes: nextLanes })); } catch { /* Board still works without browser storage. */ }
+  function viewPreference(nextCompact: boolean, nextLanes: boolean, nextDots = dots) {
+    setCompact(nextCompact); setLanes(nextLanes); setDots(nextDots);
+    try { localStorage.setItem(initial.preferencesKey, JSON.stringify({ compact: nextCompact, lanes: nextLanes, dots: nextDots })); } catch { /* Board still works without browser storage. */ }
   }
   useEffect(() => {
     const open = () => setVoice(true);
@@ -59,27 +61,25 @@ export function ThoughtsBoard({ initial }: { initial: BoardData }) {
   function newContent(text = ""): ThoughtContent {
     const left = (viewport.current?.scrollLeft ?? 0) + 32, top = (viewport.current?.scrollTop ?? 0) + 32;
     const columns = Math.max(1, Math.floor(((viewport.current?.clientWidth ?? 1000) - 64) / 330));
-    let x = left, y = top;
-    for (let index = 0; index < 500; index++) {
-      x = Math.min(10000, left + (index % columns) * 330); y = Math.min(10000, top + Math.floor(index / columns) * 420);
-      if (!notes.some((note) => !note.archived && Math.abs(note.x - x) < 300 && Math.abs(note.y - y) < 390)) break;
-    }
+    const { x, y } = nextThoughtPosition(notes, { x: left, y: top }, columns);
     return { title: "", body: text, checklist: [], colour: "butter", category: "", x, y };
   }
-  async function save(content: ThoughtContent, current?: Thought, archive = current?.archived ?? false) {
+  async function save(content: ThoughtContent, current?: Thought, archive = current?.archived ?? false, optimistic = false) {
     if (busyRef.current) return null;
     busyRef.current = true; setBusy(true); setError("");
+    if (optimistic && current) setNotes(items => items.map(item => item.id === current.id ? { ...item, ...content } : item));
+    const rollback = () => { if (optimistic && current) setNotes(items => items.map(item => item.id === current.id ? current : item)); };
     try {
       const result = await saveThoughtAction({ content, ...(current ? { id: current.id, version: current.version } : {}), archived: archive });
-      if (!result.ok) { setError(result.error); return null; }
-      setNotes((items) => [...items.filter((item) => item.id !== result.thought.id), result.thought]);
+      if (!result.ok) { rollback(); setError(result.error); return null; }
+      setNotes((items) => items.some(item => item.id === result.thought.id) ? items.map(item => item.id === result.thought.id ? result.thought : item) : [...items, result.thought]);
       setStatus("Thought saved privately.");
       return result.thought;
-    } catch { setError("Could not confirm the save. Your draft is still here. Reload to check before retrying."); return null; }
+    } catch { rollback(); setError("Could not confirm the save. Your draft is still here. Reload to check before retrying."); return null; }
     finally { busyRef.current = false; setBusy(false); }
   }
   async function quickAdd() { if (draft.trim() && await save(newContent(draft))) setDraft(""); }
-  async function reload() {
+  const reload = useCallback(async () => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true);
     try {
@@ -87,39 +87,53 @@ export function ThoughtsBoard({ initial }: { initial: BoardData }) {
       if (!result.ok) { setError(result.error); return; }
       setNotes(result.thoughts); setExplorations(result.explorations); setError(""); setStatus("Board reloaded. Open drafts are unchanged.");
     } catch { setError("Could not reload your board. Please try again."); } finally { busyRef.current = false; setBusy(false); }
-  }
+  }, []);
+  useEffect(() => {
+    const saved = () => { void reload(); };
+    window.addEventListener("gud:conversation-saved", saved);
+    return () => window.removeEventListener("gud:conversation-saved", saved);
+  }, [reload]);
   return <div className="thoughts-page">
     <header className="page-header pipeline-page-header thoughts-header"><div className="page-title"><h1>Thoughts</h1><span className="thoughts-private"><LockKeyhole size={12} /> Only you</span></div><button type="button" className="btn btn-secondary" onClick={() => setPanel("all")}><Library size={16} />Explorations <span>{explorations.length}</span></button></header>
     <section className="thoughts-capture" aria-label="Capture a thought"><StickyNote size={20} /><textarea aria-label="New thought" placeholder="An idea, a question, a maybe…" value={draft} maxLength={20000} rows={1} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void quickAdd(); } }} /><button className="icon-button" type="button" aria-label="Speak a thought" onClick={() => setVoice(true)}><Mic size={18} /></button><button type="button" className="btn btn-primary" disabled={busy || !draft.trim()} onClick={() => void quickAdd()}><Plus size={16} />Add thought</button></section>
-    <div className="thoughts-toolbar"><label className="thoughts-search"><Search size={14} /><input aria-label="Search private thoughts" placeholder="Find a thought" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button type="button" className="btn btn-quiet" onClick={() => { setNewDraft(newContent()); setEditor("new"); }}><Plus size={14} />Compose</button><label className="thoughts-guide"><input type="checkbox" checked={lanes} onChange={(event) => viewPreference(compact, event.target.checked)} />Lane guides</label><button type="button" className="btn btn-quiet" aria-pressed={archived} onClick={() => setArchived(!archived)}><Archive size={14} />Archive</button><div className="view-toggle"><button type="button" aria-pressed={!compact} onClick={() => viewPreference(false, lanes)}>Comfortable</button><button type="button" aria-pressed={compact} onClick={() => viewPreference(true, lanes)}>Compact</button></div><button type="button" className="icon-button" disabled={busy} aria-label="Reload private board" onClick={() => void reload()}><RefreshCw size={15} /></button></div>
+    <div className="thoughts-toolbar"><label className="thoughts-search"><Search size={14} /><input aria-label="Search private thoughts" placeholder="Find a thought" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button type="button" className="btn btn-quiet" onClick={() => { setNewDraft(newContent()); setEditor("new"); }}><Plus size={14} />Compose</button><label className="thoughts-guide"><input type="checkbox" checked={lanes} onChange={(event) => viewPreference(compact, event.target.checked)} />Lane guides</label><label className="thoughts-guide"><input type="checkbox" checked={dots} onChange={event => viewPreference(compact, lanes, event.target.checked)} />Dots</label><button type="button" className="btn btn-quiet" aria-pressed={archived} onClick={() => setArchived(!archived)}><Archive size={14} />Archive</button><div className="view-toggle"><button type="button" aria-pressed={!compact} onClick={() => viewPreference(false, lanes)}>Comfortable</button><button type="button" aria-pressed={compact} onClick={() => viewPreference(true, lanes)}>Compact</button></div><button type="button" className="icon-button" disabled={busy} aria-label="Reload private board" onClick={() => void reload()}><RefreshCw size={15} /></button></div>
     {error ? <p className="thoughts-error" role="alert">{error}</p> : null}<span className="sr-only" role="status">{busy ? "Saving…" : status}</span>
     <div className="thoughts-workspace"><div ref={viewport} className="thoughts-viewport" {...pan}>
       <DndContext id={id} sensors={sensors} onDragEnd={({ active, delta }) => {
         const note = notes.find((item) => item.id === active.id); if (!note || busy || (!delta.x && !delta.y)) return;
         const x = Math.max(0, Math.min(10000, Math.round(note.x + delta.x)));
-        void save({ ...contentOf(note), x: lanes ? Math.min(9900, Math.round(x / 330) * 330 + 16) : x, y: Math.max(0, Math.min(10000, Math.round(note.y + delta.y))) }, note);
-      }}><div className="thoughts-canvas" data-compact={compact} data-lanes={lanes} style={{ width, height }} aria-label="Private thought board">
+        void save({ ...contentOf(note), x: lanes ? Math.min(9900, Math.round(x / 330) * 330 + 16) : x, y: Math.max(0, Math.min(10000, Math.round(note.y + delta.y))) }, note, note.archived, true);
+      }}><div className="thoughts-canvas" data-compact={compact} data-lanes={lanes} data-dots={dots} style={{ width, height }} aria-label="Private thought board">
         {!shown.length ? <div className="thoughts-empty"><StickyNote size={40} /><h2>{query ? "Nothing here matches yet" : archived ? "No archived thoughts" : "It doesn’t have to be a plan."}</h2><p>{query ? "Try a different word." : "Drop a thought here. Move it around. Come back when it’s ready."}</p></div> : null}
-        {shown.map((note) => <ThoughtNote key={note.id} note={note} disabled={busy} explorationCount={explorations.filter((item) => item.thoughtId === note.id).length} onOpen={() => { setEditorVoice(false); setEditor(note); }} onVoice={() => { setEditorVoice(true); setEditor(note); }} onExplore={() => setPanel(note.id)} onCheck={(taskId) => void save({ ...contentOf(note), checklist: note.checklist.map((item) => item.id === taskId ? { ...item, done: !item.done } : item) }, note)} />)}
+        {shown.map((note) => <ThoughtNote key={note.id} note={note} disabled={busy} explorationCount={explorations.filter((item) => item.thoughtId === note.id).length} onOpen={() => { setEditorVoice(false); setEditor(note); }} onVoice={() => { setEditorVoice(true); setEditor(note); }} onExplore={() => setPanel(note.id)} onColour={colour => void save({ ...contentOf(note), colour }, note, note.archived, true)} onCheck={(taskId) => void save({ ...contentOf(note), checklist: note.checklist.map((item) => item.id === taskId ? { ...item, done: !item.done } : item) }, note)} />)}
       </div></DndContext>
     </div>{panel ? <ExplorationPanel selection={panel} notes={notes} explorations={explorations} aiEnabled={initial.aiEnabled} onSelect={setPanel} onClose={() => setPanel(null)} onArchive={async (note) => { await save(contentOf(note), note, !note.archived); }} onCreated={(document) => setExplorations((items) => [document, ...items])} /> : null}</div>
     <footer className="thoughts-footnote"><LockKeyhole size={12} /><span>{initial.local ? "Local single-user storage: anyone with access to this local installation can use this account." : "Private to your account. Not included in shared Ideas, CRM search, reports or exports."} Drag a note’s grip to move it; keyboard: Space, arrows, Space.</span></footer>
-    {editor ? <ThoughtEditor key={typeof editor === "string" ? editor : `${editor.id}:${editor.version}`} initialVoice={editorVoice && editor !== "new"} initial={editor === "new" ? newDraft : contentOf(editor)} existing={editor === "new" ? undefined : editor} categories={categories} notes={notes} busy={busy} error={error} onClose={() => setEditor(null)} onSave={async (value, archive) => { const saved = await save(value, editor === "new" ? undefined : editor, archive); if (saved) setEditor(null); }} /> : null}
+    {editor ? <ThoughtEditor key={typeof editor === "string" ? editor : `${editor.id}:${editor.version}`} initialVoice={editorVoice && editor !== "new"} initial={editor === "new" ? newDraft : contentOf(editor)} existing={editor === "new" ? undefined : editor} categories={categories} notes={notes} busy={busy} error={error} onClose={() => setEditor(null)} onSave={async (value, archive, explore) => { const saved = editor !== "new" && explore && JSON.stringify(value) === JSON.stringify(contentOf(editor)) ? editor : await save(value, editor === "new" ? undefined : editor, archive); if (saved) { setEditor(null); if (explore) setPanel(saved.id); } }} /> : null}
     {voice ? <ThoughtVoice onClose={() => setVoice(false)} onSave={async (spoken) => { const parsed = thoughtFromSpeech(spoken); const saved = await save({ ...newContent(parsed.body), checklist: parsed.checklist }); if (saved) { setVoice(false); if (parsed.explore) setPanel(saved.id); } }} busy={busy} error={error} /> : null}
   </div>;
 }
 
-function ThoughtNote({ note, disabled, explorationCount, onOpen, onVoice, onExplore, onCheck }: { note: Thought; disabled: boolean; explorationCount: number; onOpen: () => void; onVoice: () => void; onExplore: () => void; onCheck: (id: string) => void }) {
+function ThoughtNote({ note, disabled, explorationCount, onOpen, onVoice, onExplore, onColour, onCheck }: { note: Thought; disabled: boolean; explorationCount: number; onOpen: () => void; onVoice: () => void; onExplore: () => void; onColour: (colour: ThoughtContent["colour"]) => void; onCheck: (id: string) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id, disabled });
+  const [coloursOpen, setColoursOpen] = useState(false);
+  const colourRef = useRef<HTMLDivElement>(null), colourButton = useRef<HTMLButtonElement>(null);
+  const pickerId = useId();
+  useEffect(() => {
+    if (!coloursOpen) return;
+    const outside = (event: PointerEvent) => { if (!colourRef.current?.contains(event.target as Node)) setColoursOpen(false); };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [coloursOpen]);
   return <article ref={setNodeRef} className="thought-note" data-colour={note.colour} data-dragging={isDragging} data-thought-id={note.id} style={{ left: note.x, top: note.y, transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined, zIndex: isDragging ? 100 : undefined }}>
     <button type="button" className="thought-note-open" aria-label={`Edit thought ${thoughtLabel(note)}`} onClick={onOpen}>{note.title ? <h2>{note.title}</h2> : null}{note.category && note.title ? <span className="thought-note-category">{note.category}</span> : null}<p><ThoughtText text={note.body} links={false} /></p>{note.category && !note.title ? <span className="thought-note-category">{note.category}</span> : null}</button>
-    <div className="thought-note-actions"><button type="button" className="thought-grip thought-mic" disabled={disabled} aria-label={`Voice edit thought ${thoughtLabel(note)}`} onClick={onVoice}><Mic size={14} /></button><button type="button" className="thought-grip" disabled={disabled} aria-label={`Move thought ${thoughtLabel(note)}`} {...attributes} {...listeners}><Grip size={16} /></button></div>
+    <div className="thought-note-actions"><button type="button" className="thought-grip thought-mic" disabled={disabled} aria-label={`Voice edit thought ${thoughtLabel(note)}`} title="Voice edit" onClick={onVoice}><Mic size={14} /></button><button type="button" className="thought-grip thought-explore" aria-label="Explore this idea" title={`Explore this idea${explorationCount ? ` · ${explorationCount} explorations` : ""}`} onClick={onExplore}><Sparkles size={14} />{explorationCount ? <span className="thought-explore-count">{explorationCount}</span> : null}</button><button type="button" className="thought-grip" disabled={disabled} aria-label={`Move thought ${thoughtLabel(note)}`} {...attributes} {...listeners}><Grip size={16} /></button></div>
     {note.checklist.length ? <div className="thought-note-checks">{note.checklist.slice(0, 3).map((item) => <button key={item.id} type="button" disabled={disabled} aria-pressed={item.done} onClick={() => onCheck(item.id)}>{item.done ? <Check size={15} /> : <Circle size={15} />}<span data-done={item.done}>{item.text}</span></button>)}<small>{note.checklist.filter((item) => item.done).length}/{note.checklist.length} done</small></div> : null}
-    <button type="button" className="thought-explore" onClick={onExplore}><Sparkles size={14} />Explore this idea{explorationCount ? <span>{explorationCount}</span> : null}</button>
+    <div className="thought-quick-colour" ref={colourRef} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setColoursOpen(false); colourButton.current?.focus(); } }}><button ref={colourButton} type="button" className="thought-colour-toggle" aria-label={`Change colour of ${thoughtLabel(note)}`} title="Note colour" aria-expanded={coloursOpen} aria-controls={pickerId} disabled={disabled} onClick={() => setColoursOpen(!coloursOpen)}><Circle size={16} /></button>{coloursOpen ? <fieldset id={pickerId} className="thought-colours thought-colour-popover"><legend>Note colour</legend>{thoughtColours.map(colour => <button key={colour} type="button" data-colour={colour} aria-label={`${colour} note`} aria-pressed={colour === note.colour} onClick={() => { setColoursOpen(false); colourButton.current?.focus(); onColour(colour); }}>{colour === note.colour ? <Check size={14} /> : null}</button>)}</fieldset> : null}</div>
   </article>;
 }
 
-function ThoughtEditor({ initial, initialVoice, existing, categories, notes, busy, error, onClose, onSave }: { initial: ThoughtContent; initialVoice: boolean; existing?: Thought; categories: string[]; notes: Thought[]; busy: boolean; error: string; onClose: () => void; onSave: (content: ThoughtContent, archive: boolean) => Promise<void> }) {
+function ThoughtEditor({ initial, initialVoice, existing, categories, notes, busy, error, onClose, onSave }: { initial: ThoughtContent; initialVoice: boolean; existing?: Thought; categories: string[]; notes: Thought[]; busy: boolean; error: string; onClose: () => void; onSave: (content: ThoughtContent, archive: boolean, explore?: boolean) => Promise<void> }) {
   const [value, setValue] = useState(initial);
   const [dictating, setDictating] = useState(initialVoice);
   const dirty = JSON.stringify(initial) !== JSON.stringify(value);
@@ -133,7 +147,7 @@ function ThoughtEditor({ initial, initialVoice, existing, categories, notes, bus
     <ProjectTaskList personal tasks={value.checklist.map(({ done, ...item }) => ({ ...item, completed: done }))} disabled={busy} onChange={(items) => setValue({ ...value, checklist: items.map(({ completed, ...item }) => ({ ...item, done: completed })) })} />
     <fieldset className="thought-colours"><legend>Note colour</legend>{thoughtColours.map((colour) => <button key={colour} type="button" data-colour={colour} disabled={busy} aria-label={`${colour} note`} aria-pressed={value.colour === colour} onClick={() => setValue({ ...value, colour })}>{value.colour === colour ? <Check size={16} /> : null}</button>)}</fieldset>
     <details><summary>Optional category</summary><label className="field-label">Category<input list={categoryId} maxLength={60} disabled={busy} value={value.category} onChange={(event) => { const category = event.target.value; const match = notes.find((note) => note.category.toLowerCase() === category.toLowerCase()); setValue({ ...value, category, colour: match?.colour ?? value.colour }); }} /><datalist id={categoryId}>{categories.map((category) => <option key={category} value={category} />)}</datalist></label><small>Existing categories suggest their colour. You can always choose another.</small></details>
-    {error ? <p role="alert" className="thoughts-error">{error}</p> : null}<footer>{existing ? <button type="button" className="btn btn-quiet" disabled={busy || dictating} onClick={() => void onSave(value, !existing.archived)}><Archive size={14} />{existing.archived ? "Restore thought" : "Archive thought"}</button> : <span />}<button type="submit" className="btn btn-primary" disabled={busy || dictating || !(value.title.trim() || value.body.trim() || value.checklist.length)}>{busy ? "Saving…" : "Save thought"}</button></footer>
+    {error ? <p role="alert" className="thoughts-error">{error}</p> : null}<footer>{existing ? <button type="button" className="btn btn-quiet" disabled={busy || dictating} onClick={() => void onSave(value, !existing.archived)}><Archive size={14} />{existing.archived ? "Restore thought" : "Archive thought"}</button> : <span />}<button type="button" className="btn btn-quiet" disabled={busy || dictating || !(value.title.trim() || value.body.trim() || value.checklist.length)} title={dirty || !existing ? "Save this thought and open exploration" : "Open exploration"} onClick={() => void onSave(value, existing?.archived ?? false, true)}><Sparkles size={14} />Explore this idea</button><button type="submit" className="btn btn-primary" disabled={busy || dictating || !(value.title.trim() || value.body.trim() || value.checklist.length)}>{busy ? "Saving…" : "Save thought"}</button></footer>
   </form></section></div>;
 }
 

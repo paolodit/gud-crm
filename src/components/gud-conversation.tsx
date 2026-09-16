@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { signOff, type GudDraft, type GudFields } from "@/lib/gud-actions/contract";
 import { acknowledgeEdits, SignOffPlayback, type DraftEdits, type EditableFields } from "@/lib/gud-actions/client-state";
-import { defaultVoicePreferences, gudVoices, readVoicePreferences, type VoicePreferences } from "@/lib/gud-actions/voice-preferences";
+import { gudVoices, latestVoicePreferences, readVoicePreferences, type VoicePreferences } from "@/lib/gud-actions/voice-preferences";
 import "./gud-conversation.css";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -21,7 +21,7 @@ async function api(op: string, input?: unknown, sessionId?: string): Promise<Res
   return result;
 }
 
-export function GudConversation({ memberKey, onClassic }: { memberKey: string; onClassic: () => void }) {
+export function GudConversation({ memberKey, initialPreferences = null, onClassic }: { memberKey: string; initialPreferences?: string | null; onClassic: () => void }) {
   const router = useRouter(), pathname = usePathname(), params = useSearchParams();
   const [open, setOpen] = useState(false), [minimised, setMinimised] = useState(false);
   const [session, setSession] = useState<Session | null>(null), [drafts, setDrafts] = useState<GudDraft[]>([]);
@@ -29,22 +29,28 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
   const [messages, setMessages] = useState<Message[]>([]), [text, setText] = useState("");
   const [status, setStatus] = useState("Ready when you are"), [error, setError] = useState("");
   const [busy, setBusy] = useState(false), [voice, setVoice] = useState(false), [muted, setMuted] = useState(false);
-  const [preferences, setPreferences] = useState(defaultVoicePreferences), [options, setOptions] = useState(false);
-  const preferencesRef = useRef(defaultVoicePreferences), launchPending = useRef(false), loadPending = useRef<Promise<void> | null>(null);
+  const [preferences, setPreferences] = useState(() => readVoicePreferences(initialPreferences)), [options, setOptions] = useState(false);
+  const preferencesRef = useRef(preferences), launchPending = useRef(false), loadPending = useRef<Promise<void> | null>(null);
+  const preferenceWrites = useRef(Promise.resolve()), [preferenceWarning, setPreferenceWarning] = useState("");
   const startVoiceRef = useRef<() => Promise<void>>(async () => {});
   const storageKey = `gud-conversation-options:${memberKey}`;
   const consent = preferences.consent;
   useEffect(() => {
-    let next = { ...defaultVoicePreferences };
-    try { next = readVoicePreferences(localStorage.getItem(storageKey)); } catch { /* In-memory options still work. */ }
+    let next = readVoicePreferences(initialPreferences);
+    try { next = latestVoicePreferences(initialPreferences, localStorage.getItem(storageKey)); } catch { /* The account-scoped cookie works without localStorage. */ }
     preferencesRef.current = next;
     queueMicrotask(() => setPreferences(next));
-  }, [storageKey]);
+  }, [storageKey, initialPreferences]);
   function updatePreferences(patch: Partial<VoicePreferences>) {
     const next = { ...preferencesRef.current, ...patch };
     preferencesRef.current = next; setPreferences(next);
     if (!next.conversationFirst) launchPending.current = false;
-    try { localStorage.setItem(storageKey, JSON.stringify({ ...next, consentVersion: 1 })); } catch { /* In-memory options still work. */ }
+    const stored = { ...next, consentVersion: 1, updatedAt: Date.now() };
+    try { localStorage.setItem(storageKey, JSON.stringify(stored)); } catch { /* Also persisted in an HttpOnly account-scoped cookie. */ }
+    preferenceWrites.current = preferenceWrites.current.then(async () => {
+      try { await api("preferences", stored); setPreferenceWarning(""); }
+      catch { setPreferenceWarning("Could not confirm that Options were remembered. They still work now; try changing them again when connected."); }
+    });
   }
   const [edits, setEdits] = useState<DraftEdits>({});
   const editsRef = useRef<DraftEdits>({}), ending = useRef(false);
@@ -56,6 +62,7 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
   const lastActivity = useRef(0), seenCalls = useRef(new Set<string>()), queue = useRef(Promise.resolve()), generation = useRef(0);
   const finishAfterAudio = useRef(false), finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signOffPlayback = useRef(new SignOffPlayback());
+  const activeResponse = useRef<string | null>(null), queuedResponse = useRef<object | null>(null), cancelEvents = useRef(new Set<string>());
   const context = useRef({ page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: "Europe/London" });
   const contextKey = `${pathname}:${params.get("opportunity") ?? params.get("project") ?? ""}`;
   useEffect(() => { context.current = { page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; }, [pathname, params]);
@@ -66,13 +73,24 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
     const promise = api(op, input, sessionId); pendingRequests.current.add(promise);
     try { return await promise; } finally { pendingRequests.current.delete(promise); }
   }
-  function send(event: object) { if (channel.current?.readyState === "open") channel.current.send(JSON.stringify(event)); }
+  function send(event: { type: string; [key: string]: unknown }) {
+    if (channel.current?.readyState !== "open") return;
+    if (event.type === "response.create" && activeResponse.current) { queuedResponse.current = event; return; }
+    channel.current.send(JSON.stringify(event));
+  }
+  function cancelResponse() {
+    if (!activeResponse.current) return;
+    const eventId = crypto.randomUUID(); cancelEvents.current.add(eventId);
+    if (cancelEvents.current.size > 32) cancelEvents.current.delete(cancelEvents.current.values().next().value!);
+    send({ type: "response.cancel", event_id: eventId, response_id: activeResponse.current });
+  }
   function say(message: string, instructions?: string) {
     setMessages(previous => [...previous.slice(-29), { role: "assistant", content: message }]);
     if (instructions) send({ type: "response.create", response: { tool_choice: "none", instructions } });
   }
   const disconnect = useCallback(() => {
     generation.current++;
+    activeResponse.current = null; queuedResponse.current = null; cancelEvents.current.clear();
     signOffPlayback.current.reset();
     finishAfterAudio.current = false; if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
     channel.current?.close(); channel.current = null;
@@ -198,25 +216,38 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
         setVoice(true); setStatus("Listening"); lastActivity.current = Date.now();
         send({ type: "response.create", response: { tool_choice: "none", instructions: "Greet the user briefly: Hi, what are we working on? Then listen. Do not call tools or read CRM details aloud." } });
       } };
-      connection.onconnectionstatechange = () => { if (token === generation.current && ["failed", "disconnected"].includes(connection.connectionState)) { void endRef.current(); setError("Voice disconnected. Your drafts are safe. Reconnect or continue typing once the call has ended."); } };
+      const disconnected = () => { if (token === generation.current) { void endRef.current(); setError("Voice disconnected. Your drafts are safe. Reconnect or continue typing once the call has ended."); } };
+      connection.onconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(connection.connectionState)) disconnected(); };
+      connection.oniceconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(connection.iceConnectionState)) disconnected(); };
+      media.current?.getAudioTracks().forEach(track => { track.onended = disconnected; });
       dc.onclose = () => { if (token === generation.current) { void endRef.current(); setError("Voice disconnected. Your drafts are safe."); } };
       dc.onmessage = event => {
         if (token !== generation.current) return;
         let value: Record<string, unknown>; try { value = JSON.parse(event.data); } catch { return; }
         if (value.type === "input_audio_buffer.speech_started") {
+          if (reviewing.current || !media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended")) return;
           lastActivity.current = Date.now(); setStatus("Listening…");
           // Speaking again interrupts the sign-off, not just its audio.
           finishAfterAudio.current = false; signOffPlayback.current.reset();
           if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
         }
-        if (value.type === "response.created") setStatus("GUD is thinking…");
+        if (value.type === "response.created") { activeResponse.current = (value.response as { id?: string })?.id ?? null; setStatus("GUD is thinking…"); }
         if (value.type === "response.output_audio.delta" || value.type === "output_audio_buffer.started") setStatus("GUD is speaking…");
-        if (value.type === "output_audio_buffer.stopped") setStatus("Listening");
-        if (signOffPlayback.current.observe(value)) void endRef.current();
+        if (value.type === "output_audio_buffer.stopped") setStatus(reviewing.current ? saved.current ? "All Gud · saved · microphone paused" : "Drafts ready · microphone paused" : media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended") ? "Listening" : "Microphone paused");
+        if (signOffPlayback.current.observe(value)) { void endRef.current(); return; }
         if (value.type === "conversation.item.input_audio_transcription.completed" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "user", content: value.transcript as string }]);
         if (value.type === "response.output_audio_transcript.done" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "assistant", content: value.transcript as string }]);
-        if (value.type === "error") setError("The voice provider interrupted a response. Your drafts are safe; try again or continue by typing.");
+        if (value.type === "error") {
+          const detail = value.error as { code?: string; event_id?: string } | undefined;
+          // A response can complete between our cancellation and the server receiving it.
+          // Ignore only that known race, correlated to a cancellation we actually sent.
+          const harmlessCancel = detail?.code === "response_cancel_not_active" && Boolean(detail.event_id && cancelEvents.current.delete(detail.event_id));
+          if (!harmlessCancel) { setError("GUD couldn’t finish its spoken reply. Check the draft or save confirmation below; reconnect if needed."); setStatus("Voice reply interrupted · drafts are safe"); }
+        }
         if (value.type === "response.done") {
+          const responseId = (value.response as { id?: string })?.id;
+          if (!responseId || responseId === activeResponse.current) activeResponse.current = null;
+          if (!activeResponse.current && queuedResponse.current) { const next = queuedResponse.current; queuedResponse.current = null; send(next as { type: string }); }
           const response = value.response as { status?: string; output?: Array<{ type: string; name: string; arguments: string; call_id: string }>; usage?: { input_tokens: number; output_tokens: number } } | undefined;
           if (response?.usage) void api("usage", { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens }, current.id).catch(() => {});
           if (response?.status && response.status !== "completed") return;
@@ -255,7 +286,7 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
         }
       };
       if (token !== generation.current) return;
-      const result = await request("voice", { sdp: offer.sdp, context: context.current, voice: selectedVoice }, current.id);
+      const result = await request("voice", { sdp: offer.sdp, context: context.current, voice: selectedVoice, pace: preferencesRef.current.pace }, current.id);
       if (token !== generation.current) return;
       await connection.setRemoteDescription({ type: "answer", sdp: result.sdp! });
     } catch (e) { if (token === generation.current) { await end(); setError((e as Error).message || "Voice could not connect. Typing still works."); setStatus("Ready to type"); } }
@@ -287,7 +318,7 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
     lock(true); reviewing.current = true; setError(""); setStatus("Saving reviewed changes…");
     // Pause input while the user commits the visible review.
     media.current?.getAudioTracks().forEach(track => { track.enabled = false; }); setMuted(voice);
-    send({ type: "response.cancel" });
+    cancelResponse();
     try {
       const reviewed = await flushEdits();
       const result = await request("save", reviewed.map(d => ({ id: d.id, version: d.version })));
@@ -311,11 +342,14 @@ export function GudConversation({ memberKey, onClassic }: { memberKey: string; o
     {!minimised ? <>
       <div className="gud-conversation-scroll">
         {!consent ? <div className="gud-conversation-intro"><p>Tell GUD what happened. It will find the right screen and prepare changes for you to review.</p><label><input type="checkbox" checked={consent} onChange={e => { updatePreferences({ consent: e.target.checked }); if (e.target.checked && launchPending.current) void startVoiceRef.current(); }} />Allow my conversation and relevant CRM details to be sent to OpenAI. Remember for my account on this browser.</label><small>{preferences.conversationFirst ? "Allowing this starts the conversation you just requested. Future clicks on Talk to GUD start voice directly." : "Voice uses my microphone only after I start it."} No CRM changes until Save. Voice stops after 2 minutes idle or 10 minutes total. GUD’s voice is AI-generated. Change these choices in Options.</small></div> : null}
+        {consent ? <details className="gud-privacy"><summary title="Your permission is remembered for this account on this browser. Click for details.">Voice & privacy · permission remembered</summary><p>Voice starts only when you ask. Your conversation and relevant CRM details go to OpenAI. GUD’s voice is AI-generated. Changes stay in draft until you click Save. The microphone stops after 2 minutes idle or 10 minutes total. Change or revoke permission in Options.</p></details> : null}
+        {preferenceWarning ? <p className="form-error" role="alert">{preferenceWarning}</p> : null}
         {options ? <section className="gud-conversation-options" aria-label="Conversation options">
           <label className="gud-conversation-toggle"><input type="checkbox" checked={preferences.conversationFirst} onChange={e => updatePreferences({ conversationFirst: e.target.checked })} />Conversation first</label>
           <small>Start voice when you press Talk to GUD. Switch off to open the panel for typing first. Never starts on page load.</small>
           <label>Voice<select aria-label="GUD voice" value={preferences.voice} disabled={voice || busy} onChange={e => updatePreferences({ voice: e.target.value as VoicePreferences["voice"] })}>{gudVoices.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}{name === "marin" ? " · default" : ""}</option>)}</select></label>
           <small>{voice ? "End the conversation to change voice." : "Used for your next conversation."} Options are saved for your account on this browser.</small>
+          <label>Response pace<select aria-label="Response pace" value={preferences.pace} disabled={voice || busy} onChange={e => updatePreferences({ pace: e.target.value as VoicePreferences["pace"] })}><option value="quick">Quick</option><option value="relaxed">Relaxed</option></select></label><small>Quick responds sooner. Choose Relaxed if you like more time to pause and think. Applies to your next conversation.</small>
           {consent ? <button type="button" className="gud-classic" disabled={voice || busy} onClick={() => updatePreferences({ consent: false })}>Ask my permission again next time</button> : null}
         </section> : null}
         {messages.length ? <div className="gud-conversation-messages" aria-live="polite">{messages.slice(-2).map((message, i) => <p key={`${messages.length}-${i}`} data-role={message.role}><small>{message.role === "user" ? "You" : "GUD"}</small>{message.content}</p>)}{messages.length > 2 ? <details><summary>Conversation history</summary>{messages.slice(0, -2).map((m, i) => <p key={i}><small>{m.role === "user" ? "You" : "GUD"}</small>{m.content}</p>)}</details> : null}</div> : null}

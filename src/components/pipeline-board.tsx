@@ -28,7 +28,6 @@ import {
   CalendarClock,
   Check,
   ChevronLeft,
-  ChevronRight,
   CircleUserRound,
   ExternalLink,
   FilePenLine,
@@ -78,7 +77,6 @@ import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog"
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { useExitTransition } from "./use-exit-transition";
 import { AnimatedReveal } from "./animated-reveal";
-import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { BoardHeaderArt } from "./board-header-art";
 import { CardDensityToggle } from "./card-density-toggle";
@@ -275,7 +273,6 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           <p>{activeCount} active opportunities{archivedCount ? ` · ${archivedCount} archived` : ""} · Updated {formatTime(now)}</p>
         </div>
         <div className="header-actions">
-          <Link className="btn btn-quiet" href="/live">Live projects <ChevronRight size={16} /></Link>
           <button className="btn btn-primary" type="button" onClick={() => setCreating(true)} aria-label="Create a new opportunity">
             <Plus size={16} /> <span className="mobile-hide">New opportunity</span>
           </button>
@@ -358,7 +355,6 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
               ))}
             </div>
           </div>
-          <span className="board-scroll-cue">Drag or scroll for later stages <ChevronRight size={13} /></span>
         </div>
         <DragOverlay dropAnimation={null} zIndex={200}>
           {activeDragId ? <OpportunityDragPreview opportunity={opportunities.find((item) => item.id === activeDragId) ?? null} stages={initialSnapshot.stages} /> : null}
@@ -687,10 +683,6 @@ function OpportunityPanel({
           <div className="panel-grid">
             <div className="panel-stack">
               <QuickActivityComposer opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onToast={onToast} voiceAiConfigured={voiceAiConfigured} initiallyOpen={searchParams.get("action") === "update"} />
-              <section className="surface relationship-overview">
-                <OpportunityInlineDetails opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onEditingEnd={() => { if (closeAfterInlineSave.current) { closeAfterInlineSave.current = false; close(); } else if (editAfterInlineSave.current) { editAfterInlineSave.current = false; setOpportunityEditor(true); } }} />
-                <div className="relationship-overview-foot"><OutreachRhythm opportunity={opportunity} /><small className="inline-activity-hint">Calculated from the activity timeline. Use Log touch to record an update.</small></div>
-              </section>
 
               <section className="surface">
                 <header className="surface-header">
@@ -719,6 +711,10 @@ function OpportunityPanel({
             </div>
 
             <div className="panel-stack">
+              <section className="surface relationship-overview">
+                <OpportunityInlineDetails opportunity={opportunity} snapshot={snapshot} onUpdate={onUpdate} onEditingEnd={() => { if (closeAfterInlineSave.current) { closeAfterInlineSave.current = false; close(); } else if (editAfterInlineSave.current) { editAfterInlineSave.current = false; setOpportunityEditor(true); } }} />
+                <div className="relationship-overview-foot"><OutreachRhythm opportunity={opportunity} /><small className="inline-activity-hint">Calculated from the activity timeline.</small></div>
+              </section>
               <section className="surface">
                 <header className="surface-header"><h3>Next action</h3></header>
                 <div className="surface-content task-list">
@@ -1048,7 +1044,7 @@ function QuickActivityComposer({
     <section className="surface compact-composer" data-open={open}>
       <header className="surface-header">
         <div><h3>Log an activity</h3><small>Record every attempt, channel and outcome</small></div>
-        <div className="activity-composer-actions"><VoiceFillButton kind="activity_update" opportunityId={opportunity.id} initiallyOpen={initiallyOpen} aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
+        <div className="activity-composer-actions"><VoiceFillButton iconOnly kind="activity_update" opportunityId={opportunity.id} initiallyOpen={initiallyOpen} aiConfigured={voiceAiConfigured} onDraft={applySpokenUpdate} /><button className={`btn ${open ? "btn-quiet" : "btn-primary"} btn-compact`} type="button" onClick={() => setOpen((value) => !value)}>{open ? <X size={13} /> : <Plus size={13} />}{open ? "Cancel" : "Log touch"}</button></div>
       </header>
       <AnimatedReveal open={open}><form className="surface-content composer-fields" onSubmit={submit}>
         <label className="checkbox-row"><input type="checkbox" checked={taskOnly} onChange={(event) => { setTaskOnly(event.target.checked); if (event.target.checked) setAddFollowUp(true); }} />Create a task only — don’t log a touchpoint</label>

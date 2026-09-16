@@ -85,6 +85,7 @@ try {
   await panel.getByRole("button", { name: "Mute", exact: true }).waitFor();
   beforeStartReply = async () => {};
   assert.equal(voiceRequests.at(-1).voice, "cedar");
+  assert.equal(voiceRequests.at(-1).pace, "quick");
   await expect(panel.getByLabel("GUD voice", { exact: true })).toBeDisabled();
   assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "response.create" && e.response?.tool_choice === "none")), true);
   await panel.getByRole("button", { name: "End", exact: true }).click();
@@ -185,8 +186,19 @@ try {
   await panel.getByRole("region", { name: "Draft Second thought" }).getByLabel("Title", { exact: true }).fill("Second manually edited");
   await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
   await panel.getByRole("alert").filter({ hasText: "Fixture edit interrupted" }).waitFor();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.cancel").length), 0, "Never cancel a response that is no longer active");
+  await emit({ type: "response.created", response: { id: "finishing-at-save" } });
   await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("All Gud · saved");
+  const cancellation = await page.evaluate(() => window.fixtureVoice.sent.findLast(e => e.type === "response.cancel"));
+  assert.equal(cancellation.response_id, "finishing-at-save");
+  await emit({ type: "response.done", response: { id: "finishing-at-save", status: "cancelled", output: [] } });
+  await emit({ type: "error", error: { code: "response_cancel_not_active", event_id: cancellation.event_id } });
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await emit({ type: "output_audio_buffer.stopped", response_id: "saved-confirmation" });
+  await expect(panel.getByRole("status")).toContainText("microphone paused");
+  await emit({ type: "input_audio_buffer.speech_started" });
+  await expect(panel.getByRole("status")).not.toContainText("Listening");
   assert.equal(saves, 3);
   await panel.getByRole("button", { name: "Resume mic", exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), false);
@@ -209,7 +221,11 @@ try {
   await page.evaluate(() => { const p = window.fixtureVoice.peers.at(-1); p.connectionState = "disconnected"; p.onconnectionstatechange(); });
   await expect(panel.getByRole("status")).toContainText("Conversation ended");
   assert.equal(endCalls, beforeDisconnect+1);
+  await emit({ type: "output_audio_buffer.stopped", response_id: "late-after-disconnect" });
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
   await startVoice();
+  await emit({ type: "error", error: { code: "rate_limit_exceeded", event_id: "unknown" } });
+  await expect(panel.getByRole("alert")).toContainText("couldn’t finish its spoken reply");
   await panel.getByRole("button", { name: "Close conversation", exact: true }).click();
   await panel.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.every(t => t.stopped)), true);
@@ -248,6 +264,24 @@ try {
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   await panel.getByRole("checkbox", { name: /Allow my conversation/ }).waitFor();
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
+  // Exercise the real cookie route (APIRequestContext bypasses page mocks).
+  // No AI request: this changes only this disposable test account's browser options.
+  const cookieOptions = { conversationFirst: false, voice: "cedar", pace: "relaxed", consent: true, consentVersion: 1, updatedAt: Date.now() + 1000 };
+  const remembered = await context.request.post("/api/gud-conversation", { headers: { Origin: baseURL }, data: { op: "preferences", input: cookieOptions } });
+  assert.equal(remembered.ok(), true);
+  await page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.startsWith("gud-conversation-options:")) localStorage.removeItem(key); });
+  await page.reload();
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await expect(panel.getByRole("checkbox", { name: /Allow my conversation/ })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Start conversation", exact: true })).toBeEnabled();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
+  await panel.getByRole("button", { name: "Options", exact: true }).click();
+  await expect(panel.getByLabel("Response pace", { exact: true })).toHaveValue("relaxed");
+  const revoked = await context.request.post("/api/gud-conversation", { headers: { Origin: baseURL }, data: { op: "preferences", input: { ...cookieOptions, consent: false, updatedAt: Date.now() + 2000 } } });
+  assert.equal(revoked.ok(), true);
+  await page.reload();
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await expect(panel.getByRole("checkbox", { name: /Allow my conversation/ })).toBeVisible();
   assert.deepEqual(errors, []);
   console.log("Conversation browser checks passed: consent/revocation, parallel voice preparation, remembered voice choice, conversation-first/default/opt-out, no automatic page-load microphone, duplicate-launch guard, late microphone cancellation, draft/edit, blank-value guard, route persistence, manual-editor protection, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, save/mic pause, cancelled-response rejection, reconnect, All Gud sign-off and mobile fit.");
 } finally { await browser.close(); }

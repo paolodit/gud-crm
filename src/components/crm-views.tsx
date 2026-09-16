@@ -450,7 +450,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
       </section>
       <SettingsSections>
         <DeliveryStageSettings data-settings-tab="delivery" initialStages={snapshot.deliveryStages} canEdit={currentRole === "admin"} />
-        <article data-settings-tab="workspace" className="surface settings-card settings-card-wide edition-settings-card">
+        <article data-settings-tab="workspace" className="surface settings-card edition-settings-card">
           <div className="settings-icon"><Compass /></div>
           <div><h2>Sales model</h2><p>Choose the shape of selling work, not a separate CRM</p></div>
           {currentRole === "admin" && !editingEdition ? <button className="btn btn-quiet settings-card-action" type="button" onClick={() => { setEditionChoice(editionKey); setEditingEdition(true); setEditionMessage(null); }}><Pencil size={14} />Change</button> : null}

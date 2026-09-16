@@ -20,18 +20,19 @@ type RecognitionConstructor = new () => Recognition;
 type VoiceProps = {
   kind: "company" | "opportunity" | "activity_update" | "delivery_update";
   onDraft: (draft: SpokenCrmDraft) => number;
-  creatingProject?: boolean; prominent?: boolean; aiConfigured?: boolean; opportunityId?: string; initiallyOpen?: boolean;
+  creatingProject?: boolean; prominent?: boolean; iconOnly?: boolean; aiConfigured?: boolean; opportunityId?: string; initiallyOpen?: boolean;
 };
 
-export function VoiceFillButton({ prominent = false, initiallyOpen = false, ...props }: VoiceProps) {
+export function VoiceFillButton({ prominent = false, iconOnly = false, initiallyOpen = false, ...props }: VoiceProps) {
   const workspaceVoice = useWorkspaceVoice();
   const [open, setOpen] = useState(initiallyOpen);
   const [mounted, setMounted] = useState(false);
   useEffect(() => { queueMicrotask(() => setMounted(true)); }, []);
   const [message, setMessage] = useState("");
-  if (workspaceVoice && props.kind === "activity_update" && props.opportunityId) return <WorkspaceVoiceButton target={{ kind: "sales", id: props.opportunityId }} initiallyOpen={initiallyOpen} />;
+  const label = props.creatingProject ? "Talk through adding a project" : props.kind.endsWith("_update") ? "Talk through an update" : prominent ? "Talk it through" : "Just talk";
+  if (workspaceVoice && props.kind === "activity_update" && props.opportunityId) return <WorkspaceVoiceButton iconOnly={iconOnly} target={{ kind: "sales", id: props.opportunityId }} initiallyOpen={initiallyOpen} />;
   return <div className="voice-fill" data-prominent={prominent}>
-    <button className="btn btn-voice" type="button" onClick={() => setOpen(true)}><Mic size={16} />{props.creatingProject ? "Talk through adding a project" : props.kind.endsWith("_update") ? "Talk through an update" : prominent ? "Talk it through" : "Just talk"}</button>
+    <button className={`btn btn-voice${iconOnly ? " voice-icon-only" : ""}`} aria-label={label} title={label} type="button" onClick={() => setOpen(true)}><Mic size={16} />{iconOnly ? null : label}</button>
     {message ? <span className="voice-fill-status" role="status">{message}</span> : null}
     {open && mounted ? createPortal(<VoiceCapture {...props} onClose={() => setOpen(false)} onDraft={(draft) => { const count = props.onDraft(draft); setMessage(count ? `${count} fields prepared. Review before saving.` : "No fields matched. You can fill them manually."); setOpen(false); return count; }} />, document.body) : null}
   </div>;

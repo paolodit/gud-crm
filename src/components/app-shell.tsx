@@ -33,7 +33,7 @@ const coreNavItems = [
   { href: "/my-work", label: "Today", icon: ListChecks },
 ];
 
-export function AppShell({ member, instanceName, conversationEnabled = false, children }: { member: CurrentMember; instanceName: string; conversationEnabled?: boolean; children: React.ReactNode }) {
+export function AppShell({ member, instanceName, voicePreferences = null, conversationEnabled = false, children }: { member: CurrentMember; instanceName: string; voicePreferences?: string | null; conversationEnabled?: boolean; children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -77,7 +77,7 @@ export function AppShell({ member, instanceName, conversationEnabled = false, ch
   ];
 
   return (
-    <CardDensityProvider memberKey={`${member.organisationId}:${member.id}`}><WorkspaceVoiceProvider key={`${member.organisationId}:${member.id}`} memberKey={`${member.organisationId}:${member.id}`} conversationEnabled={conversationEnabled}><div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
+    <CardDensityProvider memberKey={`${member.organisationId}:${member.id}`}><WorkspaceVoiceProvider key={`${member.organisationId}:${member.id}`} memberKey={`${member.organisationId}:${member.id}`} voicePreferences={voicePreferences} conversationEnabled={conversationEnabled}><div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
       <aside className="sidebar">
         <div className="brand">
           <BrandLogo size={44} priority />

@@ -10,6 +10,13 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await expect(panel.getByRole("button", { name: "Coach me" })).toHaveCount(0);
   await expect(panel.getByRole("heading", { name: "AI coach" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Talk through an update", exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Talk through an update", exact: true })).toHaveText("");
+  await expect(page.locator(".pipeline-page-header").getByRole("link", { name: "Live projects" })).toHaveCount(0);
+  await expect(page.locator(".board-scroll-cue")).toHaveCount(0);
+  const left = panel.locator(".panel-stack").first(), right = panel.locator(".panel-stack").nth(1);
+  await expect(left.getByRole("heading", { name: "Activity timeline" })).toBeVisible();
+  await expect(right.locator(".inline-opportunity-details")).toBeVisible();
+  expect(await right.locator(".relationship-overview").evaluate(el => getComputedStyle(el).backgroundImage)).toBe("none");
   const details = panel.locator(".inline-opportunity-details");
   await expect(details.locator(".inline-edit-hint, .lucide-pencil")).toHaveCount(0);
   await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toHaveText("Inline editing test");

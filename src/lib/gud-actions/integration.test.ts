@@ -85,13 +85,26 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     expect(result.map(r => r.status)).toEqual(["rejected", "fulfilled"]);
     expect((await database.pool.query("SELECT id FROM organisations WHERE id=ANY($1::uuid[])", [[a,b]])).rows.map(r => r.id)).toEqual([b]);
   });
+  it("gives batch-created Thoughts separate positions, including concurrent saves", async () => {
+    const drafts = await Promise.all(Array.from({ length: 3 }, (_, i) => actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: `Batch placement ${i}` } })));
+    await actions.commitDrafts(actor, drafts.map(approve));
+    await Promise.all(Array.from({ length: 3 }, (_, i) => thoughts.saveThought(actor, { content: { body: `Concurrent placement ${i}` } })));
+    const notes = await thoughts.listThoughts(actor);
+    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || Math.abs(a.y-b.y) >= 400).toBe(true);
+    expect(await thoughts.listThoughts(colleague)).toEqual([]);
+  });
   it("scopes conversations and allows one voice connection, with explicit provider hangup", async () => {
     const conversation = await import("./conversation");
     await database.pool.query("UPDATE organisations SET ai_enabled=true WHERE id=$1", [org]);
     const session = await conversation.startConversation(actor);
     await expect(conversation.requireConversation(colleague, session.id)).rejects.toThrow("ended");
     const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
-      if (!url.endsWith("/hangup")) expect(JSON.parse(String((options?.body as FormData).get("session"))).audio.output.voice).toBe("cedar");
+      if (!url.endsWith("/hangup")) {
+        const config = JSON.parse(String((options?.body as FormData).get("session")));
+        expect(config.audio.output.voice).toBe("cedar");
+        expect(config.audio.input.turn_detection.eagerness).toBe("high");
+        expect(config.instructions).toContain("search with kind lead");
+      }
       return new Response(url.endsWith("/hangup") ? null : "fixture-answer-sdp", { status: url.endsWith("/hangup") ? 200 : 201, headers: { location: "https://api.openai.com/v1/realtime/calls/fixture_call" } });
     });
     vi.stubGlobal("fetch", fetcher);
@@ -100,6 +113,11 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
       const results = await Promise.allSettled([conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input, "cedar"), conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input, "cedar")]);
       expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
       expect(fetcher).toHaveBeenCalledTimes(1);
+      const found = await conversation.executeConversationTool(actor, session.id, "search", { query: "Acme", kind: "lead" }, timezone);
+      expect(found).toMatchObject({ navigate: `/pipeline?opportunity=${leadId}`, record: { id: leadId, kind: "lead" } });
+      const ambiguous = await conversation.executeConversationTool(actor, session.id, "search", { query: "Acme", kind: "all" }, timezone);
+      expect(ambiguous).not.toHaveProperty("navigate");
+      expect(ambiguous).not.toHaveProperty("record");
       await expect(conversation.executeConversationTool(actor, session.id, "save", {}, timezone)).rejects.toThrow("not available");
       await conversation.recordUsage(actor, session.id, { input_tokens: 10, output_tokens: 20 });
       await conversation.recordUsage(actor, session.id, { input_tokens: 5, output_tokens: 5 });

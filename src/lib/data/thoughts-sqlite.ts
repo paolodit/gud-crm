@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { nextThoughtPosition } from "@/lib/domain/thought-placement";
 import { thoughtWriteSchema, unavailableThought, ThoughtsError, type Thought, type ThoughtActor, type ThoughtExploration } from "@/lib/domain/thoughts";
 
 /** Separate tables: never included in the shared workspace snapshot or CRM export. */
@@ -26,6 +27,10 @@ export function createSqliteThoughtStore(db: Database.Database) {
       const current = value.id ? get(actor, value.id) : null;
       if (current && current.version !== value.version) throw new ThoughtsError("This thought changed in another tab. Reload before saving; your draft is still here.");
       const now = new Date().toISOString();
+      if (!current) {
+        const existing = (db.prepare("SELECT document FROM personal_thoughts WHERE organisation_id = ? AND owner_id = ?").all(...scope(actor)) as { document: string }[]).map(row => JSON.parse(row.document) as Thought);
+        Object.assign(value.content, nextThoughtPosition(existing, value.content));
+      }
       const note: Thought = { ...value.content, id: current?.id ?? crypto.randomUUID(), version: (current?.version ?? 0) + 1, archived: value.archived, createdAt: current?.createdAt ?? now, updatedAt: now };
       if (current) db.prepare("UPDATE personal_thoughts SET document = ?, version = ? WHERE organisation_id = ? AND owner_id = ? AND id = ? AND version = ?").run(JSON.stringify(note), note.version, ...scope(actor), note.id, current.version);
       else db.prepare("INSERT INTO personal_thoughts (id, organisation_id, owner_id, document, version) VALUES (?, ?, ?, ?, ?)").run(note.id, ...scope(actor), JSON.stringify(note), note.version);

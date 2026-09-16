@@ -10,6 +10,13 @@ const connections: Database.Database[] = [];
 function fixture() { const db = new Database(":memory:"); connections.push(db); return { db, store: createSqliteThoughtStore(db) }; }
 afterEach(() => connections.splice(0).forEach((db) => db.close()));
 describe("private Thoughts storage", () => {
+  it("places batch-created notes apart while keeping other accounts private", () => {
+    const { store } = fixture();
+    const notes = Array.from({ length: 8 }, (_, i) => store.save(alice, { content: { body: `Batch ${i}` } }));
+    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || Math.abs(a.y-b.y) >= 400).toBe(true);
+    expect(store.save(bob, { content: { body: "My own board" } })).toMatchObject({ x: notes[0].x, y: notes[0].y });
+    expect(store.save(alice, { id: notes[0].id, version: 1, content: { body: "Moved", x: 99, y: 101 } })).toMatchObject({ x: 99, y: 101 });
+  });
   it("isolates reads and writes by both user and organisation, without admin overrides", () => {
     const { store } = fixture();
     const note = store.save(alice, { content: { body: "My private idea" } });

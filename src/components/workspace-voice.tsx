@@ -20,7 +20,7 @@ export const useWorkspaceVoice = () => useContext(VoiceContext);
 const choiceKey = (target: VoiceTarget) => `${target.kind}:${target.id}`;
 const kindName = (target: VoiceTarget) => target.kind === "sales" ? "Sales" : "Live project";
 
-export function WorkspaceVoiceProvider({ memberKey, conversationEnabled = false, children }: { memberKey: string; conversationEnabled?: boolean; children: React.ReactNode }) {
+export function WorkspaceVoiceProvider({ memberKey, voicePreferences = null, conversationEnabled = false, children }: { memberKey: string; voicePreferences?: string | null; conversationEnabled?: boolean; children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -92,20 +92,20 @@ export function WorkspaceVoiceProvider({ memberKey, conversationEnabled = false,
     });
   }
   return <VoiceContext.Provider value={{ open: show }}>{children}
-    {conversationEnabled ? <GudConversation memberKey={memberKey} onClassic={() => { setPreferredTarget(null); setOpen(true); }} /> : null}
+    {conversationEnabled ? <GudConversation memberKey={memberKey} initialPreferences={voicePreferences} onClassic={() => { setPreferredTarget(null); setOpen(true); }} /> : null}
     <button className="workspace-voice-launch" type="button" onClick={() => show()} aria-label="Talk to GUD" title="Talk to GUD (Ctrl/⌘ + Shift + Space)"><Mic size={19} /><span>Talk to GUD</span>{session.transcript.trim() ? <i aria-label="Draft saved" /> : null}</button>
     {mounted && (notice || undone || noticeError) && !open ? createPortal(<aside className="workspace-voice-receipt" aria-label="Voice update receipt"><div role="status"><CheckCircle2 size={18} /><strong>{notice ? `Saved · ${notice.companyName}` : undone ? "Voice update undone" : "Talk to GUD"}</strong></div>{notice ? <><p>Your reviewed changes were applied together. Undo is available for 15 minutes.</p><div className="button-row"><Link href={voiceRecordHref(notice.target)}>Open record <ArrowRight size={13} /></Link><button type="button" className="btn btn-quiet" onClick={undo} disabled={undoing}>{undoing ? <LoaderCircle className="spin" size={14} /> : <RotateCcw size={14} />}Undo update</button></div></> : null}{noticeError ? <p role="alert" className="form-error">{noticeError}</p> : null}<button type="button" className="icon-button receipt-dismiss" aria-label="Dismiss voice receipt" onClick={() => { setNotice(null); setNoticeError(""); setUndone(false); }} disabled={undoing}><X size={15} /></button></aside>, document.body) : null}
     {mounted && open ? createPortal(<WorkspaceVoiceDialog preferredTarget={preferredTarget} pageScope={voiceScopeForPath(pathname)} session={session} onSession={saveSession} onClose={() => setOpen(false)} onApplied={applied} />, document.body) : null}
   </VoiceContext.Provider>;
 }
 
-export function WorkspaceVoiceButton({ target, label = "Talk through an update", initiallyOpen = false, disabled = false, beforeOpen }: { target: VoiceTarget; label?: string; initiallyOpen?: boolean; disabled?: boolean; beforeOpen?: () => void }) {
+export function WorkspaceVoiceButton({ target, label = "Talk through an update", iconOnly = false, initiallyOpen = false, disabled = false, beforeOpen }: { target: VoiceTarget; label?: string; iconOnly?: boolean; initiallyOpen?: boolean; disabled?: boolean; beforeOpen?: () => void }) {
   const voice = useWorkspaceVoice();
   const triggered = useRef(false);
   useEffect(() => {
     if (initiallyOpen && !triggered.current && voice) { triggered.current = true; voice.open(target, true); }
   }, [initiallyOpen, target, voice]);
-  return <button type="button" className="btn btn-voice" disabled={disabled || !voice} onClick={() => { beforeOpen?.(); voice?.open(target, true); }}><Mic size={16} />{label}</button>;
+  return <button type="button" className={`btn btn-voice${iconOnly ? " voice-icon-only" : ""}`} aria-label={label} title={label} disabled={disabled || !voice} onClick={() => { beforeOpen?.(); voice?.open(target, true); }}><Mic size={16} />{iconOnly ? null : label}</button>;
 }
 
 function WorkspaceVoiceDialog({ preferredTarget, pageScope, session, onSession, onClose, onApplied }: { preferredTarget: VoiceTarget | null; pageScope: VoiceScope; session: VoiceSession; onSession: (session: VoiceSession) => void; onClose: () => void; onApplied: (receipt: VoiceReceipt) => void }) {

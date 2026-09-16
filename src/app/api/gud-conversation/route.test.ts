@@ -45,10 +45,13 @@ describe("conversation HTTP boundary", () => {
     mocks.voice.mockResolvedValue({ sdp: "fixture-answer" });
     const sessionId = crypto.randomUUID(), input = { sdp: "fixture-offer", context: {} };
     expect((await POST(request({ op: "voice", sessionId, input: { ...input, voice: "cedar" } }))).status).toBe(200);
-    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "cedar");
+    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "cedar", "quick");
     expect((await POST(request({ op: "voice", sessionId, input }))).status).toBe(200);
-    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "marin");
+    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "marin", "quick");
     expect((await POST(request({ op: "voice", sessionId, input: { ...input, voice: "not-a-voice" } }))).status).toBe(400);
     expect(mocks.voice).toHaveBeenCalledTimes(2);
+    expect((await POST(request({ op: "voice", sessionId, input: { ...input, pace: "relaxed" } }))).status).toBe(200);
+    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "marin", "relaxed");
+    expect((await POST(request({ op: "voice", sessionId, input: { ...input, pace: "invalid" } }))).status).toBe(400);
   });
 });

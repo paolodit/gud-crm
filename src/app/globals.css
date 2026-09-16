@@ -99,8 +99,8 @@ textarea.voice-workspace-transcript { width:100%; min-height:140px; resize:verti
 .inline-detail-display strong { display:block; font-size:13px; overflow-wrap:anywhere; white-space:pre-wrap; }
 .inline-detail-display[data-field="title"] strong { font-size:20px; }
 .inline-detail-display[data-empty="true"] { align-self:center; }
-.inline-empty-value { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:400; color:#d4e1f7; }
-.inline-detail-display[data-field="outreachAngle"] strong { font-weight:400; font-size:13px; line-height:1.55; color:#e5efff; }
+.inline-empty-value { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:400; color:#667085; }
+.inline-detail-display[data-field="outreachAngle"] strong { font-weight:400; font-size:13px; line-height:1.55; color:#475467; }
 .inline-temperature, .inline-priority { display:inline-flex; align-items:center; gap:6px; padding:3px 7px; border-radius:5px; font-size:11px; text-transform:capitalize; color:#172b4d; background:#e9eef7; }
 .inline-temperature i { width:7px; height:7px; border-radius:50%; background:currentColor; }
 .inline-temperature[data-temperature="hot"] { background:#ffe0d9; color:#9a2616; }
@@ -111,16 +111,16 @@ textarea.voice-workspace-transcript { width:100%; min-height:140px; resize:verti
 .inline-priority[data-priority="high"] { background:#ffe7c6; color:#864800; }
 .inline-priority[data-priority="critical"] { background:#ffdada; color:#9f2222; }
 .inline-priority[data-priority="low"] { background:#d9f0e3; color:#286447; }
-.inline-detail-display:hover:not(:disabled), .inline-detail-display:focus-visible { background:#ffffff25; }
+.inline-detail-display:hover:not(:disabled), .inline-detail-display:focus-visible { background:#edf2f8; border-color:#d0dbea; }
 .inline-detail-display:disabled { opacity:.65; cursor:default; }
 .inline-detail-grid [data-wide="true"] { grid-column:1/-1; }
-.inline-detail-form { background:#ffffff18; color:inherit; border:1px solid #ffffff80; border-radius:8px; padding:10px; min-width:0; }
+.inline-detail-form { background:#fff; color:inherit; border:1px solid #b2ccff; border-radius:8px; padding:10px; min-width:0; }
 .inline-detail-form .field-label { color:inherit; font-size:10px; gap:4px; }
 .inline-detail-form input, .inline-detail-form textarea, .inline-detail-form select { color:inherit; background:transparent; border:0; border-radius:3px; box-shadow:none; padding:0; min-height:22px; font-family:inherit; font-size:13px; font-weight:600; line-height:1.5; width:100%; }
 .inline-detail-form[data-field="title"] input { font-size:20px; font-weight:700; }
 .inline-detail-form select option { color:#172b4d; background:#fff; }
-.inline-detail-form input:focus, .inline-detail-form textarea:focus, .inline-detail-form select:focus { outline:1px solid #ffffff66; outline-offset:3px; box-shadow:none; }
-.inline-detail-form input { color-scheme:dark; }
+.inline-detail-form input:focus, .inline-detail-form textarea:focus, .inline-detail-form select:focus { outline:1px solid #84adff; outline-offset:3px; box-shadow:none; }
+.inline-detail-form input { color-scheme:light; }
 .inline-detail-form .form-error { color:#fff; background:#842424; padding:5px; border-radius:4px; font-size:11px; }
 .inline-detail-form>small { display:block; margin-top:6px; font-size:11px; }
 .inline-save-status, .inline-activity-hint { display:block; font-size:11px; margin-top:10px; }
@@ -3716,9 +3716,13 @@ textarea:focus-visible {
 .opportunity-details details > .form-grid, .theme-dialog-details details > .form-grid { padding: 0 12px 13px; }
 
 /* Relationship workspace: hierarchy first, supporting data second. */
-.relationship-overview { overflow: hidden; border: 0; color: #fff; background: linear-gradient(128deg, #11214f, #1d4ed8 62%, #5b3fd1); box-shadow: 0 12px 28px rgba(29, 78, 216, .16); }
+.relationship-overview { overflow: hidden; border: 1px solid #e4e7ec; color: #24344b; background: #fff; box-shadow: 0 1px 3px #10182806; }
+.relationship-overview .inline-detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.relationship-overview .inline-activity-hint { color: #667085; font-size: 10px; }
+.voice-icon-only { width: 34px; height: 34px; min-width: 34px; padding: 0; justify-content: center; }
+.dialog-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .relationship-overview-main { padding: 21px 22px 17px; }
-.relationship-overview .eyebrow { color: #bfdbfe; }
+.relationship-overview .eyebrow { color: #667085; }
 .relationship-overview h3 { margin: 5px 0 7px; font-size: 22px; letter-spacing: -.035em; }
 .relationship-angle { max-width: 720px; margin: 0; color: #e0e7ff; font-size: 13px; line-height: 1.55; }
 .relationship-signals { margin-top: 16px; }
@@ -3735,11 +3739,11 @@ textarea:focus-visible {
 .relationship-signal-grid .summary-item strong.badge-at_risk,
 .relationship-signal-grid .summary-item strong.badge-unresponsive { color: #912018; background: #fee4e2; }
 .relationship-signal-grid .summary-item-edit:hover strong { color: #fff; }
-.relationship-overview-foot { padding: 12px 16px 15px; background: rgb(9 18 51 / 34%); }
-.relationship-overview .outreach-rhythm { margin: 0; border-color: rgb(255 255 255 / 13%); background: rgb(255 255 255 / 13%); }
-.relationship-overview .outreach-rhythm > div { background: rgb(255 255 255 / 9%); }
-.relationship-overview .outreach-rhythm span { color: #bfdbfe; }
-.relationship-overview .outreach-rhythm strong { color: #fff; }
+.relationship-overview-foot { padding: 12px 16px 15px; background: #f8fafc; border-top: 1px solid #eaecf0; }
+.relationship-overview .outreach-rhythm { margin: 0; border-color: #e4e7ec; background: #fff; }
+.relationship-overview .outreach-rhythm > div { background: transparent; }
+.relationship-overview .outreach-rhythm span { color: #667085; }
+.relationship-overview .outreach-rhythm strong { color: #344054; }
 .relationship-overview .commercial-summary { border-color: rgb(255 255 255 / 16%); background: rgb(255 255 255 / 8%); }
 .relationship-overview .commercial-summary small { color: #bfdbfe; }
 .relationship-overview .commercial-summary strong { color: #fff; }

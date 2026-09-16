@@ -20,6 +20,8 @@
 .thoughts-viewport[data-panning="true"] { cursor: grabbing; user-select: none; }
 .thoughts-canvas { position: relative; background-image: radial-gradient(#83907726 .7px, transparent .9px); background-size: 24px 24px; }
 .thoughts-canvas[data-lanes="true"] { background-image: repeating-linear-gradient(90deg, transparent 0, transparent 328px, #b9c2ac33 329px, #b9c2ac33 330px), radial-gradient(#83907726 .7px, transparent .9px); background-size: 330px 100%, 24px 24px; }
+.thoughts-canvas[data-dots="false"] { background-image: none; }
+.thoughts-canvas[data-lanes="true"][data-dots="false"] { background-image: repeating-linear-gradient(90deg, transparent 0, transparent 328px, #b9c2ac33 329px, #b9c2ac33 330px); background-size: 330px 100%; }
 .thoughts-page [data-colour="butter"] { --note-colour: #fff0b4; }
 .thoughts-page [data-colour="rose"] { --note-colour: #f9d7dd; }
 .thoughts-page [data-colour="sage"] { --note-colour: #dcebcf; }
@@ -32,7 +34,7 @@
 .thought-grip { display: grid; place-items: center; touch-action: none; cursor: grab; background: transparent; border: 0; color: #566344; padding: 5px; }
 .thought-grip:active { cursor: grabbing; }
 .thought-note-open { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: 3px 0 14px; cursor: pointer; }
-.thought-note-open > :first-child { padding-right:54px; min-height:25px; }
+.thought-note-open > :first-child { padding-right:78px; min-height:25px; }
 .thought-note-open h2 { font-size: 17px; line-height: 1.35; font-weight: 600; margin: 0 0 8px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .thought-note-open p { font-size: 15px; line-height: 1.6; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .thought-note-checks { padding-bottom: 10px; }
@@ -41,14 +43,20 @@
 .thought-note-checks button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .thought-note-checks [data-done="true"] { text-decoration: line-through; color: #737d6a; }
 .thought-note-checks small { font-size: 10px; color: #67715f; }
-.thought-explore { display: flex; align-items: center; gap: 7px; width: auto; max-width:100%; border: 0; padding: 6px 8px; margin:0 0 12px; border-radius:5px; background: #ffffff38; color: #3e5338; font-size: 11px; }
-.thought-explore span { margin-left: auto; font-size: 10px; }
+.thought-explore { position:relative; cursor:pointer; border-radius:5px; }
+.thought-explore-count { position:absolute; top:-3px; right:-2px; font-size:8px; }
+.thought-note-actions .thought-mic { cursor:pointer; }
+.thought-note-actions button:hover, .thought-colour-toggle:hover { background:#ffffff60; }
+.thought-quick-colour { position:relative; display:flex; justify-content:flex-end; margin:0 -7px 5px 0; }
+.thought-colour-toggle { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:50%; padding:5px; color:#647153; background:transparent; cursor:pointer; }
+.thought-quick-colour .thought-colour-popover { position:absolute; bottom:32px; right:0; z-index:101; width:224px; margin:0; padding:10px; border:1px solid #cbd5c5; border-radius:10px; background:#fff; box-shadow:0 5px 20px #22332226; }
+.thought-colour-popover legend { float:left; width:100%; padding:0 0 8px; font-size:11px; }
+.thought-editor footer { flex-wrap:wrap; }
 .thoughts-canvas[data-compact="true"] .thought-note { width: 220px; padding: 7px 12px 0; }
 .thoughts-canvas[data-compact="true"] .thought-note-open { padding: 5px 0 8px; }
 .thoughts-canvas[data-compact="true"] .thought-note-open h2 { font-size: 14px; margin-bottom: 4px; }
 .thoughts-canvas[data-compact="true"] .thought-note-open p { font-size: 12px; -webkit-line-clamp: 3; }
 .thoughts-canvas[data-compact="true"] .thought-note-checks button { display: none; }
-.thoughts-canvas[data-compact="true"] .thought-explore { padding: 8px 0; font-size: 10px; }
 .thoughts-empty { max-width: 400px; padding: 90px 35px; text-align: center; color: #6c7a62; }
 .thoughts-empty h2 { font-size: 21px; font-weight: 500; margin: 14px 0 10px; }
 .thoughts-empty p { line-height: 1.7; }

@@ -49,8 +49,8 @@ export const toolArguments = {
   finish_conversation: z.object({}).strict(),
 };
 export const actionTools = Object.entries(toolArguments).map(([name, schema]) => ({ type: "function" as const, name, description: ({
-  navigate: "Open a GUD screen. Does not save or discard drafts.",
-  search: "Find existing leads and projects by company, title or linked contact. Returns limited matches; clarify ambiguous names. Never search private Thoughts.",
+  navigate: "Open a GUD screen when explicitly requested. Do not use before searching/opening a client: those tools navigate automatically. Companies is not where sales touchpoints are logged. Does not save or discard drafts.",
+  search: "Find leads/projects by company, title or linked contact. On Pipeline prefer kind lead for client touchpoints; on Live projects prefer kind project. One match returns an opened record and navigates there, so do not repeat open_record. Multiple matches require clarification. Never search private Thoughts.",
   open_record: "Open/read the exact selected lead/project, including available tasks. Use before staging updates. Does not mutate it.",
   stage_change: "Prepare a visible editable draft, NOT a save. For a new record use null targetId. To revise a draft use its returned draftId/version and supply only changed fields (all other fields null). Existing target needs open_record first. A task on a project is a checklist item: it has no individual due date. dueDate on projects is the project milestone date. No delete, archive, terminal sales moves, emails or invoice sending. Thought creation accepts title/body only.",
   finish_conversation: "Request sign-off. Pending drafts remain unsaved; never infer that 'that is it' authorizes saving. User must use Save changes.",

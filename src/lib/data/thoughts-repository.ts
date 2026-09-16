@@ -1,7 +1,8 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { personalThoughts, thoughtExplorations, thoughtAiLimits } from "@/db/schema";
+import { personalThoughts, thoughtExplorations, thoughtAiLimits, users } from "@/db/schema";
+import { nextThoughtPosition } from "@/lib/domain/thought-placement";
 import { env } from "@/lib/env";
 import { localDatabaseForPrivateData } from "./local-store";
 import { createSqliteThoughtStore } from "./thoughts-sqlite";
@@ -33,8 +34,14 @@ export async function saveThought(actor: ThoughtActor, input: unknown): Promise<
   const value = thoughtWriteSchema.parse(input);
   if (env.sqliteMode) return local().save(actor, value);
   if (!value.id) {
-    const [row] = await db.insert(personalThoughts).values({ organisationId: actor.organisationId, ownerId: actor.id, content: value.content, archived: value.archived }).returning();
-    return noteFromRow(row);
+    return db.transaction(async tx => {
+      // Serialize placements for this account, including concurrent/batched voice saves.
+      await tx.select({ id: users.id }).from(users).where(and(eq(users.id, actor.id), eq(users.organisationId, actor.organisationId))).for("update");
+      const existing = await tx.select().from(personalThoughts).where(owned(actor));
+      const position = nextThoughtPosition(existing.map(noteFromRow), value.content);
+      const [row] = await tx.insert(personalThoughts).values({ organisationId: actor.organisationId, ownerId: actor.id, content: { ...value.content, ...position }, archived: value.archived }).returning();
+      return noteFromRow(row);
+    });
   }
   const current = await getThought(actor, value.id);
   if (current.version !== value.version) throw new ThoughtsError("This thought changed in another tab. Reload before saving; your draft is still here.");
