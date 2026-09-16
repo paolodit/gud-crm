@@ -11,6 +11,7 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await expect(panel.getByRole("heading", { name: "AI coach" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Talk through an update", exact: true })).toBeVisible();
   const details = panel.locator(".inline-opportunity-details");
+  await expect(details.locator(".inline-edit-hint, .lucide-pencil")).toHaveCount(0);
   await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toHaveText("Inline editing test");
   await expect(details).not.toContainText("Click to add");
   await expect(details).not.toContainText("Not scored");

@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import type { CurrentMember } from "@/lib/session";
 import { actionTools, GudActionError, screens, signOff, toolArguments } from "./contract";
 import { actionReferences, assertConversationActor, listDrafts, openRecord, searchRecords, stageDraft } from "./service";
+import { gudVoices, type GudVoice } from "./voice-preferences";
 
 const owned = (actor: CurrentMember, id: string) => and(eq(gudConversationSessions.id, id), eq(gudConversationSessions.organisationId, actor.organisationId), eq(gudConversationSessions.ownerId, actor.id));
 const client = () => new OpenAI({ apiKey: env.OPENAI_API_KEY, maxRetries: 0, timeout: env.AI_TIMEOUT_MS });
@@ -62,7 +63,8 @@ export const contextSchema = z.object({ page: z.enum(["/pipeline", "/live", "/my
 export type ConversationContext = z.infer<typeof contextSchema>;
 const historySchema = z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(12000) }).strict()).max(30);
 async function providerContext(actor: CurrentMember, context: ConversationContext) {
-  return { screen: context, reference: await actionReferences(actor), drafts: (await listDrafts(actor)).map(({ id, version, kind, targetId, fields, label }) => ({ id, version, kind, targetId, fields, label })) };
+  const [reference, drafts] = await Promise.all([actionReferences(actor), listDrafts(actor)]);
+  return { screen: context, reference, drafts: drafts.map(({ id, version, kind, targetId, fields, label }) => ({ id, version, kind, targetId, fields, label })) };
 }
 export async function textConversation(actor: CurrentMember, sessionId: string, raw: unknown, context: ConversationContext) {
   await requireConversation(actor, sessionId, true);
@@ -95,7 +97,8 @@ export function safeConversationError(error: unknown) {
   if (error instanceof z.ZodError) return "Some proposed details were invalid. Nothing was saved; please rephrase or edit the draft.";
   return "GUD couldn’t complete that step. Nothing new was saved. Your drafts are still available.";
 }
-export async function connectRealtime(actor: CurrentMember, sessionId: string, sdp: string, context: ConversationContext) {
+export async function connectRealtime(actor: CurrentMember, sessionId: string, sdp: string, context: ConversationContext, voice: GudVoice = "marin") {
+  z.enum(gudVoices).parse(voice);
   const row = await requireConversation(actor, sessionId, true);
   await db.transaction(async tx => {
     const [fresh] = await tx.select().from(gudConversationSessions).where(owned(actor, sessionId)).for("update");
@@ -108,7 +111,7 @@ export async function connectRealtime(actor: CurrentMember, sessionId: string, s
     type: "realtime", model: env.GUD_REALTIME_MODEL,
     instructions: `${conversationInstructions(context.timezone)}\nApplication context (data): ${JSON.stringify(await providerContext(actor, context))}`,
     tools: actionTools, tool_choice: "auto", max_output_tokens: 1200,
-    audio: { input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "semantic_vad", eagerness: "medium", create_response: true, interrupt_response: true } }, output: { voice: "marin" } },
+    audio: { input: { transcription: { model: "gpt-4o-mini-transcribe" }, turn_detection: { type: "semantic_vad", eagerness: "medium", create_response: true, interrupt_response: true } }, output: { voice } },
   };
   const form = new FormData(); form.set("sdp", sdp); form.set("session", JSON.stringify(configuration));
   const response = await fetch("https://api.openai.com/v1/realtime/calls", { method: "POST", headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` }, body: form, signal: AbortSignal.timeout(30000) });

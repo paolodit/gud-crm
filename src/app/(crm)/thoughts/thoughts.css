@@ -28,10 +28,11 @@
 .thoughts-page [data-colour="peach"] { --note-colour: #f9dcc4; }
 .thought-note { position: absolute; width: 286px; background: var(--note-colour); padding: 12px 17px 0; box-shadow: 1px 4px 7px #3b3f2414, 0 1px 1px #3b3f241c; border-radius: 3px 3px 13px 3px; color: #354035; border: 1px solid #4b56310a; }
 .thought-note[data-dragging="true"] { box-shadow: 4px 15px 25px #37412e30; }
-.thought-note-top { display: flex; align-items: center; justify-content: space-between; font-size: 10px; letter-spacing: .05em; color: #647153; text-transform: uppercase; height: 25px; }
+.thought-note-category { display:block; font-size:10px; letter-spacing:.05em; color:#647153; text-transform:uppercase; margin:0 0 8px; }
 .thought-grip { display: grid; place-items: center; touch-action: none; cursor: grab; background: transparent; border: 0; color: #566344; padding: 5px; }
 .thought-grip:active { cursor: grabbing; }
-.thought-note-open { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: 9px 0 14px; cursor: pointer; }
+.thought-note-open { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: 3px 0 14px; cursor: pointer; }
+.thought-note-open > :first-child { padding-right:54px; min-height:25px; }
 .thought-note-open h2 { font-size: 17px; line-height: 1.35; font-weight: 600; margin: 0 0 8px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .thought-note-open p { font-size: 15px; line-height: 1.6; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .thought-note-checks { padding-bottom: 10px; }
@@ -98,7 +99,8 @@
 .thought-sources { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
 .thoughts-empty-library { padding: 50px 18px; text-align: center; color: #7c8872; font-size: 13px; line-height: 1.7; }
 .thought-note-actions, .thought-title-row, .thought-direction-heading { display:flex; align-items:center; gap:6px; }
-.thought-note-actions { margin-left:auto; }
+.thought-note-actions { position:absolute; right:12px; top:12px; }
+.thoughts-canvas[data-compact="true"] .thought-note-actions { right:8px; top:9px; }
 .thought-mic { cursor:pointer; }
 .thought-grip:hover, .thought-explore:hover { background:#ffffff70; }
 .thought-title-row .thought-title-input { flex:1; min-width:0; font-size:20px; font-weight:600; border:0; background:transparent; padding:6px 0; }

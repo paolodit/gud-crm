@@ -15,7 +15,6 @@ import {
   Settings,
   Sparkles,
   Target,
-  Brain,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,6 +23,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import type { CurrentMember } from "@/lib/session";
 import { BrandLogo } from "@/components/brand-logo";
+import { ThoughtBubble } from "@/components/thought-bubble-icon";
 import { WorkspaceVoiceProvider } from "@/components/workspace-voice";
 import { CardDensityProvider } from "@/components/use-card-density";
 
@@ -68,7 +68,7 @@ export function AppShell({ member, instanceName, conversationEnabled = false, ch
 
   const navItems = [
     ...coreNavItems,
-    { href: "/thoughts", label: "Thoughts", icon: Brain },
+    { href: "/thoughts", label: "Thoughts", icon: ThoughtBubble },
     { href: "/research", label: "Marketing Ideas", icon: Sparkles },
     { href: "/targets", label: "Targets", icon: Target },
     { href: "/companies", label: "Companies", icon: Building2 },

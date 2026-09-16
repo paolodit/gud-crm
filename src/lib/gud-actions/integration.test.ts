@@ -90,11 +90,14 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     await database.pool.query("UPDATE organisations SET ai_enabled=true WHERE id=$1", [org]);
     const session = await conversation.startConversation(actor);
     await expect(conversation.requireConversation(colleague, session.id)).rejects.toThrow("ended");
-    const fetcher = vi.fn(async (url: string) => new Response(url.endsWith("/hangup") ? null : "fixture-answer-sdp", { status: url.endsWith("/hangup") ? 200 : 201, headers: { location: "https://api.openai.com/v1/realtime/calls/fixture_call" } }));
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (!url.endsWith("/hangup")) expect(JSON.parse(String((options?.body as FormData).get("session"))).audio.output.voice).toBe("cedar");
+      return new Response(url.endsWith("/hangup") ? null : "fixture-answer-sdp", { status: url.endsWith("/hangup") ? 200 : 201, headers: { location: "https://api.openai.com/v1/realtime/calls/fixture_call" } });
+    });
     vi.stubGlobal("fetch", fetcher);
     try {
       const input = { page: "/pipeline" as const, recordId: null, timezone };
-      const results = await Promise.allSettled([conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input), conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input)]);
+      const results = await Promise.allSettled([conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input, "cedar"), conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", input, "cedar")]);
       expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
       expect(fetcher).toHaveBeenCalledTimes(1);
       await expect(conversation.executeConversationTool(actor, session.id, "save", {}, timezone)).rejects.toThrow("not available");

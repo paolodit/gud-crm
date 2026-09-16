@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getCurrentMember } from "@/lib/session";
 import { env } from "@/lib/env";
+import { gudVoices } from "@/lib/gud-actions/voice-preferences";
 import { ConversationBodyTooLarge, readConversationBody } from "@/lib/gud-actions/request-body";
 import { actionReferences, assertConversationActor, cancelDraft, commitDrafts, editDraft, listDrafts } from "@/lib/gud-actions/service";
 import { connectRealtime, contextSchema, endConversation, executeConversationTool, recordUsage, safeConversationError, startConversation, textConversation } from "@/lib/gud-actions/conversation";
@@ -15,8 +16,11 @@ export async function POST(request: Request) {
     assertConversationActor(actor);
     const text = await readConversationBody(request);
     const data = z.object({ op: z.string(), sessionId: z.uuid().optional(), input: z.unknown().optional() }).strict().parse(JSON.parse(text));
-    if (data.op === "load") return Response.json({ drafts: await listDrafts(actor), references: await actionReferences(actor) });
-    if (data.op === "start") return Response.json({ session: await startConversation(actor), drafts: await listDrafts(actor), references: await actionReferences(actor) });
+    if (data.op === "load" || data.op === "start") {
+      const session = data.op === "start" ? await startConversation(actor) : undefined;
+      const [drafts, references] = await Promise.all([listDrafts(actor), actionReferences(actor)]);
+      return Response.json({ session, drafts, references });
+    }
     if (data.op === "save") return Response.json({ receipts: await commitDrafts(actor, data.input), drafts: await listDrafts(actor) });
     if (data.op === "edit") {
       const input = z.object({ id: z.uuid(), version: z.number().int().positive(), fields: z.unknown() }).strict().parse(data.input);
@@ -26,7 +30,7 @@ export async function POST(request: Request) {
     const sessionId = z.uuid().parse(data.sessionId);
     if (data.op === "end") { await endConversation(actor, sessionId); return Response.json({ ok: true }); }
     if (data.op === "usage") { await recordUsage(actor, sessionId, data.input); return Response.json({ ok: true }); }
-    if (data.op === "voice") { const input = z.object({ sdp: z.string().min(10).max(30000), context: contextSchema }).strict().parse(data.input); return Response.json(await connectRealtime(actor, sessionId, input.sdp, input.context)); }
+    if (data.op === "voice") { const input = z.object({ sdp: z.string().min(10).max(30000), context: contextSchema, voice: z.enum(gudVoices).default("marin") }).strict().parse(data.input); return Response.json(await connectRealtime(actor, sessionId, input.sdp, input.context, input.voice)); }
     if (data.op === "tool") { const input = z.object({ name: z.string().max(80), arguments: z.unknown(), context: contextSchema }).strict().parse(data.input); return Response.json(await executeConversationTool(actor, sessionId, input.name, input.arguments, input.context.timezone)); }
     if (data.op === "text") { const input = z.object({ history: z.unknown(), context: contextSchema }).strict().parse(data.input); return Response.json(await textConversation(actor, sessionId, input.history, input.context)); }
     return Response.json({ error: "Unknown conversation operation." }, { status: 400 });

@@ -1,6 +1,6 @@
 "use client";
 import { startTransition, useRef, useState, type FormEvent } from "react";
-import { Pencil, Plus, Flag } from "lucide-react";
+import { Plus, Flag } from "lucide-react";
 import { saveOpportunityFieldAction } from "@/app/actions/crm";
 import type { BoardSnapshot, OpportunitySummary } from "@/lib/domain/types";
 
@@ -69,7 +69,7 @@ function InlineField({ spec, editing, disabled, onEdit, onCancel, onSave }: { sp
       {spec.field === "temperature" ? <span className="inline-temperature" data-temperature={spec.value}><i aria-hidden="true" />{spec.display}</span>
         : spec.field === "priority" ? <span className="inline-priority" data-priority={spec.value}><Flag size={13} aria-hidden="true" />{spec.value}</span>
           : spec.display ?? String(spec.value)}
-    </strong></>}<Pencil className="inline-edit-hint" size={12} aria-hidden="true" />
+    </strong></>}
   </button>;
   return <form className="inline-detail-form" data-wide={wide} data-field={spec.field} aria-busy={pending} data-unsaved="true" noValidate onSubmit={submit} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.requestSubmit(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); if (!pending) { cancelled.current = true; onCancel(); } } }}><label className="field-label">{spec.label}
     {spec.options ? <select aria-label={spec.label} autoFocus name="value" className="field-select" defaultValue={spec.value ?? ""} disabled={pending}>{!spec.options.some((option) => option.value === "") ? <option value="" disabled>Choose…</option> : null}{spec.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>

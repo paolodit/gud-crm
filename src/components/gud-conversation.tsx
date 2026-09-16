@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, ChevronDown, LoaderCircle, Mic, MicOff, Send, Square, X } from "lucide-react";
+import { Check, ChevronDown, LoaderCircle, Mic, MicOff, Send, Settings2, Square, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { signOff, type GudDraft, type GudFields } from "@/lib/gud-actions/contract";
 import { acknowledgeEdits, SignOffPlayback, type DraftEdits, type EditableFields } from "@/lib/gud-actions/client-state";
+import { defaultVoicePreferences, gudVoices, readVoicePreferences, type VoicePreferences } from "@/lib/gud-actions/voice-preferences";
 import "./gud-conversation.css";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -20,14 +21,31 @@ async function api(op: string, input?: unknown, sessionId?: string): Promise<Res
   return result;
 }
 
-export function GudConversation({ onClassic }: { onClassic: () => void }) {
+export function GudConversation({ memberKey, onClassic }: { memberKey: string; onClassic: () => void }) {
   const router = useRouter(), pathname = usePathname(), params = useSearchParams();
   const [open, setOpen] = useState(false), [minimised, setMinimised] = useState(false);
   const [session, setSession] = useState<Session | null>(null), [drafts, setDrafts] = useState<GudDraft[]>([]);
   const [references, setReferences] = useState<References | null>(null);
   const [messages, setMessages] = useState<Message[]>([]), [text, setText] = useState("");
   const [status, setStatus] = useState("Ready when you are"), [error, setError] = useState("");
-  const [busy, setBusy] = useState(false), [voice, setVoice] = useState(false), [muted, setMuted] = useState(false), [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false), [voice, setVoice] = useState(false), [muted, setMuted] = useState(false);
+  const [preferences, setPreferences] = useState(defaultVoicePreferences), [options, setOptions] = useState(false);
+  const preferencesRef = useRef(defaultVoicePreferences), launchPending = useRef(false), loadPending = useRef<Promise<void> | null>(null);
+  const startVoiceRef = useRef<() => Promise<void>>(async () => {});
+  const storageKey = `gud-conversation-options:${memberKey}`;
+  const consent = preferences.consent;
+  useEffect(() => {
+    let next = { ...defaultVoicePreferences };
+    try { next = readVoicePreferences(localStorage.getItem(storageKey)); } catch { /* In-memory options still work. */ }
+    preferencesRef.current = next;
+    queueMicrotask(() => setPreferences(next));
+  }, [storageKey]);
+  function updatePreferences(patch: Partial<VoicePreferences>) {
+    const next = { ...preferencesRef.current, ...patch };
+    preferencesRef.current = next; setPreferences(next);
+    if (!next.conversationFirst) launchPending.current = false;
+    try { localStorage.setItem(storageKey, JSON.stringify({ ...next, consentVersion: 1 })); } catch { /* In-memory options still work. */ }
+  }
   const [edits, setEdits] = useState<DraftEdits>({});
   const editsRef = useRef<DraftEdits>({}), ending = useRef(false);
   const loaded = useRef(false), reviewing = useRef(false), pendingRequests = useRef(new Set<Promise<Result>>());
@@ -66,9 +84,11 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
   useEffect(() => {
     const show = () => {
       setOpen(true); setMinimised(false);
+      if (preferencesRef.current.conversationFirst && preferencesRef.current.consent) { void startVoiceRef.current(); return; }
+      launchPending.current = preferencesRef.current.conversationFirst;
       if (loaded.current || busyRef.current) return;
       loaded.current = true; setError("");
-      void api("load").then(result => { draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); setReferences(result.references ?? null); }).catch(e => { loaded.current = false; setError(e.message); });
+      loadPending.current = api("load").then(result => { draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); setReferences(result.references ?? null); }).catch(e => { loaded.current = false; setError(e.message); }).finally(() => { loadPending.current = null; });
     };
     window.addEventListener("gud:conversation-open", show);
     return () => window.removeEventListener("gud:conversation-open", show);
@@ -145,24 +165,39 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
     finally { lock(false); }
   }
   async function startVoice() {
-    if (busyRef.current || voice || !consent) return;
+    if (busyRef.current || peer.current || !preferencesRef.current.consent) return;
     lock(true); setError(""); setStatus("Connecting voice…");
+    launchPending.current = false;
     reviewing.current = false;
     const token = ++generation.current;
+    const selectedVoice = preferencesRef.current.voice;
     try {
+      await loadPending.current;
       await flushEdits();
       if (token !== generation.current) return;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (token !== generation.current) { stream.getTracks().forEach(t => t.stop()); return; }
-      media.current = stream;
-      const current = await ensureSession(token);
+      // Prepare the microphone and SDP while the app creates its guarded session.
+      // A cancelled permission prompt may resolve late: stop that stream at once.
+      const [current, prepared] = await Promise.all([ensureSession(token), (async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (token !== generation.current) { stream.getTracks().forEach(t => t.stop()); throw new Error("Conversation stopped."); }
+        media.current = stream;
+        const connection = new RTCPeerConnection(); peer.current = connection;
+        stream.getTracks().forEach(track => connection.addTrack(track, stream));
+        const dc = connection.createDataChannel("oai-events"); channel.current = dc;
+        const offer = await connection.createOffer();
+        if (token !== generation.current) throw new Error("Conversation stopped.");
+        await connection.setLocalDescription(offer);
+        return { connection, dc, offer };
+      })()]);
       if (token !== generation.current) return;
-      const connection = new RTCPeerConnection(); peer.current = connection;
+      const { connection, dc, offer } = prepared;
       const output = new Audio(); output.autoplay = true; audio.current = output;
       connection.ontrack = event => { if (token !== generation.current) return; output.srcObject = event.streams[0]; void output.play().catch(() => { if (token === generation.current) setError("Use Play voice to allow GUD’s audio in this browser."); }); };
-      stream.getTracks().forEach(track => connection.addTrack(track, stream));
-      const dc = connection.createDataChannel("oai-events"); channel.current = dc; seenCalls.current.clear();
-      dc.onopen = () => { if (token === generation.current) { setVoice(true); setStatus("Listening"); lastActivity.current = Date.now(); } };
+      seenCalls.current.clear();
+      dc.onopen = () => { if (token === generation.current) {
+        setVoice(true); setStatus("Listening"); lastActivity.current = Date.now();
+        send({ type: "response.create", response: { tool_choice: "none", instructions: "Greet the user briefly: Hi, what are we working on? Then listen. Do not call tools or read CRM details aloud." } });
+      } };
       connection.onconnectionstatechange = () => { if (token === generation.current && ["failed", "disconnected"].includes(connection.connectionState)) { void endRef.current(); setError("Voice disconnected. Your drafts are safe. Reconnect or continue typing once the call has ended."); } };
       dc.onclose = () => { if (token === generation.current) { void endRef.current(); setError("Voice disconnected. Your drafts are safe."); } };
       dc.onmessage = event => {
@@ -219,24 +254,24 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
           }).catch(() => { lock(false); if (token === generation.current) setError("That action was interrupted. Review your drafts before retrying."); });
         }
       };
-      const offer = await connection.createOffer(); await connection.setLocalDescription(offer);
       if (token !== generation.current) return;
-      const result = await request("voice", { sdp: offer.sdp, context: context.current }, current.id);
+      const result = await request("voice", { sdp: offer.sdp, context: context.current, voice: selectedVoice }, current.id);
       if (token !== generation.current) return;
       await connection.setRemoteDescription({ type: "answer", sdp: result.sdp! });
     } catch (e) { if (token === generation.current) { await end(); setError((e as Error).message || "Voice could not connect. Typing still works."); setStatus("Ready to type"); } }
-    finally { lock(false); }
+    finally { if (token === generation.current) lock(false); }
   }
+  useEffect(() => { startVoiceRef.current = startVoice; });
   async function end() {
     if (ending.current) return false;
     ending.current = true; setStopping(true); lock(true);
     const current = sessionRef.current;
-    disconnect(); setStatus("Microphone stopped · finishing up…");
+    launchPending.current = false; disconnect(); setStatus("Microphone stopped · finishing up…");
     try {
       if (current) { await api("end", undefined, current.id); sessionRef.current = null; setSession(null); }
       // A tool may already have staged a private draft. Wait for it, then reload
       // authoritative drafts without applying its late navigation or speech.
-      await Promise.allSettled([...pendingRequests.current]); await queue.current;
+      await loadPending.current; await Promise.allSettled([...pendingRequests.current]); await queue.current;
       const restored = await api("load"); draftsRef.current = restored.drafts ?? []; setDrafts(draftsRef.current);
       await flushEdits();
       reviewing.current = false; setStatus("Conversation ended");
@@ -275,7 +310,14 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
     <div className="gud-conversation-status" role="status">{busy ? <LoaderCircle className="spin" size={15} /> : voice ? <Mic size={15} /> : <Check size={15} />}{status}{drafts.length ? <span>{drafts.length} unsaved</span> : null}</div>
     {!minimised ? <>
       <div className="gud-conversation-scroll">
-        {!consent ? <div className="gud-conversation-intro"><p>Tell GUD what happened. It will find the right screen and prepare changes for you to review.</p><label><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />Send my conversation and relevant CRM details to OpenAI. Voice uses my microphone only after I start it.</label><small>No whole-database upload. No CRM changes until Save. Drafts are private to this account. Voice stops after 2 minutes idle or 10 minutes total.</small></div> : null}
+        {!consent ? <div className="gud-conversation-intro"><p>Tell GUD what happened. It will find the right screen and prepare changes for you to review.</p><label><input type="checkbox" checked={consent} onChange={e => { updatePreferences({ consent: e.target.checked }); if (e.target.checked && launchPending.current) void startVoiceRef.current(); }} />Allow my conversation and relevant CRM details to be sent to OpenAI. Remember for my account on this browser.</label><small>{preferences.conversationFirst ? "Allowing this starts the conversation you just requested. Future clicks on Talk to GUD start voice directly." : "Voice uses my microphone only after I start it."} No CRM changes until Save. Voice stops after 2 minutes idle or 10 minutes total. GUD’s voice is AI-generated. Change these choices in Options.</small></div> : null}
+        {options ? <section className="gud-conversation-options" aria-label="Conversation options">
+          <label className="gud-conversation-toggle"><input type="checkbox" checked={preferences.conversationFirst} onChange={e => updatePreferences({ conversationFirst: e.target.checked })} />Conversation first</label>
+          <small>Start voice when you press Talk to GUD. Switch off to open the panel for typing first. Never starts on page load.</small>
+          <label>Voice<select aria-label="GUD voice" value={preferences.voice} disabled={voice || busy} onChange={e => updatePreferences({ voice: e.target.value as VoicePreferences["voice"] })}>{gudVoices.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}{name === "marin" ? " · default" : ""}</option>)}</select></label>
+          <small>{voice ? "End the conversation to change voice." : "Used for your next conversation."} Options are saved for your account on this browser.</small>
+          {consent ? <button type="button" className="gud-classic" disabled={voice || busy} onClick={() => updatePreferences({ consent: false })}>Ask my permission again next time</button> : null}
+        </section> : null}
         {messages.length ? <div className="gud-conversation-messages" aria-live="polite">{messages.slice(-2).map((message, i) => <p key={`${messages.length}-${i}`} data-role={message.role}><small>{message.role === "user" ? "You" : "GUD"}</small>{message.content}</p>)}{messages.length > 2 ? <details><summary>Conversation history</summary>{messages.slice(0, -2).map((m, i) => <p key={i}><small>{m.role === "user" ? "You" : "GUD"}</small>{m.content}</p>)}</details> : null}</div> : null}
         {drafts.map(draft => <DraftCard key={draft.id} draft={draft} fields={{ ...draft.fields, ...edits[draft.id] }} references={references} busy={busy} onEdit={(key, value) => { editsRef.current = { ...editsRef.current, [draft.id]: { ...editsRef.current[draft.id], [key]: value } }; setEdits(editsRef.current); }} onCancel={() => void cancel(draft)} />)}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -284,7 +326,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
         {drafts.length ? <button type="button" className="btn btn-primary gud-save" onClick={() => void save()} disabled={busy}>Save {drafts.length === 1 ? "changes" : `all ${drafts.length} drafts`}</button> : null}
         <form onSubmit={event => { event.preventDefault(); void submitText(); }}><textarea aria-label="Message GUD" placeholder="What are you working on?" maxLength={12000} value={text} onChange={e => setText(e.target.value)} disabled={busy || voice} rows={2} /><button type="submit" className="icon-button" aria-label="Send message to GUD" disabled={!text.trim() || busy || !consent || voice}><Send size={17} /></button></form>
         <div className="gud-conversation-controls">{!voice ? <button type="button" className="btn btn-voice" onClick={() => void startVoice()} disabled={busy || !consent}><Mic size={15} />Start conversation</button> : <><button type="button" className="btn btn-quiet" disabled={busy} onClick={() => { media.current?.getAudioTracks().forEach(track => { track.enabled = muted; }); if (muted) reviewing.current = false; setMuted(!muted); setStatus(muted ? "Listening" : "Microphone paused"); }}><MicOff size={15} />{muted ? "Resume mic" : "Mute"}</button><button type="button" className="btn btn-quiet" onClick={() => void audio.current?.play()}>Play voice</button></>}{session || busy ? <button type="button" className="btn btn-quiet" onClick={() => void end()} disabled={stopping || (busy && reviewing.current)}><Square size={13} />End</button> : null}</div>
-        <button className="gud-classic" type="button" disabled={voice || busy} onClick={() => { void end().then(ended => { if (ended) { loaded.current = false; setOpen(false); onClassic(); } }); }}>Use classic voice review</button>
+        <div className="gud-conversation-links"><button className="gud-classic" type="button" disabled={voice || busy} onClick={() => { void end().then(ended => { if (ended) { loaded.current = false; setOpen(false); onClassic(); } }); }}>Use classic voice review</button><button type="button" className="gud-options-button" aria-expanded={options} onClick={() => setOptions(!options)}><Settings2 size={14} />Options</button></div>
       </footer>
     </> : null}
   </aside>, document.body);

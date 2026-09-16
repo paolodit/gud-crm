@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ member: vi.fn(), actor: vi.fn(), commit: vi.fn(), load: vi.fn(), refs: vi.fn() }));
+const mocks = vi.hoisted(() => ({ member: vi.fn(), actor: vi.fn(), commit: vi.fn(), load: vi.fn(), refs: vi.fn(), voice: vi.fn() }));
 vi.mock("@/lib/env", () => ({ env: { NEXT_PUBLIC_APP_URL: "https://fixture.test" } }));
 vi.mock("@/lib/session", () => ({ getCurrentMember: mocks.member }));
 vi.mock("@/lib/gud-actions/service", () => ({ assertConversationActor: mocks.actor, listDrafts: mocks.load, actionReferences: mocks.refs, commitDrafts: mocks.commit }));
 vi.mock("@/lib/gud-actions/conversation", async () => {
   const { z } = await import("zod");
-  return { contextSchema: z.object({}), safeConversationError: () => "GUD could not complete this request. Nothing was saved." };
+  return { contextSchema: z.object({}), connectRealtime: mocks.voice, safeConversationError: () => "GUD could not complete this request. Nothing was saved." };
 });
 import { POST } from "./route";
 const actor = { id: "fixture-actor", organisationId: "fixture-org" };
@@ -40,5 +40,15 @@ describe("conversation HTTP boundary", () => {
     const response = await POST(request({ op: "save", input: [] }));
     expect(response.status).toBe(400);
     expect(await response.text()).not.toContain("private-database-detail-or-api-key");
+  });
+  it("validates voice choices server-side and retains the existing default", async () => {
+    mocks.voice.mockResolvedValue({ sdp: "fixture-answer" });
+    const sessionId = crypto.randomUUID(), input = { sdp: "fixture-offer", context: {} };
+    expect((await POST(request({ op: "voice", sessionId, input: { ...input, voice: "cedar" } }))).status).toBe(200);
+    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "cedar");
+    expect((await POST(request({ op: "voice", sessionId, input }))).status).toBe(200);
+    expect(mocks.voice).toHaveBeenLastCalledWith(actor, sessionId, input.sdp, {}, "marin");
+    expect((await POST(request({ op: "voice", sessionId, input: { ...input, voice: "not-a-voice" } }))).status).toBe(400);
+    expect(mocks.voice).toHaveBeenCalledTimes(2);
   });
 });

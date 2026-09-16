@@ -16,6 +16,7 @@ const page = await context.newPage();
 await page.addInitScript(() => {
   window.fixtureVoice = { peers: [], tracks: [], sent: [] };
   Object.defineProperty(navigator.mediaDevices, "getUserMedia", { value: async () => {
+    if (window.fixtureVoice.deferMicrophone) await new Promise(resolve => { window.fixtureVoice.allowMicrophone = resolve; });
     const track = { enabled: true, stopped: false, stop() { this.stopped = true; } };
     window.fixtureVoice.tracks.push(track);
     return { getTracks: () => [track], getAudioTracks: () => [track] };
@@ -38,7 +39,8 @@ const errors = []; page.on("pageerror", e => errors.push(e.message));
 const offerId = randomUUID(), stageId = randomUUID();
 const references = { offers: [{ id: offerId, name: "Websites" }], stages: [{ id: stageId, name: "Outreach active" }], projectStages: [{ id: "kickoff", name: "Kickoff" }], thoughtsAllowed: true };
 let drafts = [], saves = 0, failSave = true, endCalls = 0, toolCalls = 0, failEditId = null;
-let toolHandler = async () => ({ finish: true }), saveCheck = () => assert.equal(drafts[0].fields.value, 6200);
+let toolHandler = async () => ({ finish: true }), saveCheck = () => assert.equal(drafts[0].fields.value, 6200), beforeStartReply = async () => {};
+const voiceRequests = [];
 const operations = [];
 const makeDraft = (label, fields = {}) => ({ id: randomUUID(), kind: "thought", fields: { title: label, body: "Fixture only", ...fields }, timezone: "Europe/London", version: 1, status: "draft", label, warnings: [], baseline: "new", expiresAt: new Date(Date.now()+86400000).toISOString() });
 await page.route("**/api/gud-conversation", async route => {
@@ -46,7 +48,7 @@ await page.route("**/api/gud-conversation", async route => {
   operations.push(op);
   let result = {};
   if (op === "load") result = { drafts, references };
-  if (op === "start") result = { session: { id: randomUUID(), expiresAt: new Date(Date.now()+600000).toISOString() }, drafts, references };
+  if (op === "start") { await beforeStartReply(); result = { session: { id: randomUUID(), expiresAt: new Date(Date.now()+600000).toISOString() }, drafts, references }; }
   if (op === "text") {
     drafts = [{ id: randomUUID(), kind: "lead", fields: { company: "Acme", title: "Website", contact: "Sarah", value: 5000, offerId, stageId, task: "Follow up", dueDate: "2026-09-17", dueTime: "10:00", note: "Before Christmas" }, timezone: "Europe/London", version: 1, status: "draft", label: "Acme website", warnings: [], baseline: "new", expiresAt: new Date(Date.now()+86400000).toISOString() }];
     result = { message: "Ready for you to review.", drafts, events: [{ navigate: "/pipeline" }] };
@@ -62,7 +64,7 @@ await page.route("**/api/gud-conversation", async route => {
     saveCheck(); drafts = []; result = { drafts, receipts: [{ draftId: input[0].id, href: "/pipeline", label: "Fixture saved" }] };
   }
   if (op === "end") { endCalls++; result = { ok: true }; }
-  if (op === "voice") result = { sdp: "fixture-answer-sdp" };
+  if (op === "voice") { voiceRequests.push(input); result = { sdp: "fixture-answer-sdp" }; }
   if (op === "tool") { toolCalls++; result = await toolHandler(input); }
   await route.fulfill({ json: result });
 });
@@ -71,8 +73,24 @@ try {
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "GUD conversation preview" });
   assert.notEqual(await panel.getByRole("button", { name: "Close conversation", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor), "rgb(255, 255, 255)", "Header controls need a contrasting background");
-  // Opting in intentionally replaces the consent panel, including its checkbox.
-  await panel.getByRole("checkbox").click();
+  // First launch still requires informed consent; no microphone on page load.
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
+  await panel.getByRole("button", { name: "Options", exact: true }).click();
+  await expect(panel.getByRole("checkbox", { name: "Conversation first", exact: true })).toBeChecked();
+  await panel.getByLabel("GUD voice", { exact: true }).selectOption("cedar");
+  // Prove SDP preparation overlaps the session request, rather than guessing
+  // performance from a flaky wall-clock threshold.
+  beforeStartReply = async () => { await page.waitForFunction(() => window.fixtureVoice.peers.length === 1); };
+  await panel.getByRole("checkbox", { name: /Allow my conversation/ }).click();
+  await panel.getByRole("button", { name: "Mute", exact: true }).waitFor();
+  beforeStartReply = async () => {};
+  assert.equal(voiceRequests.at(-1).voice, "cedar");
+  await expect(panel.getByLabel("GUD voice", { exact: true })).toBeDisabled();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "response.create" && e.response?.tool_choice === "none")), true);
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  await panel.getByRole("checkbox", { name: "Conversation first", exact: true }).uncheck();
+  await panel.getByRole("button", { name: "Options", exact: true }).click();
   assert.equal(await panel.getByRole("button", { name: "Start conversation", exact: true }).isEnabled(), true);
   await panel.getByRole("textbox", { name: "Message GUD" }).fill("Sarah at Acme wants a £5000 website before Christmas.");
   await panel.getByRole("button", { name: "Send message to GUD" }).click();
@@ -195,6 +213,41 @@ try {
   await panel.getByRole("button", { name: "Close conversation", exact: true }).click();
   await panel.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.every(t => t.stopped)), true);
+  // Opt-out survives a reload; direct launch is enabled only by the user's
+  // setting and click, never by mounting the panel or visiting another page.
+  await page.reload();
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await panel.getByRole("button", { name: "Start conversation", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
+  await panel.getByRole("button", { name: "Options", exact: true }).click();
+  await expect(panel.getByRole("checkbox", { name: "Conversation first", exact: true })).not.toBeChecked();
+  await expect(panel.getByLabel("GUD voice", { exact: true })).toHaveValue("cedar");
+  await panel.getByRole("checkbox", { name: "Conversation first", exact: true }).check();
+  await page.reload();
+  const launchesBefore = operations.filter(op => op === "start").length;
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).dblclick();
+  await panel.getByRole("button", { name: "Mute", exact: true }).waitFor();
+  assert.equal(operations.filter(op => op === "start").length, launchesBefore+1);
+  assert.equal(voiceRequests.at(-1).voice, "cedar");
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  // Cancel while the browser is still showing a microphone permission prompt.
+  const connectionsBefore = voiceRequests.length;
+  await page.evaluate(() => { window.fixtureVoice.deferMicrophone = true; });
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await page.waitForFunction(() => typeof window.fixtureVoice.allowMicrophone === "function");
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  await page.evaluate(() => window.fixtureVoice.allowMicrophone());
+  await page.waitForFunction(() => window.fixtureVoice.tracks.length === 2 && window.fixtureVoice.tracks.at(-1).stopped);
+  assert.equal(voiceRequests.length, connectionsBefore);
+  await panel.getByRole("button", { name: "Options", exact: true }).click();
+  await panel.getByRole("button", { name: "Ask my permission again next time", exact: true }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await panel.getByRole("checkbox", { name: /Allow my conversation/ }).waitFor();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
   assert.deepEqual(errors, []);
-  console.log("Conversation browser checks passed: consent, draft/edit, blank-value guard, route persistence, manual-editor protection, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, save/mic pause, cancelled-response rejection, reconnect, All Gud sign-off and mobile fit.");
+  console.log("Conversation browser checks passed: consent/revocation, parallel voice preparation, remembered voice choice, conversation-first/default/opt-out, no automatic page-load microphone, duplicate-launch guard, late microphone cancellation, draft/edit, blank-value guard, route persistence, manual-editor protection, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, save/mic pause, cancelled-response rejection, reconnect, All Gud sign-off and mobile fit.");
 } finally { await browser.close(); }
