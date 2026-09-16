@@ -71,7 +71,11 @@ export async function textConversation(actor: CurrentMember, sessionId: string, 
   const input: ResponseInputItem[] = [{ role: "system", content: conversationInstructions(context.timezone) }, { role: "user", content: JSON.stringify({ applicationContext: await providerContext(actor, context) }) }, ...history];
   const events: Array<Record<string, unknown>> = [];
   for (let step = 0; step < 6; step++) {
+    // End may arrive while a provider request is in flight. Do not start another
+    // paid response or execute the late response's actions after cancellation.
+    await requireConversation(actor, sessionId);
     const response = await client().responses.create({ model: env.AI_MODEL, store: false, input, tools: actionTools.map(t => ({ ...t, strict: false })), max_output_tokens: 2000 });
+    await requireConversation(actor, sessionId);
     const calls = response.output.filter(item => item.type === "function_call");
     input.push(...response.output.filter(item => item.type === "message" || item.type === "function_call" || item.type === "reasoning"));
     if (!calls.length) return { message: response.output_text || "Your draft is ready to review.", events, drafts: await listDrafts(actor) };

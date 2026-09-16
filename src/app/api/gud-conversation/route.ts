@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getCurrentMember } from "@/lib/session";
 import { env } from "@/lib/env";
+import { ConversationBodyTooLarge, readConversationBody } from "@/lib/gud-actions/request-body";
 import { actionReferences, assertConversationActor, cancelDraft, commitDrafts, editDraft, listDrafts } from "@/lib/gud-actions/service";
 import { connectRealtime, contextSchema, endConversation, executeConversationTool, recordUsage, safeConversationError, startConversation, textConversation } from "@/lib/gud-actions/conversation";
 
@@ -12,8 +13,7 @@ export async function POST(request: Request) {
   if (!actor) return Response.json({ error: "Sign in to continue." }, { status: 401 });
   try {
     assertConversationActor(actor);
-    const text = await request.text();
-    if (text.length > 100000) return Response.json({ error: "Conversation request too large." }, { status: 413 });
+    const text = await readConversationBody(request);
     const data = z.object({ op: z.string(), sessionId: z.uuid().optional(), input: z.unknown().optional() }).strict().parse(JSON.parse(text));
     if (data.op === "load") return Response.json({ drafts: await listDrafts(actor), references: await actionReferences(actor) });
     if (data.op === "start") return Response.json({ session: await startConversation(actor), drafts: await listDrafts(actor), references: await actionReferences(actor) });
@@ -30,5 +30,8 @@ export async function POST(request: Request) {
     if (data.op === "tool") { const input = z.object({ name: z.string().max(80), arguments: z.unknown(), context: contextSchema }).strict().parse(data.input); return Response.json(await executeConversationTool(actor, sessionId, input.name, input.arguments, input.context.timezone)); }
     if (data.op === "text") { const input = z.object({ history: z.unknown(), context: contextSchema }).strict().parse(data.input); return Response.json(await textConversation(actor, sessionId, input.history, input.context)); }
     return Response.json({ error: "Unknown conversation operation." }, { status: 400 });
-  } catch (error) { return Response.json({ error: safeConversationError(error) }, { status: 400 }); }
+  } catch (error) {
+    if (error instanceof ConversationBodyTooLarge) return Response.json({ error: "Conversation request too large." }, { status: 413 });
+    return Response.json({ error: safeConversationError(error) }, { status: 400 });
+  }
 }

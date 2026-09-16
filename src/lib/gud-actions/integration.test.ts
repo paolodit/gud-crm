@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CurrentMember } from "@/lib/session";
+const provider = vi.hoisted(() => ({ respond: vi.fn() }));
+vi.mock("openai", () => ({ default: class { responses = { create: provider.respond }; } }));
 
 const url = process.env.GUD_CONVERSATION_TEST_DATABASE_URL;
 let database: typeof import("@/db");
@@ -101,6 +103,44 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
       expect((await conversation.requireConversation(actor, session.id)).usage.input_tokens).toBe(15);
       await conversation.endConversation(actor, session.id);
       expect(fetcher.mock.calls.at(-1)?.[0]).toContain("fixture_call/hangup");
+      await expect(conversation.requireConversation(actor, session.id)).rejects.toThrow("ended");
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("discards a typed provider response arriving after End without executing its actions", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    let release!: () => void, entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    provider.respond.mockImplementationOnce(async () => {
+      entered(); await delayed;
+      return { output: [{ type: "function_call", name: "navigate", arguments: '{"screen":"thoughts"}', call_id: "late-response" }] };
+    });
+    const result = conversation.textConversation(actor, session.id, [{ role: "user", content: "Open Thoughts" }], { page: "/pipeline", recordId: null, timezone });
+    // Attach the rejection handler before releasing the delayed response.
+    const rejected = expect(result).rejects.toThrow("ended");
+    await started; await conversation.endConversation(actor, session.id); release(); await rejected;
+    expect(provider.respond).toHaveBeenCalledTimes(1);
+    const row = (await database.pool.query("SELECT request_count FROM gud_conversation_sessions WHERE id=$1", [session.id])).rows[0];
+    expect(row.request_count).toBe(1);
+  });
+  it("hangs up a voice call that finishes connecting after the user ended the session", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    let release!: () => void, entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.endsWith("/hangup")) return new Response(null, { status: 200 });
+      entered(); await delayed;
+      return new Response("fixture-answer-sdp", { status: 201, headers: { location: "https://api.openai.com/v1/realtime/calls/late_fixture_call" } });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const result = conversation.connectRealtime(actor, session.id, "fixture-offer-sdp", { page: "/pipeline", recordId: null, timezone });
+      const rejected = expect(result).rejects.toThrow("ended while voice was connecting");
+      await started; await conversation.endConversation(actor, session.id); release(); await rejected;
+      expect(fetcher.mock.calls.at(-1)?.[0]).toContain("late_fixture_call/hangup");
       await expect(conversation.requireConversation(actor, session.id)).rejects.toThrow("ended");
     } finally { vi.unstubAllGlobals(); }
   });

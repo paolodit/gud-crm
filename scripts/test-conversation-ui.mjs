@@ -2,7 +2,7 @@
 // No OpenAI calls and no customer data writes.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { chromium } from "playwright";
+import { chromium, expect } from "@playwright/test";
 
 const baseURL = "http://127.0.0.1:3000";
 if (!process.env.AUTH_SMOKE_EMAIL || !process.env.AUTH_SMOKE_PASSWORD) throw new Error("CI auth credentials required.");
@@ -11,12 +11,39 @@ const context = await browser.newContext({ baseURL, viewport: { width: 1440, hei
 const login = await context.request.post("/api/auth/sign-in/email", { headers: { Origin: baseURL }, data: { email: process.env.AUTH_SMOKE_EMAIL, password: process.env.AUTH_SMOKE_PASSWORD } });
 assert.equal(login.ok(), true);
 const page = await context.newPage();
+// Exercise the real client lifecycle without a physical microphone, provider
+// connection, OpenAI account or model call.
+await page.addInitScript(() => {
+  window.fixtureVoice = { peers: [], tracks: [], sent: [] };
+  Object.defineProperty(navigator.mediaDevices, "getUserMedia", { value: async () => {
+    const track = { enabled: true, stopped: false, stop() { this.stopped = true; } };
+    window.fixtureVoice.tracks.push(track);
+    return { getTracks: () => [track], getAudioTracks: () => [track] };
+  } });
+  window.RTCPeerConnection = class {
+    connectionState = "new";
+    constructor() { window.fixtureVoice.peers.push(this); }
+    addTrack() {}
+    createDataChannel() {
+      this.dc = { readyState: "connecting", send: data => window.fixtureVoice.sent.push(JSON.parse(data)), close() { this.readyState = "closed"; this.onclose?.(); } };
+      return this.dc;
+    }
+    async createOffer() { return { type: "offer", sdp: "fixture-offer-sdp" }; }
+    async setLocalDescription() {}
+    async setRemoteDescription() { this.connectionState = "connected"; this.dc.readyState = "open"; this.dc.onopen?.(); }
+    close() { this.connectionState = "closed"; }
+  };
+});
 const errors = []; page.on("pageerror", e => errors.push(e.message));
 const offerId = randomUUID(), stageId = randomUUID();
 const references = { offers: [{ id: offerId, name: "Websites" }], stages: [{ id: stageId, name: "Outreach active" }], projectStages: [{ id: "kickoff", name: "Kickoff" }], thoughtsAllowed: true };
-let drafts = [], saves = 0, failSave = true;
+let drafts = [], saves = 0, failSave = true, endCalls = 0, toolCalls = 0, failEditId = null;
+let toolHandler = async () => ({ finish: true }), saveCheck = () => assert.equal(drafts[0].fields.value, 6200);
+const operations = [];
+const makeDraft = (label, fields = {}) => ({ id: randomUUID(), kind: "thought", fields: { title: label, body: "Fixture only", ...fields }, timezone: "Europe/London", version: 1, status: "draft", label, warnings: [], baseline: "new", expiresAt: new Date(Date.now()+86400000).toISOString() });
 await page.route("**/api/gud-conversation", async route => {
   const { op, input } = route.request().postDataJSON();
+  operations.push(op);
   let result = {};
   if (op === "load") result = { drafts, references };
   if (op === "start") result = { session: { id: randomUUID(), expiresAt: new Date(Date.now()+600000).toISOString() }, drafts, references };
@@ -24,13 +51,19 @@ await page.route("**/api/gud-conversation", async route => {
     drafts = [{ id: randomUUID(), kind: "lead", fields: { company: "Acme", title: "Website", contact: "Sarah", value: 5000, offerId, stageId, task: "Follow up", dueDate: "2026-09-17", dueTime: "10:00", note: "Before Christmas" }, timezone: "Europe/London", version: 1, status: "draft", label: "Acme website", warnings: [], baseline: "new", expiresAt: new Date(Date.now()+86400000).toISOString() }];
     result = { message: "Ready for you to review.", drafts, events: [{ navigate: "/pipeline" }] };
   }
-  if (op === "edit") { drafts = drafts.map(d => d.id === input.id ? { ...d, version: d.version+1, fields: { ...d.fields, ...input.fields } } : d); result = { draft: drafts.find(d => d.id === input.id) }; }
+  if (op === "edit") {
+    if (input.id === failEditId) { failEditId = null; await route.fulfill({ status: 400, json: { error: "Fixture edit interrupted. Retry safely." } }); return; }
+    assert.equal(input.version, drafts.find(d => d.id === input.id)?.version, "Edit retry must use the acknowledged version");
+    drafts = drafts.map(d => d.id === input.id ? { ...d, version: d.version+1, fields: { ...d.fields, ...input.fields } } : d); result = { draft: drafts.find(d => d.id === input.id) };
+  }
   if (op === "save") {
     saves++;
     if (failSave) { failSave = false; await route.fulfill({ status: 400, json: { error: "Fixture save failed. Nothing was saved." } }); return; }
-    assert.equal(drafts[0].fields.value, 6200); drafts = []; result = { drafts, receipts: [{ draftId: input[0].id, href: "/pipeline", label: "Acme website" }] };
+    saveCheck(); drafts = []; result = { drafts, receipts: [{ draftId: input[0].id, href: "/pipeline", label: "Fixture saved" }] };
   }
-  if (op === "end") result = { ok: true };
+  if (op === "end") { endCalls++; result = { ok: true }; }
+  if (op === "voice") result = { sdp: "fixture-answer-sdp" };
+  if (op === "tool") { toolCalls++; result = await toolHandler(input); }
   await route.fulfill({ json: result });
 });
 try {
@@ -42,6 +75,10 @@ try {
   assert.equal(await panel.getByRole("button", { name: "Start conversation", exact: true }).isEnabled(), true);
   await panel.getByRole("textbox", { name: "Message GUD" }).fill("Sarah at Acme wants a £5000 website before Christmas.");
   await panel.getByRole("button", { name: "Send message to GUD" }).click();
+  await panel.getByLabel("Value (£)").fill("");
+  await panel.getByRole("button", { name: "Save changes", exact: true }).click();
+  await panel.getByRole("alert").filter({ hasText: "empty amount is not treated as £0" }).waitFor();
+  assert.equal(saves, 0);
   await panel.getByLabel("Value (£)").fill("6200");
   assert.equal(saves, 0);
   await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Live projects", exact: true }).click();
@@ -58,6 +95,76 @@ try {
   assert.ok(bounds && bounds.x >= 0 && bounds.x+bounds.width <= 390);
   await panel.getByRole("button", { name: "Close conversation", exact: true }).click();
   await panel.waitFor({ state: "hidden" });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  const emit = value => page.evaluate(event => window.fixtureVoice.peers.at(-1).dc.onmessage({ data: JSON.stringify(event) }), value);
+  const call = (name, id) => emit({ type: "response.done", response: { id: `response-${id}`, status: "completed", output: [{ type: "function_call", name, arguments: "{}", call_id: id }] } });
+  const startVoice = async () => {
+    await panel.getByRole("button", { name: "Start conversation", exact: true }).click();
+    await panel.getByRole("button", { name: "Mute", exact: true }).waitFor();
+  };
+
+  // The final sign-off must play completely, even if the preceding audio stops
+  // after the finish tool. The provider response metadata identifies our audio.
+  await startVoice();
+  const beforeFinish = endCalls;
+  await call("finish_conversation", "finish-one");
+  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.response?.metadata?.gud_finish));
+  const marker = await page.evaluate(() => window.fixtureVoice.sent.findLast(e => e.response?.metadata?.gud_finish).response.metadata.gud_finish);
+  await emit({ type: "output_audio_buffer.stopped", response_id: "previous-response" });
+  assert.equal(endCalls, beforeFinish);
+  await emit({ type: "response.created", response: { id: "sign-off", metadata: { gud_finish: marker } } });
+  await emit({ type: "response.done", response: { id: "sign-off", status: "completed", metadata: { gud_finish: marker }, output: [] } });
+  assert.equal(endCalls, beforeFinish);
+  await emit({ type: "output_audio_buffer.stopped", response_id: "sign-off" });
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  assert.equal(endCalls, beforeFinish+1);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).stopped), true);
+
+  // End must stop the mic immediately, not after a delayed tool response. A
+  // privately staged draft is recovered, but its stale navigation is suppressed.
+  let releaseTool;
+  const delayed = new Promise(resolve => { releaseTool = resolve; });
+  toolHandler = async () => { await delayed; const draft = makeDraft("Recovered after End"); drafts = [draft]; return { draft, navigate: "/thoughts" }; };
+  await startVoice();
+  const beforeDelayed = toolCalls;
+  await call("stage_change", "delayed-one");
+  await expect.poll(() => toolCalls).toBe(beforeDelayed+1);
+  const urlBeforeEnd = page.url();
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).stopped), true);
+  releaseTool();
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  await panel.getByRole("region", { name: "Draft Recovered after End" }).waitFor();
+  assert.equal(page.url(), urlBeforeEnd);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.item?.call_id === "delayed-one")), false);
+
+  // Reopening restores drafts. A failed second manual edit must not make the
+  // successfully updated first draft stale or lose either user's text.
+  await panel.getByRole("button", { name: "Close conversation", exact: true }).click();
+  await panel.waitFor({ state: "hidden" });
+  drafts = [makeDraft("First thought"), makeDraft("Second thought")];
+  failEditId = drafts[1].id;
+  saveCheck = () => { assert.equal(drafts[0].fields.title, "First manually edited"); assert.equal(drafts[1].fields.title, "Second manually edited"); assert.deepEqual(drafts.map(d => d.version), [2, 2]); };
+  await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await panel.getByRole("region", { name: "Draft First thought" }).getByLabel("Title", { exact: true }).fill("First manually edited");
+  await panel.getByRole("region", { name: "Draft Second thought" }).getByLabel("Title", { exact: true }).fill("Second manually edited");
+  await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
+  await panel.getByRole("alert").filter({ hasText: "Fixture edit interrupted" }).waitFor();
+  await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("All Gud · saved");
+  assert.equal(saves, 3);
+
+  // Transport loss closes the provider session too, then permits a fresh call.
+  await startVoice();
+  const beforeDisconnect = endCalls;
+  await page.evaluate(() => { const p = window.fixtureVoice.peers.at(-1); p.connectionState = "disconnected"; p.onconnectionstatechange(); });
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  assert.equal(endCalls, beforeDisconnect+1);
+  await startVoice();
+  await panel.getByRole("button", { name: "Close conversation", exact: true }).click();
+  await panel.waitFor({ state: "hidden" });
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.every(t => t.stopped)), true);
   assert.deepEqual(errors, []);
-  console.log("Conversation browser checks passed: consent, draft/edit, route persistence, failed-save honesty, retry, All Gud sign-off and mobile fit.");
+  console.log("Conversation browser checks passed: consent, draft/edit, blank-value guard, route persistence, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, reconnect, All Gud sign-off and mobile fit.");
 } finally { await browser.close(); }
