@@ -15,7 +15,7 @@ import {
   Settings,
   Sparkles,
   Target,
-  StickyNote,
+  Brain,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -68,8 +68,8 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
 
   const navItems = [
     ...coreNavItems,
-    { href: "/thoughts", label: "Thoughts", icon: StickyNote },
-    { href: "/research", label: "Ideas", icon: Sparkles },
+    { href: "/thoughts", label: "Thoughts", icon: Brain },
+    { href: "/research", label: "Marketing Ideas", icon: Sparkles },
     { href: "/targets", label: "Targets", icon: Target },
     { href: "/companies", label: "Companies", icon: Building2 },
     { href: "/search", label: "Search", icon: Search },

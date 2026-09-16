@@ -37,4 +37,12 @@ describe("Thoughts action authentication", () => {
     expect(result.ok).toBe(false); expect(JSON.stringify(result)).not.toContain("secret private");
     expect(mock.append).not.toHaveBeenCalled();
   });
+  it("validates and passes bounded direction without changing the original thought", async () => {
+    expect((await exploreThoughtAction({ id: thoughtId, mode: "ai", direction: " Compare options " })).ok).toBe(true);
+    expect(mock.generate).toHaveBeenCalledWith(expect.objectContaining({ id: thoughtId }), false, "Compare options");
+    expect(mock.save).not.toHaveBeenCalled();
+    mock.generate.mockClear();
+    expect((await exploreThoughtAction({ id: thoughtId, mode: "ai", direction: "x".repeat(4001) })).ok).toBe(false);
+    expect(mock.generate).not.toHaveBeenCalled();
+  });
 });

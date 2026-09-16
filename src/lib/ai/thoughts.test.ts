@@ -27,4 +27,10 @@ describe("private AI exploration", () => {
     const result = thoughtOutline(note);
     expect(result.body).toContain("not AI research"); expect(result.sources).toEqual([]); expect(mock.create).not.toHaveBeenCalled();
   });
+  it("includes direction only for the selected request and in offline outlines", async () => {
+    await generateThoughtExploration(note, false, "Compare two low-cost options");
+    expect(JSON.parse(mock.create.mock.calls[0][0].input[1].content).explorationDirection).toBe("Compare two low-cost options");
+    expect(thoughtOutline(note, "Compare two low-cost options").body).toContain("## Your direction\nCompare two low-cost options");
+    expect(note.body).toBe("A community studio");
+  });
 });

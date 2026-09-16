@@ -1,5 +1,6 @@
 "use client";
 import { startTransition, useRef, useState, type FormEvent } from "react";
+import { Pencil, Plus, Flag } from "lucide-react";
 import { saveOpportunityFieldAction } from "@/app/actions/crm";
 import type { BoardSnapshot, OpportunitySummary } from "@/lib/domain/types";
 
@@ -60,8 +61,16 @@ function InlineField({ spec, editing, disabled, onEdit, onCancel, onSave }: { sp
       finally { saving.current = false; setPending(false); }
     });
   }
-  const wide = ["title", "outreachAngle", "scaleNote"].includes(spec.field);
-  if (!editing) return <button className="inline-detail-display" data-wide={wide} data-field={spec.field} disabled={disabled} type="button" onPointerDown={(e) => { if (e.button === 0) { e.preventDefault(); cancelled.current = false; setError(null); onEdit(); } }} onClick={(e) => { if (e.detail === 0) { cancelled.current = false; setError(null); onEdit(); } }} aria-label={"Edit " + spec.label}><small>{spec.label}</small><strong>{spec.display ?? (spec.value === null || spec.value === "" ? "Click to add" : String(spec.value))}</strong></button>;
+  const empty = spec.value === null || spec.value === "";
+  const wide = ["title", "outreachAngle"].includes(spec.field) || (spec.field === "scaleNote" && (!empty || editing));
+  const headline = ["title", "outreachAngle"].includes(spec.field) && !empty;
+  if (!editing) return <button className="inline-detail-display" data-wide={wide} data-field={spec.field} data-empty={empty} disabled={disabled} type="button" title={`Edit ${spec.label}`} onPointerDown={(e) => { if (e.button === 0) { e.preventDefault(); cancelled.current = false; setError(null); onEdit(); } }} onClick={(e) => { if (e.detail === 0) { cancelled.current = false; setError(null); onEdit(); } }} aria-label={"Edit " + spec.label}>
+    {empty ? <span className="inline-empty-value"><Plus size={12} />{spec.label}</span> : <>{!headline ? <small>{spec.label}</small> : null}<strong>
+      {spec.field === "temperature" ? <span className="inline-temperature" data-temperature={spec.value}><i aria-hidden="true" />{spec.display}</span>
+        : spec.field === "priority" ? <span className="inline-priority" data-priority={spec.value}><Flag size={13} aria-hidden="true" />{spec.value}</span>
+          : spec.display ?? String(spec.value)}
+    </strong></>}<Pencil className="inline-edit-hint" size={12} aria-hidden="true" />
+  </button>;
   return <form className="inline-detail-form" data-wide={wide} data-field={spec.field} aria-busy={pending} data-unsaved="true" noValidate onSubmit={submit} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.requestSubmit(); }} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); if (!pending) { cancelled.current = true; onCancel(); } } }}><label className="field-label">{spec.label}
     {spec.options ? <select aria-label={spec.label} autoFocus name="value" className="field-select" defaultValue={spec.value ?? ""} disabled={pending}>{!spec.options.some((option) => option.value === "") ? <option value="" disabled>Choose…</option> : null}{spec.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
       : spec.type === "textarea" ? <textarea autoFocus className="field-textarea" name="value" rows={3} defaultValue={spec.value ?? ""} maxLength={spec.maxLength} disabled={pending} />

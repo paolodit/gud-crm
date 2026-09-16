@@ -11,11 +11,18 @@ test("edits opportunity fields in place, cancels safely and persists changes", a
   await expect(panel.getByRole("heading", { name: "AI coach" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Talk through an update", exact: true })).toBeVisible();
   const details = panel.locator(".inline-opportunity-details");
+  await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toHaveText("Inline editing test");
+  await expect(details).not.toContainText("Click to add");
+  await expect(details).not.toContainText("Not scored");
+  await expect(details).not.toContainText("Not estimated");
+  await expect(details.locator(".inline-temperature i")).toBeVisible();
   await details.getByRole("button", { name: "Edit Priority", exact: true }).click();
   await expect(page.locator(".dialog-card")).toHaveCount(0);
   await details.getByLabel("Priority", { exact: true }).selectOption("high");
   await details.getByLabel("Priority", { exact: true }).press("Tab");
   await expect(details.getByRole("status")).toHaveText("Priority saved.");
+  await expect(details.locator('.inline-priority[data-priority="high"]')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("compact-opportunity.png") });
   await details.getByRole("button", { name: "Edit Opportunity title", exact: true }).click();
   await details.getByLabel("Opportunity title", { exact: true }).fill("Cancelled title");
   await page.keyboard.press("Escape");

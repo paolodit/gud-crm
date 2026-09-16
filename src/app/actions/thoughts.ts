@@ -38,11 +38,11 @@ export async function saveThoughtAction(input: unknown) {
 export async function exploreThoughtAction(input: unknown) {
   try {
     const actor = await privateMember();
-    const parsed = z.object({ id: z.uuid(), mode: z.enum(["outline", "ai"]), research: z.boolean().default(false) }).strict().parse(input);
+    const parsed = z.object({ id: z.uuid(), mode: z.enum(["outline", "ai"]), research: z.boolean().default(false), direction: z.string().trim().max(4000).default("") }).strict().parse(input);
     const thought = await getThought(actor, parsed.id);
     if (parsed.mode === "ai" && !(await thoughtsAiEnabled(actor))) throw new ThoughtsError("AI exploration is unavailable. Enable OpenAI in Settings or create a private thinking outline.");
     if (!(await reserveThoughtExploration(actor))) throw new ThoughtsError("You have reached the short-term exploration limit. Try again in 15 minutes.");
-    const document = parsed.mode === "outline" ? thoughtOutline(thought) : await generateThoughtExploration(thought, parsed.research);
+    const document = parsed.mode === "outline" ? thoughtOutline(thought, parsed.direction) : await generateThoughtExploration(thought, parsed.research, parsed.direction);
     const exploration = await appendThoughtExploration(actor, thought.id, document, parsed.mode === "outline" ? "outline" : "openai", parsed.mode === "ai" && document.sources.length > 0, thought);
     revalidatePath("/thoughts");
     return { ok: true as const, exploration };

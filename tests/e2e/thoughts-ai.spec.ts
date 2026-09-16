@@ -9,8 +9,10 @@ test("AI exploration has explicit consent, clickable citations, history and safe
   const panel = page.getByLabel("Private explorations", { exact: true });
   await expect(panel).toContainText("sends only this thought");
   await expect(panel.getByLabel("Include web research")).not.toBeChecked();
+  await panel.getByLabel("Exploration direction", { exact: true }).fill("Focus on low-cost options for a Saturday workshop");
   await panel.getByRole("button", { name: "Generate exploration" }).click();
   await expect(panel.locator(".thought-document")).toContainText("No web research was requested.");
+  await expect(panel.locator(".thought-document")).toContainText("Focus on low-cost options for a Saturday workshop");
   await panel.getByLabel("Include web research").check();
   await expect(panel).toContainText("Search queries may be shared");
   await panel.getByRole("button", { name: "Generate exploration" }).click();

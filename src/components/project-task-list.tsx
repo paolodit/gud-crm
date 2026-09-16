@@ -18,7 +18,7 @@ export function ProjectTaskList({ tasks, disabled, onChange, personal = false }:
     if (!draft.trim() || tasks.length >= limit || disabled) return;
     onChange([...tasks, { id: crypto.randomUUID(), text: draft.trim(), completed: false }]); setDraft(""); addInput.current?.focus();
   }
-  return <div className="project-tasks form-span-2" ref={container}><div className="project-tasks-heading"><strong>{personal ? "Checklist" : "Tasks"}</strong><small>{tasks.filter((task) => task.completed).length}/{tasks.length} done</small></div>
+  return <div className="project-tasks form-span-2" ref={container}><div className="project-tasks-heading"><strong>{personal ? "List" : "Tasks"}</strong><small>{tasks.filter((task) => task.completed).length}/{tasks.length} done</small></div>
     <DndContext id={id} sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (over && active.id !== over.id) onChange(arrayMove(tasks, tasks.findIndex((task) => task.id === active.id), tasks.findIndex((task) => task.id === over.id))); }}><SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
       <div className="project-task-rows">{tasks.map((task, index) => <TaskRow key={task.id} task={task} disabled={disabled} onChange={(next) => onChange(tasks.map((item) => item.id === task.id ? next : item))} onRemove={() => onChange(tasks.filter((item) => item.id !== task.id))} onEnter={() => { const inputs = container.current?.querySelectorAll<HTMLInputElement>(".project-task-text"); (inputs?.[index + 1] ?? addInput.current)?.focus(); }} />)}</div>
     </SortableContext></DndContext>

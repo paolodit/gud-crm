@@ -30,7 +30,7 @@ export function assertPrivateThoughtAccess(input: { demoMode?: boolean; publicDe
   if (input.demoMode || input.publicDemo) throw new ThoughtsError("Private Thoughts needs an individual account. It is unavailable on shared demo logins.");
   if (input.impersonated) throw new ThoughtsError("Private Thoughts cannot be opened while impersonating another user.");
 }
-export function thoughtLabel(note: ThoughtContent) { return note.title || note.body.trim().split("\n")[0]?.slice(0, 100) || "Untitled thought"; }
+export function thoughtLabel(note: ThoughtContent) { return note.title || note.body.trim().split("\n")[0]?.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1").replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, "$1$2").slice(0, 100) || "Untitled thought"; }
 
 /** Voice commands are parsed locally. Nothing is sent to the workspace AI during capture. */
 export function thoughtFromSpeech(transcript: string) {
