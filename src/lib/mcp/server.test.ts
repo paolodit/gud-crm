@@ -14,6 +14,15 @@ afterEach(async () => {
 });
 
 describe("GUD MCP server", () => {
+  it("only exposes personal tools with separate Thoughts permission", async () => {
+    const basic = await connectedServer(["gud:read", "gud:write"]);
+    expect((await basic.client.listTools()).tools.map((tool) => tool.name)).not.toContain("list_thoughts");
+    const personal = await connectedServer(["gud:read", "gud:thoughts:read"]);
+    expect((await personal.client.listTools()).tools.map((tool) => tool.name)).toContain("list_thoughts");
+    const result = await personal.client.callTool({ name: "save_thought", arguments: { content: { body: "Private idea" } } });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual(expect.arrayContaining([expect.objectContaining({ text: expect.stringContaining("separate gud:thoughts:write consent") })]));
+  });
   it("advertises a focused, annotated tool surface", async () => {
     const { client } = await connectedServer(["gud:read", "gud:write"]);
     const result = await client.listTools();

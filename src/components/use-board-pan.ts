@@ -9,7 +9,7 @@ export function useBoardPan() {
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.pointerType !== "mouse" || event.button !== 0) return;
-    if ((event.target as Element).closest("button, a, input, select, textarea, [role='button'], [contenteditable='true'], .opportunity-card, .live-card")) return;
+    if ((event.target as Element).closest("button, a, input, select, textarea, [role='button'], [contenteditable='true'], .opportunity-card, .live-card, .thought-note")) return;
     pan.current = { pointerId: event.pointerId, startX: event.clientX, scrollLeft: event.currentTarget.scrollLeft, moved: false };
     // Capturing on pointerdown retargets even stationary clicks to the viewport,
     // preventing column headers from receiving their native double-click event.

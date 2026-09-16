@@ -27,6 +27,7 @@ import {
 } from "@/lib/mcp/service";
 import { updateDelivery } from "@/lib/data/delivery-repository";
 import { deliveryPatchSchema } from "@/lib/domain/delivery";
+import { registerThoughtTools } from "@/lib/mcp/thoughts-tools";
 
 const safeUrl = z.url().refine(isSafeHttpUrl, "Only complete HTTP or HTTPS URLs are accepted.");
 const optionalSafeUrl = z.union([z.literal(""), safeUrl]).optional();
@@ -679,6 +680,7 @@ export function createGudMcpServer(context: {
     }),
   );
 
+  registerThoughtTools(server, context.actor, context.scopes);
   return server;
 }
 

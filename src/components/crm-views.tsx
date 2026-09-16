@@ -54,6 +54,7 @@ import { SettingsSections } from "./settings-sections";
 import { FreeMaxSettingsCard } from "./freemax-settings-card";
 import { LiveReports } from "./live-reports";
 import { SafeUpdateHelp } from "./safe-update-help";
+import { useCardDensity } from "./use-card-density";
 import { getActiveOpportunities, isResearchStage } from "@/lib/data/board-selectors";
 import { contextualOffers } from "@/lib/domain/offers";
 import type { ActivityTypeSummary, BoardSnapshot, OfferSummary, OpportunitySummary, PersonSummary, StageSummary } from "@/lib/domain/types";
@@ -68,7 +69,7 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
   const availableOffers = contextualOffers(snapshot.offers, snapshot.opportunities);
   const [offerFilter, setOfferFilter] = useState("all");
   const [sort, setSort] = useState("fit-desc");
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useCardDensity("companies");
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary["company"] | null>(null);
   const [archiveScope, setArchiveScope] = useState<"current" | "archived">("current");

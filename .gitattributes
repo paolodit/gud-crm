@@ -1,3 +1,5 @@
+# New migrations use stable LF bytes across Git archives and checkouts.
+/drizzle/*.sql text eol=lf
 # Historical migrations were applied from Windows CRLF tarballs on all three
 # production databases. Keep their original bytes (and Drizzle SHA-256 hashes)
 # identical in Git archives, Linux builds and Windows checkouts.

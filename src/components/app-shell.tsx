@@ -15,6 +15,7 @@ import {
   Settings,
   Sparkles,
   Target,
+  StickyNote,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,6 +25,7 @@ import { authClient } from "@/lib/auth-client";
 import type { CurrentMember } from "@/lib/session";
 import { BrandLogo } from "@/components/brand-logo";
 import { WorkspaceVoiceProvider } from "@/components/workspace-voice";
+import { CardDensityProvider } from "@/components/use-card-density";
 
 const coreNavItems = [
   { href: "/pipeline", label: "Pipeline", icon: LayoutDashboard },
@@ -66,6 +68,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
 
   const navItems = [
     ...coreNavItems,
+    { href: "/thoughts", label: "Thoughts", icon: StickyNote },
     { href: "/research", label: "Ideas", icon: Sparkles },
     { href: "/targets", label: "Targets", icon: Target },
     { href: "/companies", label: "Companies", icon: Building2 },
@@ -74,7 +77,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
   ];
 
   return (
-    <WorkspaceVoiceProvider key={`${member.organisationId}:${member.id}`} memberKey={`${member.organisationId}:${member.id}`}><div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
+    <CardDensityProvider memberKey={`${member.organisationId}:${member.id}`}><WorkspaceVoiceProvider key={`${member.organisationId}:${member.id}`} memberKey={`${member.organisationId}:${member.id}`}><div className="app-layout" data-sidebar-collapsed={sidebarCollapsed}>
       <aside className="sidebar">
         <div className="brand">
           <BrandLogo size={44} priority />
@@ -135,7 +138,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
         </div>
       </aside>
       <main id="main-content" className="page-main">{children}</main>
-    </div></WorkspaceVoiceProvider>
+    </div></WorkspaceVoiceProvider></CardDensityProvider>
   );
 }
 

@@ -654,6 +654,32 @@ export const importRows = pgTable(
   (table) => [uniqueIndex("import_rows_source_unique").on(table.importId, table.sourceRow)],
 );
 
+// Personal data is deliberately separate from all organisation CRM snapshots and audits.
+export const personalThoughts = pgTable("personal_thoughts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: jsonb("content").$type<import("@/lib/domain/thoughts").ThoughtContent>().notNull(),
+  version: integer("version").notNull().default(1),
+  archived: boolean("archived").notNull().default(false),
+  ...timestamps,
+}, (table) => [index("personal_thoughts_owner_idx").on(table.organisationId, table.ownerId)]);
+
+export const thoughtExplorations = pgTable("thought_explorations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  thoughtId: uuid("thought_id").notNull().references(() => personalThoughts.id, { onDelete: "cascade" }),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  document: jsonb("document").$type<import("@/lib/domain/thoughts").ThoughtExploration>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("thought_explorations_owner_idx").on(table.organisationId, table.ownerId)]);
+
+export const thoughtAiLimits = pgTable("thought_ai_limits", {
+  ownerId: text("owner_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+  requestCount: integer("request_count").notNull().default(0),
+});
+
 export const authSchema = {
   users,
   sessions,

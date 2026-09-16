@@ -18,6 +18,7 @@ export default async function McpConsentPage({
   if (!env.postgresMode || !env.mcpEnabled) notFound();
   const member = await getCurrentMember();
   if (!member) redirect("/sign-in");
+  if (member.impersonated) return <main><h1>End impersonation first</h1><p>External assistants must be connected from your own account.</p></main>;
 
   const params = await searchParams;
   const clientId = single(params.client_id);

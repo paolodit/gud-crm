@@ -22,7 +22,7 @@ export const GUD_MCP_TOOL_NAMES = [
   "update_live_project",
 ] as const;
 
-const GUD_MCP_TOOL_NAME_SET = new Set<string>(GUD_MCP_TOOL_NAMES);
+const GUD_MCP_TOOL_NAME_SET = new Set<string>([...GUD_MCP_TOOL_NAMES, "list_thoughts", "get_thought", "save_thought", "list_thought_explorations", "save_thought_exploration"]);
 const COMPATIBLE_TOOL_PREFIXES = ["gud.", "gud_crm.", "gud_crm_"] as const;
 
 export function normaliseGudMcpToolName(name: string) {

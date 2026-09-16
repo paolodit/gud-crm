@@ -11,6 +11,7 @@ export type CurrentMember = {
   role: "admin" | "manager" | "member";
   demoMode: boolean;
   storageMode: "demo" | "sqlite" | "postgres";
+  impersonated?: boolean;
 };
 
 const demoMember: CurrentMember = {
@@ -52,5 +53,6 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     role: user.role ?? "member",
     demoMode: false,
     storageMode: "postgres",
+    impersonated: Boolean((session.session as typeof session.session & { impersonatedBy?: string | null }).impersonatedBy),
   };
 }

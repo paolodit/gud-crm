@@ -7,22 +7,23 @@ import { CSS } from "@dnd-kit/utilities";
 import { Check, Circle, GripVertical, Plus, X } from "lucide-react";
 import type { ProjectTask } from "@/lib/domain/delivery";
 
-export function ProjectTaskList({ tasks, disabled, onChange }: { tasks: ProjectTask[]; disabled: boolean; onChange: (tasks: ProjectTask[]) => void }) {
+export function ProjectTaskList({ tasks, disabled, onChange, personal = false }: { tasks: ProjectTask[]; disabled: boolean; onChange: (tasks: ProjectTask[]) => void; personal?: boolean }) {
   const id = useId();
+  const limit = personal ? 100 : 200;
   const [draft, setDraft] = useState("");
   const container = useRef<HTMLDivElement>(null);
   const addInput = useRef<HTMLInputElement>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, scrollBehavior: "auto" }));
   function add() {
-    if (!draft.trim() || tasks.length >= 200 || disabled) return;
+    if (!draft.trim() || tasks.length >= limit || disabled) return;
     onChange([...tasks, { id: crypto.randomUUID(), text: draft.trim(), completed: false }]); setDraft(""); addInput.current?.focus();
   }
-  return <div className="project-tasks form-span-2" ref={container}><div className="project-tasks-heading"><strong>Tasks</strong><small>{tasks.filter((task) => task.completed).length}/{tasks.length} done</small></div>
+  return <div className="project-tasks form-span-2" ref={container}><div className="project-tasks-heading"><strong>{personal ? "Checklist" : "Tasks"}</strong><small>{tasks.filter((task) => task.completed).length}/{tasks.length} done</small></div>
     <DndContext id={id} sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => { if (over && active.id !== over.id) onChange(arrayMove(tasks, tasks.findIndex((task) => task.id === active.id), tasks.findIndex((task) => task.id === over.id))); }}><SortableContext items={tasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
       <div className="project-task-rows">{tasks.map((task, index) => <TaskRow key={task.id} task={task} disabled={disabled} onChange={(next) => onChange(tasks.map((item) => item.id === task.id ? next : item))} onRemove={() => onChange(tasks.filter((item) => item.id !== task.id))} onEnter={() => { const inputs = container.current?.querySelectorAll<HTMLInputElement>(".project-task-text"); (inputs?.[index + 1] ?? addInput.current)?.focus(); }} />)}</div>
     </SortableContext></DndContext>
-    <div className="project-task-add"><Plus size={15} /><input ref={addInput} name="projectTaskDraft" aria-label="Add a project task" placeholder="Add a task and press Enter" maxLength={500} value={draft} disabled={disabled || tasks.length >= 200} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); add(); } }} /><button type="button" className="icon-button" aria-label="Add task" disabled={disabled || !draft.trim() || tasks.length >= 200} onClick={add}><Plus size={15} /></button></div>
-    <small className="muted">Enter adds the next task · Drag to reorder · Saved with the project</small>
+    <div className="project-task-add"><Plus size={15} /><input ref={addInput} name="projectTaskDraft" aria-label={personal ? "Add a checklist item" : "Add a project task"} placeholder="Add a task and press Enter" maxLength={500} value={draft} disabled={disabled || tasks.length >= limit} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); add(); } }} /><button type="button" className="icon-button" aria-label="Add task" disabled={disabled || !draft.trim() || tasks.length >= limit} onClick={add}><Plus size={15} /></button></div>
+    <small className="muted">Enter adds the next task · Drag to reorder · Saved with {personal ? "this thought" : "the project"}</small>
   </div>;
 }
 

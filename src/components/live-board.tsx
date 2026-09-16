@@ -20,6 +20,7 @@ import { mergeDeliveryDraft } from "@/lib/domain/delivery-voice";
 import { WorkspaceVoiceButton, useWorkspaceVoice } from "./workspace-voice";
 import { BoardHeaderArt } from "./board-header-art";
 import { CardDensityToggle } from "./card-density-toggle";
+import { useCardDensity } from "./use-card-density";
 import { useBoardPan } from "./use-board-pan";
 
 export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: BoardSnapshot; voiceAiConfigured?: boolean }) {
@@ -30,7 +31,7 @@ export function LiveBoard({ snapshot, voiceAiConfigured = false }: { snapshot: B
   const [query, setQuery] = useState("");
   const [owner, setOwner] = useState("all");
   const [archived, setArchived] = useState(false);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useCardDensity("live");
   const [lastUpdated, setLastUpdated] = useState(snapshot.generatedAt);
   const searchParams = useSearchParams();
   const [selected, setSelected] = useState<LiveProject | null>(() => liveProjectRecords(snapshot).find((project) => project.id === searchParams.get("project") && !project.delivery.archivedAt) ?? null);

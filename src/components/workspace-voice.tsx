@@ -55,6 +55,7 @@ export function WorkspaceVoiceProvider({ memberKey, children }: { memberKey: str
     try { if (notice) sessionStorage.setItem(receiptKey, JSON.stringify(notice)); else sessionStorage.removeItem(receiptKey); } catch { /* Undo remains available until navigation. */ }
   }, [notice, mounted, receiptKey]);
   const show = useCallback((target?: VoiceTarget, fromEditor = false) => {
+    if (pathname === "/thoughts") { window.dispatchEvent(new Event("gud:thought-voice")); return; }
     if (!fromEditor && document.querySelector(".dialog-card:not(.workspace-voice-dialog), .inline-detail-form")) {
       setNoticeError("Finish or close your current editor before starting a combined voice update."); return;
     }

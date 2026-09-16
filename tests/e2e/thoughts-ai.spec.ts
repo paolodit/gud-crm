@@ -1,0 +1,28 @@
+import { expect, test } from "@playwright/test";
+test("AI exploration has explicit consent, clickable citations, history and safe errors", async ({ page }, info) => {
+  test.skip(process.env.GUD_THOUGHT_AI_FIXTURE !== "true", "Run through the local Thoughts AI fixture; never use a live provider in tests.");
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.goto("/thoughts");
+  await page.getByLabel("New thought", { exact: true }).fill("A weekend community workshop");
+  await page.getByRole("button", { name: "Add thought", exact: true }).click();
+  await page.locator(".thought-note").getByRole("button", { name: "Explore this idea" }).click();
+  const panel = page.getByLabel("Private explorations", { exact: true });
+  await expect(panel).toContainText("sends only this thought");
+  await expect(panel.getByLabel("Include web research")).not.toBeChecked();
+  await panel.getByRole("button", { name: "Generate exploration" }).click();
+  await expect(panel.locator(".thought-document")).toContainText("No web research was requested.");
+  await panel.getByLabel("Include web research").check();
+  await expect(panel).toContainText("Search queries may be shared");
+  await panel.getByRole("button", { name: "Generate exploration" }).click();
+  await expect(panel.locator(".thought-document-text p").getByRole("link", { name: "[Fixture research source]", exact: true })).toHaveAttribute("href", "https://example.com/research");
+  await expect(panel.locator("select option")).toHaveCount(2);
+  await page.screenshot({ path: info.outputPath("thoughts-ai-citations.png") });
+  await panel.getByRole("button", { name: "Close explorations" }).click();
+  await page.getByLabel("New thought", { exact: true }).fill("fixture failure");
+  await page.getByRole("button", { name: "Add thought", exact: true }).click();
+  await page.locator(".thought-note").filter({ hasText: "fixture failure" }).getByRole("button", { name: "Explore this idea" }).click();
+  await panel.getByRole("button", { name: "Generate exploration" }).click();
+  await expect(panel.getByRole("alert")).toContainText("could not complete");
+  await expect(panel).not.toContainText("PRIVATE PROVIDER ERROR");
+  await expect(panel.locator(".thought-document")).toHaveCount(0);
+});

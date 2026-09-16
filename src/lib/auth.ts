@@ -1,5 +1,5 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
 import { nextCookies } from "better-auth/next-js";
 import { admin, mcp } from "better-auth/plugins";
@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { authSchema } from "@/db/schema";
 import { env } from "@/lib/env";
 import { mcpConsentHookContext } from "@/lib/mcp/oauth-login";
-import { GUD_MCP_DEFAULT_SCOPE, GUD_MCP_DEFAULT_SCOPES } from "@/lib/mcp/scopes";
+import { GUD_MCP_DEFAULT_SCOPE, GUD_MCP_SUPPORTED_SCOPES } from "@/lib/mcp/scopes";
 
 export const auth = betterAuth({
   appName: "GUD CRM",
@@ -47,7 +47,15 @@ export const auth = betterAuth({
     },
   },
   hooks: {
-    before: createAuthMiddleware(async (context) => mcpConsentHookContext(context.path, context.query)),
+    before: createAuthMiddleware(async (context) => {
+      if (context.path.includes("/mcp/") || context.path.includes("/oauth2/")) {
+        const session = await getSessionFromCtx(context);
+        if ((session?.session as { impersonatedBy?: string | null } | undefined)?.impersonatedBy) {
+          throw new APIError("FORBIDDEN", { message: "End impersonation before connecting an external assistant." });
+        }
+      }
+      return mcpConsentHookContext(context.path, context.query);
+    }),
   },
   user: {
     additionalFields: {
@@ -87,9 +95,9 @@ export const auth = betterAuth({
         accessTokenExpiresIn: 60 * 60,
         refreshTokenExpiresIn: 60 * 60 * 24 * 30,
         defaultScope: GUD_MCP_DEFAULT_SCOPE,
-        scopes: ["gud:read", "gud:write"],
+        scopes: GUD_MCP_SUPPORTED_SCOPES.filter((scope) => scope.startsWith("gud:")),
         metadata: {
-          scopes_supported: [...GUD_MCP_DEFAULT_SCOPES],
+          scopes_supported: [...GUD_MCP_SUPPORTED_SCOPES],
         },
       },
     }),

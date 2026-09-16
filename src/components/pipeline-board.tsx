@@ -82,6 +82,7 @@ import Link from "next/link";
 import { VoiceFillButton } from "@/components/voice-fill";
 import { BoardHeaderArt } from "./board-header-art";
 import { CardDensityToggle } from "./card-density-toggle";
+import { useCardDensity } from "./use-card-density";
 import { useBoardPan } from "./use-board-pan";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
@@ -118,7 +119,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
       : "all"
     : "all");
   const [attentionOnly, setAttentionOnly] = useState(false);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useCardDensity("pipeline");
   const [showArchived, setShowArchived] = useState(false);
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);

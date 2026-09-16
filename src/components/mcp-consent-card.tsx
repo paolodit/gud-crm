@@ -19,6 +19,8 @@ export function McpConsentCard({
   const [pending, setPending] = useState<"accept" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const canWrite = scopes.includes("gud:write");
+  const privateRead = scopes.includes("gud:thoughts:read");
+  const privateWrite = scopes.includes("gud:thoughts:write");
 
   async function decide(accept: boolean) {
     setPending(accept ? "accept" : "deny");
@@ -54,12 +56,13 @@ export function McpConsentCard({
         <div className="mcp-permission-list">
           <span><Eye size={18} /><span><strong>Read the sales workspace</strong><small>Companies, contacts, pipeline context, tasks and activity history.</small></span><Check size={17} /></span>
           {canWrite ? <span><PencilLine size={18} /><span><strong>Make bounded CRM updates</strong><small>Create and update opportunities, organisations, contacts, next actions and confirmed activity. No raw database access or outreach sending.</small></span><Check size={17} /></span> : null}
-          <span><ShieldCheck size={18} /><span><strong>Keep human control</strong><small>Research stays in review; terminal moves, archives and removal of do-not-contact protection require confirmation; every mutation is audit logged.</small></span><Check size={17} /></span>
+          {privateRead || privateWrite ? <span><Eye size={18} /><span><strong>Access your private Thoughts</strong><small>This separately requested permission lets this external assistant {privateWrite ? "read and edit" : "read"} your personal notes and explorations. It cannot access anyone else’s Thoughts. Only approve a client you trust with private content.</small></span><Check size={17} /></span> : <p>Private Thoughts are not included in this connection.</p>}
+          <span><ShieldCheck size={18} /><span><strong>Keep human control</strong><small>Research stays in review; terminal moves, archives and removal of do-not-contact protection require confirmation. CRM updates are audit logged; private Thoughts never enter shared CRM logs.</small></span><Check size={17} /></span>
         </div>
         {error ? <p className="auth-error" role="alert">{error}</p> : null}
         <footer>
           <button className="btn btn-quiet" type="button" disabled={pending !== null} onClick={() => decide(false)}>{pending === "deny" ? <LoaderCircle className="spin" size={15} /> : <X size={15} />}Deny</button>
-          <button className="btn btn-primary" type="button" disabled={pending !== null} onClick={() => decide(true)}>{pending === "accept" ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}Allow {canWrite ? "read & write" : "read-only"} access</button>
+          <button className="btn btn-primary" type="button" disabled={pending !== null} onClick={() => decide(true)}>{pending === "accept" ? <LoaderCircle className="spin" size={15} /> : <Check size={15} />}Allow {canWrite || privateWrite ? "read & write" : "read-only"} access</button>
         </footer>
         <small className="mcp-consent-note">Access tokens expire after one hour. The client can renew the connection for up to 30 days without asking for your password. You can disconnect it at any time in Settings.</small>
       </section>

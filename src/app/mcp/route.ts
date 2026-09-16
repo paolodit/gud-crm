@@ -9,6 +9,7 @@ import { env } from "@/lib/env";
 import { createGudMcpServer } from "@/lib/mcp/server";
 import { getMcpActor } from "@/lib/mcp/service";
 import { normaliseGudMcpRequest } from "@/lib/mcp/tool-names";
+import { consentedMcpScopes } from "@/lib/mcp/scopes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +26,7 @@ const authenticatedHandler = withMcpAuth(auth, async (request, session) => {
     return Response.json({ error: "Unexpected MCP host." }, { status: 421 });
   }
   const tokenScopes = session.scopes.split(/\s+/).filter(Boolean);
-  const writeConsent = tokenScopes.includes("gud:write")
-    ? await hasWriteConsent(session.clientId, session.userId)
-    : false;
-  const scopes = tokenScopes.filter((scope) => scope !== "gud:write" || writeConsent);
+  const scopes = consentedMcpScopes(tokenScopes, await consentScopes(session.clientId, session.userId));
   if (!scopes.includes("gud:read")) {
     return Response.json(
       { error: "The GUD connection does not include gud:read permission." },
@@ -107,11 +105,11 @@ function isExpectedHost(request: Request) {
   return received === expected;
 }
 
-async function hasWriteConsent(clientId: string, userId: string) {
+async function consentScopes(clientId: string, userId: string) {
   const grants = await db.select({ scopes: oauthConsents.scopes }).from(oauthConsents).where(and(
     eq(oauthConsents.clientId, clientId),
     eq(oauthConsents.userId, userId),
     eq(oauthConsents.consentGiven, true),
   ));
-  return grants.some((grant) => grant.scopes.split(/\s+/).includes("gud:write"));
+  return grants.flatMap((grant) => grant.scopes.split(/\s+/));
 }

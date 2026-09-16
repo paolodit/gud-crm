@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   output: "standalone",
   poweredByHeader: false,
+  // Server-function arguments include personal Thoughts; never echo them to dev logs.
+  logging: { serverFunctions: false },
   images: {
     remotePatterns: [{ protocol: "https", hostname: "i.ytimg.com", pathname: "/vi/**", search: "" }],
   },

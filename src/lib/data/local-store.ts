@@ -18,6 +18,8 @@ const workspaceId = "default";
 const snapshotVersion = 15;
 const globalForSqlite = globalThis as unknown as { gudLocalDb?: Database.Database };
 
+export function localDatabaseForPrivateData() { return database(); }
+
 function database() {
   if (globalForSqlite.gudLocalDb) {
     migrateLocalSnapshot(globalForSqlite.gudLocalDb);
