@@ -70,6 +70,7 @@ try {
   await page.goto("/pipeline");
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "GUD conversation preview" });
+  assert.notEqual(await panel.getByRole("button", { name: "Close conversation", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor), "rgb(255, 255, 255)", "Header controls need a contrasting background");
   // Opting in intentionally replaces the consent panel, including its checkbox.
   await panel.getByRole("checkbox").click();
   assert.equal(await panel.getByRole("button", { name: "Start conversation", exact: true }).isEnabled(), true);
@@ -107,6 +108,20 @@ try {
   // The final sign-off must play completely, even if the preceding audio stops
   // after the finish tool. The provider response metadata identifies our audio.
   await startVoice();
+  // The UI follows navigation, but an open human editor takes priority.
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Live projects", exact: true }).click();
+  await page.getByRole("button", { name: "Add project", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Delivery notes", { exact: true }).fill("Human work must stay here");
+  toolHandler = async () => ({ navigate: "/pipeline" });
+  await call("navigate", "protected-navigation");
+  await panel.getByRole("alert").filter({ hasText: "Close your current editor" }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/live");
+  assert.equal(await page.getByRole("dialog").getByLabel("Delivery notes", { exact: true }).inputValue(), "Human work must stay here");
+  await page.getByRole("button", { name: "Close project", exact: true }).click();
+  await page.getByRole("dialog").waitFor({ state: "hidden" });
+  await call("navigate", "allowed-navigation");
+  await page.waitForURL("**/pipeline");
+  toolHandler = async () => ({ finish: true });
   const beforeFinish = endCalls;
   await call("finish_conversation", "finish-one");
   await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.response?.metadata?.gud_finish));
@@ -147,6 +162,7 @@ try {
   failEditId = drafts[1].id;
   saveCheck = () => { assert.equal(drafts[0].fields.title, "First manually edited"); assert.equal(drafts[1].fields.title, "Second manually edited"); assert.deepEqual(drafts.map(d => d.version), [2, 2]); };
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
+  await startVoice();
   await panel.getByRole("region", { name: "Draft First thought" }).getByLabel("Title", { exact: true }).fill("First manually edited");
   await panel.getByRole("region", { name: "Draft Second thought" }).getByLabel("Title", { exact: true }).fill("Second manually edited");
   await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
@@ -154,6 +170,20 @@ try {
   await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("All Gud · saved");
   assert.equal(saves, 3);
+  await panel.getByRole("button", { name: "Resume mic", exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), false);
+  const beforePaused = toolCalls;
+  await call("stage_change", "late-after-save");
+  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.item?.call_id === "late-after-save"));
+  assert.equal(toolCalls, beforePaused);
+  await panel.getByRole("button", { name: "Resume mic", exact: true }).click();
+  toolHandler = async () => ({ navigate: "/live" });
+  await emit({ type: "response.done", response: { status: "cancelled", output: [{ type: "function_call", name: "navigate", arguments: "{}", call_id: "cancelled" }] } });
+  await call("navigate", "resumed");
+  await page.waitForURL("**/live");
+  assert.equal(toolCalls, beforePaused+1);
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
 
   // Transport loss closes the provider session too, then permits a fresh call.
   await startVoice();
@@ -166,5 +196,5 @@ try {
   await panel.waitFor({ state: "hidden" });
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.every(t => t.stopped)), true);
   assert.deepEqual(errors, []);
-  console.log("Conversation browser checks passed: consent, draft/edit, blank-value guard, route persistence, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, reconnect, All Gud sign-off and mobile fit.");
+  console.log("Conversation browser checks passed: consent, draft/edit, blank-value guard, route persistence, manual-editor protection, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, save/mic pause, cancelled-response rejection, reconnect, All Gud sign-off and mobile fit.");
 } finally { await browser.close(); }

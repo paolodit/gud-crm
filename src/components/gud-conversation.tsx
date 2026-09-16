@@ -159,7 +159,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
       if (token !== generation.current) return;
       const connection = new RTCPeerConnection(); peer.current = connection;
       const output = new Audio(); output.autoplay = true; audio.current = output;
-      connection.ontrack = event => { output.srcObject = event.streams[0]; void output.play().catch(() => setError("Use Play voice to allow GUD’s audio in this browser.")); };
+      connection.ontrack = event => { if (token !== generation.current) return; output.srcObject = event.streams[0]; void output.play().catch(() => { if (token === generation.current) setError("Use Play voice to allow GUD’s audio in this browser."); }); };
       stream.getTracks().forEach(track => connection.addTrack(track, stream));
       const dc = connection.createDataChannel("oai-events"); channel.current = dc; seenCalls.current.clear();
       dc.onopen = () => { if (token === generation.current) { setVoice(true); setStatus("Listening"); lastActivity.current = Date.now(); } };
