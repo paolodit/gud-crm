@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { personalThoughts, thoughtExplorations, thoughtAiLimits, users } from "@/db/schema";
+import { personalThoughts, thoughtExplorations, thoughtAiLimits, users, organisations } from "@/db/schema";
 import { nextThoughtPosition } from "@/lib/domain/thought-placement";
 import { env } from "@/lib/env";
 import { localDatabaseForPrivateData } from "./local-store";
@@ -35,6 +35,9 @@ export async function saveThought(actor: ThoughtActor, input: unknown): Promise<
   if (env.sqliteMode) return local().save(actor, value);
   if (!value.id) {
     return db.transaction(async tx => {
+      // Match the organisation -> account order of bundled action saves. Taking
+      // this FK lock later during INSERT could deadlock with a concurrent bundle.
+      await tx.select({ id: organisations.id }).from(organisations).where(eq(organisations.id, actor.organisationId)).for("key share");
       // Serialize placements for this account, including concurrent/batched voice saves.
       await tx.select({ id: users.id }).from(users).where(and(eq(users.id, actor.id), eq(users.organisationId, actor.organisationId))).for("update");
       const existing = await tx.select().from(personalThoughts).where(owned(actor));

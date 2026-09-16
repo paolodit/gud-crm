@@ -89,6 +89,11 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     const drafts = await Promise.all(Array.from({ length: 3 }, (_, i) => actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: `Batch placement ${i}` } })));
     await actions.commitDrafts(actor, drafts.map(approve));
     await Promise.all(Array.from({ length: 3 }, (_, i) => thoughts.saveThought(actor, { content: { body: `Concurrent placement ${i}` } })));
+    const mixed = await actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: "Voice and manual together" } });
+    await Promise.all([
+      actions.commitDrafts(actor, [approve(mixed)]),
+      thoughts.saveThought(actor, { content: { body: "Manual and voice together" } }),
+    ]);
     const notes = await thoughts.listThoughts(actor);
     for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || Math.abs(a.y-b.y) >= 400).toBe(true);
     expect(await thoughts.listThoughts(colleague)).toEqual([]);
