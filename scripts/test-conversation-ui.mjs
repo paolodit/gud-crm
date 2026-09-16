@@ -44,7 +44,7 @@ try {
   await panel.getByRole("button", { name: "Send message to GUD" }).click();
   await panel.getByLabel("Value (£)").fill("6200");
   assert.equal(saves, 0);
-  await page.getByRole("link", { name: "Live projects", exact: true }).click();
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Live projects", exact: true }).click();
   await page.waitForURL("**/live");
   assert.equal(await panel.getByLabel("Value (£)").inputValue(), "6200");
   await panel.getByRole("button", { name: "Save changes", exact: true }).click();

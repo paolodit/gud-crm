@@ -262,7 +262,7 @@ try {
     journal.status = "complete";
     journal.finishedAt = new Date().toISOString();
     await saveJournal();
-    console.log(`All three instances verified. Release record: ${journalPath}\nBackups and rollback image tags retained. Nothing has been pruned.`);
+    console.log(`${config.targets.length} selected instances verified (${config.targets.map(target => target.id).join(", ")}). Release record: ${journalPath}\nBackups and rollback image tags retained. Nothing has been pruned.`);
   }
 } catch (error) {
   if (journal) { journal.status = "stopped"; journal.finishedAt = new Date().toISOString(); await saveJournal().catch(() => undefined); }
