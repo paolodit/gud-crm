@@ -33,6 +33,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
   const sessionRef = useRef<Session | null>(null), draftsRef = useRef<GudDraft[]>([]), busyRef = useRef(false), saved = useRef(false);
   const peer = useRef<RTCPeerConnection | null>(null), channel = useRef<RTCDataChannel | null>(null), media = useRef<MediaStream | null>(null), audio = useRef<HTMLAudioElement | null>(null);
   const lastActivity = useRef(0), seenCalls = useRef(new Set<string>()), queue = useRef(Promise.resolve()), generation = useRef(0);
+  const finishAfterAudio = useRef(false), finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const context = useRef({ page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: "Europe/London" });
   const contextKey = `${pathname}:${params.get("opportunity") ?? params.get("project") ?? ""}`;
   useEffect(() => { context.current = { page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; }, [pathname, params]);
@@ -46,6 +47,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
   }
   const disconnect = useCallback(() => {
     generation.current++;
+    finishAfterAudio.current = false; if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
     channel.current?.close(); channel.current = null;
     peer.current?.close(); peer.current = null;
     media.current?.getTracks().forEach(track => track.stop()); media.current = null;
@@ -88,7 +90,13 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
         if (protectedEditor()) setError("Close your current editor to let GUD move to the other record. The conversation draft is safe.");
         else { window.dispatchEvent(new CustomEvent("gud:conversation-navigation", { detail: event.navigate })); router.push(event.navigate, { scroll: false }); }
       }
-      if (event.finish) { setStatus(draftsRef.current.length ? "Drafts ready for review" : "All Gud"); if (!draftsRef.current.length) window.setTimeout(() => void endRef.current(), 2500); }
+      if (event.finish) {
+        setStatus(draftsRef.current.length ? "Drafts ready for review" : "All Gud");
+        if (!draftsRef.current.length) {
+          if (channel.current?.readyState === "open") { finishAfterAudio.current = true; finishTimer.current = setTimeout(() => void endRef.current(), 15000); }
+          else finishTimer.current = setTimeout(() => void endRef.current(), 0);
+        }
+      }
     }
     if (result.drafts) { draftsRef.current = result.drafts; setDrafts(result.drafts); }
   }
@@ -133,7 +141,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
         if (value.type === "input_audio_buffer.speech_started") { lastActivity.current = Date.now(); setStatus("Listening…"); }
         if (value.type === "response.created") setStatus("GUD is thinking…");
         if (value.type === "response.output_audio.delta" || value.type === "output_audio_buffer.started") setStatus("GUD is speaking…");
-        if (value.type === "output_audio_buffer.stopped") setStatus("Listening");
+        if (value.type === "output_audio_buffer.stopped") { setStatus("Listening"); if (finishAfterAudio.current) void endRef.current(); }
         if (value.type === "conversation.item.input_audio_transcription.completed" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "user", content: value.transcript as string }]);
         if (value.type === "response.output_audio_transcript.done" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "assistant", content: value.transcript as string }]);
         if (value.type === "error") setError("The voice provider interrupted a response. Your drafts are safe; try again or continue by typing.");

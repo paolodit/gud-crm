@@ -37,7 +37,9 @@ try {
   await page.goto("/pipeline");
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "GUD conversation preview" });
-  await panel.getByRole("checkbox").check();
+  // Opting in intentionally replaces the consent panel, including its checkbox.
+  await panel.getByRole("checkbox").click();
+  assert.equal(await panel.getByRole("button", { name: "Start conversation", exact: true }).isEnabled(), true);
   await panel.getByRole("textbox", { name: "Message GUD" }).fill("Sarah at Acme wants a £5000 website before Christmas.");
   await panel.getByRole("button", { name: "Send message to GUD" }).click();
   await panel.getByLabel("Value (£)").fill("6200");
@@ -47,9 +49,9 @@ try {
   assert.equal(await panel.getByLabel("Value (£)").inputValue(), "6200");
   await panel.getByRole("button", { name: "Save changes", exact: true }).click();
   await panel.getByRole("alert").filter({ hasText: "Fixture save failed" }).waitFor();
-  assert.equal(await panel.getByText("Saved. All Gud.", { exact: true }).count(), 0);
+  assert.equal(await panel.getByText(/Saved\. All Gud\./).count(), 0);
   await panel.getByRole("button", { name: "Save changes", exact: true }).click();
-  await panel.getByText("Saved. All Gud.", { exact: true }).waitFor();
+  await panel.getByText(/Saved\. All Gud\./).waitFor();
   assert.equal(saves, 2);
   await page.setViewportSize({ width: 390, height: 844 });
   const bounds = await panel.boundingBox();
