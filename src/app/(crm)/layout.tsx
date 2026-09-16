@@ -10,5 +10,5 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
   const member = await getCurrentMember();
   if (!member) redirect("/sign-in");
 
-  return <AppShell member={member} instanceName={env.instanceName}>{children}</AppShell>;
+  return <AppShell member={member} instanceName={env.instanceName} conversationEnabled={env.GUD_CONVERSATION_ENABLED === "true" && member.storageMode === "postgres" && !member.impersonated}>{children}</AppShell>;
 }

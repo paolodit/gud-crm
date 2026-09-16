@@ -57,6 +57,10 @@ jobs:
         env:
           GUD_THOUGHTS_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test
         run: npx vitest run src/lib/data/thoughts-integration.test.ts
+      - name: Verify transactional GUD actions on real PostgreSQL
+        env:
+          GUD_CONVERSATION_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test
+        run: npx vitest run src/lib/gud-actions/integration.test.ts
       - name: Exercise real PostgreSQL authentication
         env:
           DATA_BACKEND: postgres
@@ -81,3 +85,4 @@ jobs:
           done
           node .next/standalone/container-healthcheck.mjs
           npm run auth:smoke
+          node scripts/test-conversation-ui.mjs

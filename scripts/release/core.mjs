@@ -3,6 +3,20 @@ import { assertAdditiveMigrations, pendingMigrations } from "../../src/lib/deplo
 
 export const digest = (value) => createHash("sha256").update(value).digest("hex");
 
+export function releaseOptions(mode, argv) {
+  if (!["plan", "apply"].includes(mode)) throw new Error("Choose plan or apply.");
+  const options = { ref: "HEAD", targets: "demo,refresh,hsm" };
+  const seen = new Set();
+  for (let index = 0; index < argv.length; index += 2) {
+    const key = argv[index];
+    if (!["--ref", "--targets"].includes(key) || seen.has(key) || !argv[index + 1]) throw new Error("Use --ref <commit> and optional --targets demo,refresh.");
+    seen.add(key); options[key.slice(2)] = argv[index + 1];
+  }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9/_.,-]*$/.test(options.ref)) throw new Error("Invalid Git reference.");
+  if (!["demo", "demo,refresh", "demo,refresh,hsm"].includes(options.targets)) throw new Error("Targets must preserve canary order: demo, demo,refresh, or demo,refresh,hsm.");
+  return options;
+}
+
 export function registryRepository(value) {
   if (!value || !/^[a-z0-9]+(?:[-.][a-z0-9]+)+(?::\d+)?\/[a-z0-9][a-z0-9/_-]*$/.test(value)) {
     throw new Error("GUD_RELEASE_IMAGE_REPOSITORY must be a private registry repository, such as registry.example.com/gud-crm (without scheme, tag or credentials).");

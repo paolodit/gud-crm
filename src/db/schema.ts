@@ -689,3 +689,24 @@ export const authSchema = {
   oauthAccessTokens,
   oauthConsents,
 };
+
+// Conversation drafts are user-private, never shared CRM audit/snapshot content.
+export const gudActionDrafts = pgTable("gud_action_drafts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  document: jsonb("document").$type<import("@/lib/gud-actions/contract").GudDraft>().notNull(),
+  ...timestamps,
+}, (table) => [index("gud_action_drafts_owner_idx").on(table.organisationId, table.ownerId)]);
+
+export const gudConversationSessions = pgTable("gud_conversation_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organisationId: uuid("organisation_id").notNull().references(() => organisations.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  callId: text("call_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  requestCount: integer("request_count").notNull().default(0),
+  usage: jsonb("usage").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index("gud_conversation_sessions_owner_idx").on(table.organisationId, table.ownerId)]);

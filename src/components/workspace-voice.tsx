@@ -9,6 +9,7 @@ import { applyWorkspaceVoiceAction, loadVoiceWorkspaceAction, prepareWorkspaceVo
 import { voiceChangesSchema, voiceChoicesForScope, voiceScopeForPath, voiceScopeForTarget, voiceScopeLabel, voiceFieldKeys, voiceIsoToLocal, voiceLabels, voiceLocalToIso, voiceRecordHref, type VoiceChanges, type VoiceChoice, type VoiceFieldKey, type VoiceReceipt, type VoiceScope, type VoiceTarget } from "@/lib/domain/voice-workspace";
 import { useDialogFocus } from "./use-dialog-focus";
 import { useSpeechCapture } from "./use-speech-capture";
+import { GudConversation } from "./gud-conversation";
 
 type Review = Extract<Awaited<ReturnType<typeof prepareWorkspaceVoiceAction>>, { ok: true }>;
 type VoiceSession = { transcript: string; target: VoiceTarget | null; updatedAt: number; pending?: { planId: string; changes: VoiceChanges } };
@@ -19,7 +20,7 @@ export const useWorkspaceVoice = () => useContext(VoiceContext);
 const choiceKey = (target: VoiceTarget) => `${target.kind}:${target.id}`;
 const kindName = (target: VoiceTarget) => target.kind === "sales" ? "Sales" : "Live project";
 
-export function WorkspaceVoiceProvider({ memberKey, children }: { memberKey: string; children: React.ReactNode }) {
+export function WorkspaceVoiceProvider({ memberKey, conversationEnabled = false, children }: { memberKey: string; conversationEnabled?: boolean; children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -55,6 +56,7 @@ export function WorkspaceVoiceProvider({ memberKey, children }: { memberKey: str
     try { if (notice) sessionStorage.setItem(receiptKey, JSON.stringify(notice)); else sessionStorage.removeItem(receiptKey); } catch { /* Undo remains available until navigation. */ }
   }, [notice, mounted, receiptKey]);
   const show = useCallback((target?: VoiceTarget, fromEditor = false) => {
+    if (conversationEnabled && !target && !fromEditor) { window.dispatchEvent(new Event("gud:conversation-open")); return; }
     if (pathname === "/thoughts") { window.dispatchEvent(new Event("gud:thought-voice")); return; }
     if (!fromEditor && document.querySelector(".dialog-card:not(.workspace-voice-dialog), .inline-detail-form")) {
       setNoticeError("Finish or close your current editor before starting a combined voice update."); return;
@@ -65,7 +67,7 @@ export function WorkspaceVoiceProvider({ memberKey, children }: { memberKey: str
       if (id) contextual = { id, kind: pathname === "/live" ? "delivery" : "sales" };
     }
     setPreferredTarget(contextual); setNoticeError(""); setOpen(true);
-  }, [params, pathname]);
+  }, [params, pathname, conversationEnabled]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "Space" && !event.repeat) { event.preventDefault(); show(); }
@@ -90,6 +92,7 @@ export function WorkspaceVoiceProvider({ memberKey, children }: { memberKey: str
     });
   }
   return <VoiceContext.Provider value={{ open: show }}>{children}
+    {conversationEnabled ? <GudConversation onClassic={() => { setPreferredTarget(null); setOpen(true); }} /> : null}
     <button className="workspace-voice-launch" type="button" onClick={() => show()} aria-label="Talk to GUD" title="Talk to GUD (Ctrl/⌘ + Shift + Space)"><Mic size={19} /><span>Talk to GUD</span>{session.transcript.trim() ? <i aria-label="Draft saved" /> : null}</button>
     {mounted && (notice || undone || noticeError) && !open ? createPortal(<aside className="workspace-voice-receipt" aria-label="Voice update receipt"><div role="status"><CheckCircle2 size={18} /><strong>{notice ? `Saved · ${notice.companyName}` : undone ? "Voice update undone" : "Talk to GUD"}</strong></div>{notice ? <><p>Your reviewed changes were applied together. Undo is available for 15 minutes.</p><div className="button-row"><Link href={voiceRecordHref(notice.target)}>Open record <ArrowRight size={13} /></Link><button type="button" className="btn btn-quiet" onClick={undo} disabled={undoing}>{undoing ? <LoaderCircle className="spin" size={14} /> : <RotateCcw size={14} />}Undo update</button></div></> : null}{noticeError ? <p role="alert" className="form-error">{noticeError}</p> : null}<button type="button" className="icon-button receipt-dismiss" aria-label="Dismiss voice receipt" onClick={() => { setNotice(null); setNoticeError(""); setUndone(false); }} disabled={undoing}><X size={15} /></button></aside>, document.body) : null}
     {mounted && open ? createPortal(<WorkspaceVoiceDialog preferredTarget={preferredTarget} pageScope={voiceScopeForPath(pathname)} session={session} onSession={saveSession} onClose={() => setOpen(false)} onApplied={applied} />, document.body) : null}

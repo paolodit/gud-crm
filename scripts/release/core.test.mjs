@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { inspectTarget, registryRepository, releaseHealth, rollout, validateConfig, verifySnapshot } from "./core.mjs";
+import { inspectTarget, registryRepository, releaseHealth, releaseOptions, rollout, validateConfig, verifySnapshot } from "./core.mjs";
+
+test("targeted releases retain canary order and never silently include HSM", () => {
+  assert.deepEqual(releaseOptions("apply", ["--ref", "abc123", "--targets", "demo,refresh"]), { ref: "abc123", targets: "demo,refresh" });
+  assert.equal(releaseOptions("plan", []).targets, "demo,refresh,hsm");
+  for (const targets of ["refresh", "hsm", "refresh,demo", "demo,hsm", "demo,refresh,other", "demo,demo"]) assert.throws(() => releaseOptions("apply", ["--targets", targets]));
+  assert.throws(() => releaseOptions("apply", ["--targets"]));
+  assert.throws(() => releaseOptions("apply", ["--ref", "main", "--ref", "other"]));
+});
 
 const config = JSON.parse(readFileSync(new URL("../../config/rollout.json", import.meta.url)));
 const target = config.targets[1];

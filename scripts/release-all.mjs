@@ -6,20 +6,17 @@ import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline/promises";
-import { inspectTarget, registryRepository, releaseHealth, rollout, snapshotCounts, validateConfig, verifySnapshot, digest } from "./release/core.mjs";
+import { inspectTarget, registryRepository, releaseHealth, releaseOptions, rollout, snapshotCounts, validateConfig, verifySnapshot, digest } from "./release/core.mjs";
 import { loadSettings, mergeSettings, settingsPath } from "./release/settings.mjs";
 import { assertQuietWindow, assertServiceStable, deployImage, verifyAppToken } from "./release/caprover.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
 const mode = argv.shift();
-if (!["plan", "apply"].includes(mode) || (argv.length && (argv.length !== 2 || argv[0] !== "--ref"))) {
-  console.error("Usage: npm run release:plan | npm run release:all -- --ref <commit>");
-  process.exit(1);
-}
-const ref = argv[1] ?? "HEAD";
-if (!/^[a-zA-Z0-9][a-zA-Z0-9/_.,-]*$/.test(ref)) throw new Error("Invalid Git reference.");
-const config = validateConfig(JSON.parse(await readFile(path.join(root, "config/rollout.json"), "utf8")));
+const options = releaseOptions(mode, argv);
+const ref = options.ref;
+const fullConfig = validateConfig(JSON.parse(await readFile(path.join(root, "config/rollout.json"), "utf8")));
+const config = { ...fullConfig, targets: fullConfig.targets.filter(target => options.targets.split(",").includes(target.id)) };
 
 // Commands receive secrets through their environment or stdin, never shell interpolation/argv.
 async function run(command, args, { input, inputFile, outputFile, env, timeout = 120000, visible = false } = {}) {
