@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
 import { inspectTarget, assertSeparateInstances, registryRepository, validateConfig } from "./release/core.mjs";
 import { settingsPath, validateSettings } from "./release/settings.mjs";
+import { verifyAppToken } from "./release/caprover.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 async function command(program, args, input, terminal = false) {
@@ -27,7 +28,7 @@ async function privateDirectory(directory) {
 }
 async function prompt(label, fallback) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try { return (await rl.question(`${label}${fallback ? ` [${fallback}]` : ""}: `)).trim() || fallback; }
+  try { return (await rl.question(`${label}${fallback ? ` [press Enter for ${fallback}]` : ""}: `)).trim() || fallback; }
   finally { rl.close(); }
 }
 const secret = (label) => command("systemd-ask-password", ["--timeout=0", "--echo=masked", `${label}:`], undefined, true);
@@ -70,14 +71,7 @@ try {
   for (const target of config.targets) {
     const token = await secret(`${target.app} deployment token`);
     if (!token || /[\r\n\0]/.test(token)) throw new Error(`${target.app}: empty or invalid token.`);
-    const response = await fetch(`${config.captainUrl}/api/v2/user/apps/appData/${target.app}`, {
-      redirect: "error", signal: AbortSignal.timeout(30000),
-      headers: { "x-namespace": "captain", "x-captain-app-token": token },
-    }).catch(() => { throw new Error(`${target.app}: cannot reach CapRover.`); });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || result.status !== 100 || typeof result.data?.isAppBuilding !== "boolean") {
-      throw new Error(`${target.app}: deployment token not accepted. Nothing deployed.`);
-    }
+    await verifyAppToken(config.captainUrl, target.app, token);
     settings[target.tokenEnv] = token;
     console.log(`${target.app}: deployment token verified.`);
   }
@@ -96,5 +90,6 @@ try {
   console.log("Saved settings load automatically. No shell exports or repeated token entry are needed.");
 } catch (error) {
   console.error(error instanceof Error ? error.message : "Setup stopped. No application was deployed.");
+  console.error("Setup has stopped. Do not paste tokens at the normal shell prompt.");
   process.exitCode = 1;
 }

@@ -40,7 +40,9 @@ export PATH="/opt/gud-node-24/bin:$PATH"
 npm run release:setup
 ```
 
-The interactive script checks the existing three service configurations, asks for the mounted off-host destination and private registry, creates private directories, validates each app token using a read-only API call, signs Docker into the registry through `--password-stdin`, and saves `/etc/gud-release/rollout.json` as root-only (0600). Password/token prompts accept pasting and show only masked characters. It refuses to overwrite existing settings. Docker credentials are kept separately in `/etc/gud-release/docker`, not in the checkout or shell history.
+The interactive script checks the existing three service configurations, asks for the mounted off-host destination and private registry, creates private directories, validates each app token using an empty-source POST, signs Docker into the registry through `--password-stdin`, and saves `/etc/gud-release/rollout.json` as root-only (0600). The validation submits no image or source: it expects the authenticated missing-source error that CapRover returns **before** scheduling a deployment. Unexpected responses fail closed. Password/token prompts accept pasting and show only masked characters. It refuses to overwrite existing settings. Docker credentials are kept separately in `/etc/gud-release/docker`, not in the checkout or shell history.
+
+CapRover app tokens **cannot authenticate GET build-status requests**. They are scoped to the deployment POST route. See the upstream [authorization route](https://github.com/caprover/caprover/blob/v1.13.3/src/routes/user/UserRouter.ts) and [missing-source guard](https://github.com/caprover/caprover/blob/v1.13.3/src/routes/user/apps/appdata/AppDataRouter.ts). The runner therefore requires an interactive confirmation that CapRover has no queued/running builds and no other operator will deploy during the release. Docker update-state checks reject incomplete/failed updates, but cannot see CapRover's in-memory queue. This is an operator-assisted gate, **not an automatic queue-status check**; no administrator credential is collected to bypass that limitation. A detached deployment acknowledgement (`101`) only means queued/accepted; image, revision, database and health verification still determine success.
 
 The rollout command then loads those settings automatically:
 
@@ -79,7 +81,7 @@ The non-secret target list, local build-cache image name and CapRover origin are
 
 1. Review and commit the intended changes; keep unrelated local research/data out of the commit. Push the commit through the normal Git workflow. This command does **not** auto-commit or push a dirty developer workspace.
 2. Wait for the repository's quality checks, including browser tests and the disposable PostgreSQL upgrade test, to pass for that commit. The runner repeats build/unit checks, but does not query GitHub check status or run browser/PostgreSQL integration tests inside the image build.
-3. Fetch/check out that exact commit in the server's release checkout, load the private runner environment, then run `npm run release:plan` followed by `npm run release:all -- --ref <full-commit-sha>`.
+3. Fetch/check out that exact commit in the server's release checkout, load the private runner environment, then run `npm run release:plan` followed by `npm run release:all -- --ref <full-commit-sha>`. Check the CapRover dashboard for queued/running builds and answer the runner's quiet-window confirmation; unattended invocation intentionally fails closed.
 4. Use a quiet operational window. A legitimate user deletion during deployment can trigger the retained-ID safeguard; investigate it rather than automatically restoring a backup over newer work.
 5. Confirm the journal reports all three targets `verified`. Spot-check sign-in, Pipeline, Live projects and the feature being released.
 

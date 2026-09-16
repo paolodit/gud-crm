@@ -34,7 +34,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:release": "node --test scripts/release/core.test.mjs scripts/release/settings.test.mjs",
+    "test:release": "node --test scripts/release/core.test.mjs scripts/release/settings.test.mjs scripts/release/caprover.test.mjs",
     "test:release:postgres": "node scripts/release/postgres-test.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "privacy:audit": "node scripts/privacy-audit.mjs",

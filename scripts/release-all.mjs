@@ -5,8 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createHash } from "node:crypto";
+import { createInterface } from "node:readline/promises";
 import { inspectTarget, registryRepository, releaseHealth, rollout, snapshotCounts, validateConfig, verifySnapshot, digest } from "./release/core.mjs";
 import { loadSettings, mergeSettings, settingsPath } from "./release/settings.mjs";
+import { assertQuietWindow, assertServiceStable, deployImage, verifyAppToken } from "./release/caprover.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
@@ -87,7 +89,7 @@ try {
       throw new Error("Use a clean checkout of the exact release commit on the server.");
     }
     // Ensure this command itself is from the release, not an untracked replacement.
-    for (const file of ["scripts/release-all.mjs", "scripts/release/core.mjs", "scripts/release/probe.mjs", "scripts/release/settings.mjs", "src/lib/deployment/migrations.ts", "config/rollout.json"]) {
+    for (const file of ["scripts/release-all.mjs", "scripts/release/core.mjs", "scripts/release/probe.mjs", "scripts/release/settings.mjs", "scripts/release/caprover.mjs", "src/lib/deployment/migrations.ts", "config/rollout.json"]) {
       if (digest(await readFile(path.join(root, file), "utf8")) !== digest(await gitRaw(`${revision}:${file}`))) {
         throw new Error("Release tooling must match the selected commit exactly.");
       }
@@ -112,6 +114,11 @@ try {
     if (paths.some((a, i) => paths.some((b, j) => i !== j && (a === b || a.startsWith(b + path.sep))))) {
       throw new Error("State, primary backups and backup copies must be separate, non-nested directories.");
     }
+    if (!process.stdin.isTTY) throw new Error("Run interactively: app tokens cannot read CapRover's queued-build status.");
+    console.log("In CapRover, verify no builds are queued/running. Do not start manual deployments until this rollout finishes.");
+    const confirmation = createInterface({ input: process.stdin, output: process.stdout });
+    try { assertQuietWindow(await confirmation.question("Confirm CapRover is idle and this is the only deployment operator (type yes): ")); }
+    finally { confirmation.close(); }
     // One shared lock for these apps, regardless of which Git checkout launched the command.
     lockPath = path.join(directories.state, "rollout.lock");
     lock = await open(lockPath, "wx", 0o600).catch(() => { throw new Error("A rollout lock exists. Check the previous release before removing a stale lock manually."); });
@@ -128,22 +135,9 @@ try {
       await saveJournal();
     };
     const probeSource = await readFile(path.join(root, "scripts/release/probe.mjs"));
-    const captainRequest = async (target, body) => {
-      const response = await fetch(`${config.captainUrl}/api/v2/user/apps/appData/${target.app}${body ? "?detached=1" : ""}`, {
-        method: body ? "POST" : "GET", redirect: "error", signal: AbortSignal.timeout(60000),
-        headers: { "Content-Type": "application/json", "x-namespace": "captain", "x-captain-app-token": process.env[target.tokenEnv] },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
-      let result;
-      try { result = await response.json(); } catch { throw new Error(`${target.id}: unexpected CapRover response.`); }
-      if (!response.ok || result.status !== 100) throw new Error(`${target.id}: CapRover did not acknowledge the request. Check the app token and server privately.`);
-      return result.data;
-    };
-    const assertIdle = async (target) => {
-      const status = await captainRequest(target);
-      if (typeof status?.isAppBuilding !== "boolean" || status.isAppBuilding) {
-        throw new Error(`${target.id}: CapRover already has a deployment queued/running, or returned an unknown status.`);
-      }
+    const assertReady = async (target) => {
+      await verifyAppToken(config.captainUrl, target.app, process.env[target.tokenEnv]);
+      assertServiceStable(await service(target));
     };
     const pushImage = async (tag) => {
       await docker(["image", "push", tag], { timeout: 15 * 60 * 1000 });
@@ -160,7 +154,7 @@ try {
     };
     const probe = async (instance) => JSON.parse(await docker(["exec", "-i", await containerId(`srv-captain--${instance.target.app}`), "node", "--input-type=module"], { input: probeSource }));
     const assertUnchanged = async (instance) => {
-      await assertIdle(instance.target);
+      await assertReady(instance.target);
       const current = inspectTarget(instance.target, await service(instance.target));
       if (current.configurationIdentity !== instance.configurationIdentity || current.previousImage !== instance.previousImage) {
         throw new Error(`${instance.target.id}: app configuration/image changed during this release. Stop for review.`);
@@ -169,7 +163,7 @@ try {
     await rollout(config.targets, {
       async preflight(target) {
         console.log(`${target.id}: checking existing app, database and migration history.`);
-        await assertIdle(target);
+        await assertReady(target);
         const instance = inspectTarget(target, await service(target));
         instance.databaseContainer = await containerId(instance.database.hostname);
         const dbService = (await jsonDocker(["service", "inspect", instance.database.hostname]))[0];
@@ -245,7 +239,7 @@ try {
         instance.before = latest;
         console.log(`${instance.target.id}: deploying the shared image; pending migrations run before startup.`);
         await record(instance.target.id, { phase: "deploy-requested", beforeCounts: snapshotCounts(latest) });
-        await captainRequest(instance.target, { captainDefinitionContent: JSON.stringify({ schemaVersion: 2, imageName: image.reference }), gitHash: revision });
+        await deployImage(config.captainUrl, instance.target.app, process.env[instance.target.tokenEnv], { captainDefinitionContent: JSON.stringify({ schemaVersion: 2, imageName: image.reference }), gitHash: revision });
       },
       async verify(instance, image) {
         const deadline = Date.now() + 15 * 60 * 1000;
