@@ -76,6 +76,8 @@ jobs:
           AUTH_SMOKE_EMAIL: auth-smoke@gud.test
           AUTH_SMOKE_PASSWORD: Auth-Smoke-Password-123!
         run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
           cd .next/standalone
           node production-entrypoint.mjs > /tmp/gud-crm.log 2>&1 &
           cd ../..

@@ -11,6 +11,7 @@ type Message = { role: "user" | "assistant"; content: string };
 type References = { offers: Array<{ id: string; name: string }>; stages: Array<{ id: string; name: string }>; projectStages: Array<{ id: string; name: string }>; thoughtsAllowed: boolean };
 type Session = { id: string; expiresAt: string };
 type Result = { error?: string; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
+const protectedEditor = () => document.querySelector('.dialog-card:not(.workspace-voice-dialog):not([data-gud-navigation-safe="true"]), .inline-detail-form');
 async function api(op: string, input?: unknown, sessionId?: string): Promise<Result> {
   const response = await fetch("/api/gud-conversation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, input, sessionId }) });
   const result = await response.json() as Result;
@@ -84,8 +85,8 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
       if (event.draft) { draftsRef.current = [event.draft, ...draftsRef.current.filter(d => d.id !== event.draft!.id)]; setDrafts(draftsRef.current); }
       if (event.navigate && /^\/(pipeline|live|my-work|thoughts|companies)(\?(opportunity|project)=[a-f0-9-]{36})?$/.test(event.navigate)) {
         // Never navigate away from another unsaved editor without the user's choice.
-        if (document.querySelector(".dialog-card:not(.workspace-voice-dialog), .inline-detail-form")) setError("Close your current editor to let GUD move to the other record. The conversation draft is safe.");
-        else router.push(event.navigate, { scroll: false });
+        if (protectedEditor()) setError("Close your current editor to let GUD move to the other record. The conversation draft is safe.");
+        else { window.dispatchEvent(new CustomEvent("gud:conversation-navigation", { detail: event.navigate })); router.push(event.navigate, { scroll: false }); }
       }
       if (event.finish) { setStatus(draftsRef.current.length ? "Drafts ready for review" : "All Gud"); if (!draftsRef.current.length) window.setTimeout(() => void endRef.current(), 2500); }
     }
@@ -183,6 +184,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
   useEffect(() => { endRef.current = async () => { await end(); }; });
   async function save() {
     if (busyRef.current) return;
+    if (protectedEditor()) { setError("Save or close the other editor before applying your conversation drafts."); return; }
     lock(true); setError(""); setStatus("Saving reviewed changes…");
     // Pause input while the user commits the visible review.
     media.current?.getAudioTracks().forEach(track => { track.enabled = false; }); setMuted(voice);
@@ -193,7 +195,7 @@ export function GudConversation({ onClassic }: { onClassic: () => void }) {
       setDrafts(result.drafts ?? []); draftsRef.current = result.drafts ?? []; saved.current = true;
       const message = signOff(true, draftsRef.current.length);
       say(message, `The application confirms the reviewed changes were saved successfully. Say exactly: ${message}`);
-      setStatus("All Gud · saved"); router.refresh();
+      setStatus("All Gud · saved"); window.dispatchEvent(new Event("gud:conversation-saved")); router.refresh();
       if (result.receipts?.at(-1)?.href) router.push(result.receipts.at(-1)!.href, { scroll: false });
     } catch (e) { setError((e as Error).message); setStatus("Not saved · review needed"); }
     finally { lock(false); }
