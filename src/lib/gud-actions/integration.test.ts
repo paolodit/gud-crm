@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentMember } from "@/lib/session";
 import { fieldsSchema, type GudDraft, type GudFields } from "./contract";
 const provider = vi.hoisted(() => ({ respond: vi.fn() }));
@@ -18,9 +18,10 @@ const approve = (d: { id: string; version: number }) => ({ id: d.id, version: d.
 let leadId: string;
 
 describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
+  beforeEach(() => provider.respond.mockReset());
   beforeAll(async () => {
     if (!url || !new URL(url).pathname.endsWith("_release_test")) throw new Error("A disposable release-test database is required.");
-    Object.assign(process.env, { DATABASE_URL: url, DATA_BACKEND: "postgres", GUD_PUBLIC_DEMO: "false", DEMO_MODE: "false", GUD_CONVERSATION_ENABLED: "true", BETTER_AUTH_SECRET: "ci-only-actions-secret-over-32-characters", NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000", AI_ENABLED: "true", AI_PROVIDER: "openai", OPENAI_API_KEY: "test-placeholder-not-a-real-key" });
+    Object.assign(process.env, { DATABASE_URL: url, DATA_BACKEND: "postgres", GUD_PUBLIC_DEMO: "false", DEMO_MODE: "false", GUD_CONVERSATION_ENABLED: "true", BETTER_AUTH_SECRET: "ci-only-actions-secret-over-32-characters", NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000", AI_ENABLED: "true", AI_PROVIDER: "openai", AI_RATE_LIMIT: "30", OPENAI_API_KEY: "test-placeholder-not-a-real-key" });
     database = await import("@/db"); actions = await import("./service"); thoughts = await import("@/lib/data/thoughts-repository");
     const pool = database.pool;
     await pool.query("INSERT INTO organisations(id,name) VALUES($1,'Actions fixture'),($2,'Other fixture')", [org, otherOrg]);
@@ -157,6 +158,57 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     const result = await conversation.textConversation(actor, session.id, [{ role: "user", content: "OK, save the changes." }], { page: "/thoughts", recordId: null, timezone });
     expect(result).toMatchObject({ message: "Saved. All Gud.", drafts: [], events: [{ saved: true, receipts: [{ draftId: draft.id }] }] });
     expect(provider.respond).not.toHaveBeenCalled();
+    await conversation.endConversation(actor, session.id);
+  });
+  it("drafts City Travel's stage-only move through the real conversation boundary", async () => {
+    const conversation = await import("./conversation");
+    const nextStage = randomUUID();
+    await database.pool.query("INSERT INTO stages(id,pipeline_id,name,colour,position) VALUES($1,$2,'Conversation active','#007bff',2)", [nextStage, pipeline]);
+    const created = await actions.stageDraft(actor, { kind: "lead", timezone, fields: { company: "City Travel", title: "Travel website", offerId: offer } });
+    await actions.commitDrafts(actor, [approve(created)]);
+    const session = await conversation.startConversation(actor);
+    const found = await conversation.executeConversationTool(actor, session.id, "search", { query: "City Travel", kind: "lead" }, timezone) as { record: { id: string }; navigate: string };
+    expect(found.navigate).toBe(`/pipeline?opportunity=${found.record.id}`);
+    const { draft } = await conversation.executeConversationTool(actor, session.id, "stage_change", { kind: "lead", targetId: found.record.id, fields: { stageId: nextStage } }, timezone) as { draft: GudDraft };
+    expect(draft.fields).toEqual({ stageId: nextStage });
+    expect(await actions.openRecord(actor, { kind: "lead", id: found.record.id })).toMatchObject({ stageId: stage });
+    await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(draft)] });
+    expect(await actions.openRecord(actor, { kind: "lead", id: found.record.id })).toMatchObject({ stageId: nextStage });
+    await conversation.endConversation(actor, session.id);
+  });
+  it("creates and revises Matteo's Thought from sparse model arguments, then saves on request", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    provider.respond.mockResolvedValueOnce({ output: [{ type: "function_call", name: "stage_change", call_id: "matteo-create", arguments: JSON.stringify({ kind: "thought", targetId: null, fields: { title: "Take Matteo shopping", addTasks: ["Go to shop 1", "Go to shop 2"] } }) }] });
+    provider.respond.mockResolvedValueOnce({ output: [], output_text: "Drafted." });
+    const result = await conversation.textConversation(actor, session.id, [{ role: "user", content: "Create a thought titled Take Matteo shopping with list items go to shop 1 and go to shop 2" }], { page: "/thoughts", recordId: null, timezone });
+    const original = result.drafts.find(d => d.fields.title === "Take Matteo shopping")!;
+    expect(original).toBeDefined();
+    expect(result.events[0]).not.toHaveProperty("error");
+    expect((await thoughts.listThoughts(actor)).some(t => t.title === original.fields.title)).toBe(false);
+    const { draft } = await conversation.executeConversationTool(actor, session.id, "revise_draft", { draftId: original.id, version: original.version, fields: { colour: "rose", category: "Family", addTasks: ["Head home"], body: null } }, timezone) as { draft: GudDraft };
+    expect(draft.fields.addTasks).toEqual(["Go to shop 1", "Go to shop 2", "Head home"]);
+    const saved = await conversation.textConversation(actor, session.id, [{ role: "user", content: "Save changes" }], { page: "/thoughts", recordId: null, timezone });
+    expect(saved.message).toBe("Saved. All Gud.");
+    const note = (await thoughts.listThoughts(actor)).find(t => t.title === "Take Matteo shopping")!;
+    expect(note).toMatchObject({ colour: "rose", category: "Family" });
+    expect(note.checklist.map(t => t.text)).toEqual(draft.fields.addTasks);
+    await conversation.endConversation(actor, session.id);
+  });
+  it("reads BHBI's checklist and drafts Email 4 as the milestone without completing tasks", async () => {
+    const conversation = await import("./conversation");
+    const created = await actions.stageDraft(actor, { kind: "project", timezone, fields: { company: "BHBI", title: "Email campaign", nextMilestone: "Email 1", addTasks: ["Email 1", "Email 2", "Email 3", "Email 4"] } });
+    await actions.commitDrafts(actor, [approve(created)]);
+    const session = await conversation.startConversation(actor);
+    const found = await conversation.executeConversationTool(actor, session.id, "search", { query: "BHBI", kind: "project" }, timezone) as { record: { id: string; tasks: Array<{ title: string }> }; navigate: string };
+    expect(found.navigate).toBe(`/live?project=${found.record.id}`);
+    expect(found.record.tasks.map(t => t.title)).toEqual(["Email 1", "Email 2", "Email 3", "Email 4"]);
+    const { draft } = await conversation.executeConversationTool(actor, session.id, "stage_change", { kind: "project", targetId: found.record.id, fields: { nextMilestone: found.record.tasks[3].title } }, timezone) as { draft: GudDraft };
+    expect(await actions.openRecord(actor, { kind: "project", id: found.record.id })).toMatchObject({ details: { nextMilestone: "Email 1" } });
+    await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(draft)] });
+    const record = await actions.openRecord(actor, { kind: "project", id: found.record.id });
+    expect(record).toMatchObject({ details: { nextMilestone: "Email 4" } });
+    expect(record.tasks.every(t => !t.completed)).toBe(true);
     await conversation.endConversation(actor, session.id);
   });
   it("gives batch-created Thoughts separate positions, including concurrent saves", async () => {

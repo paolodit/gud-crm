@@ -73,6 +73,8 @@ try {
   await page.goto("/pipeline");
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   const panel = page.getByRole("complementary", { name: "GUD conversation preview" });
+  const launcher = page.getByRole("button", { name: "Talk to GUD", exact: true });
+  await expect(launcher).toHaveAttribute("data-voice-state", "off");
   assert.notEqual(await panel.getByRole("button", { name: "Close conversation", exact: true }).evaluate(el => getComputedStyle(el).backgroundColor), "rgb(255, 255, 255)", "Header controls need a contrasting background");
   // First launch still requires informed consent; no microphone on page load.
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
@@ -84,6 +86,7 @@ try {
   beforeStartReply = async () => { await page.waitForFunction(() => window.fixtureVoice.peers.length === 1); };
   await panel.getByRole("checkbox", { name: /Allow my conversation/ }).click();
   await panel.getByRole("button", { name: "Mute", exact: true }).waitFor();
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
   beforeStartReply = async () => {};
   assert.equal(voiceRequests.at(-1).voice, "cedar");
   assert.equal(voiceRequests.at(-1).pace, "quick");
@@ -91,6 +94,7 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "response.create" && e.response?.tool_choice === "none")), true);
   await panel.getByRole("button", { name: "End", exact: true }).click();
   await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  await expect(launcher).toHaveAttribute("data-voice-state", "off");
   await panel.getByRole("checkbox", { name: "Conversation first", exact: true }).uncheck();
   await panel.getByRole("button", { name: "Options", exact: true }).click();
   assert.equal(await panel.getByRole("button", { name: "Start conversation", exact: true }).isEnabled(), true);
@@ -128,6 +132,24 @@ try {
   // The final sign-off must play completely, even if the preceding audio stops
   // after the finish tool. The provider response metadata identifies our audio.
   await startVoice();
+  await emit({ type: "input_audio_buffer.speech_started", item_id: "glow-fixture" });
+  await expect(launcher).toHaveAttribute("data-voice-state", "speaking");
+  await expect(launcher).toHaveCSS("animation-name", "gud-voice-glow");
+  await panel.getByRole("button", { name: "Minimise conversation", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "speaking");
+  await panel.getByRole("button", { name: "Expand conversation", exact: true }).click();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(launcher).toHaveCSS("animation-name", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await emit({ type: "input_audio_buffer.speech_stopped", item_id: "glow-fixture" });
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
+  await emit({ type: "input_audio_buffer.speech_started", item_id: "glow-mute-fixture" });
+  await panel.getByRole("button", { name: "Mute", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "paused");
+  await emit({ type: "input_audio_buffer.speech_started", item_id: "late-muted-fixture" });
+  await expect(launcher).toHaveAttribute("data-voice-state", "paused");
+  await panel.getByRole("button", { name: "Resume mic", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
   // The UI follows navigation, but an open human editor takes priority.
   await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Live projects", exact: true }).click();
   await page.getByRole("button", { name: "Add project", exact: true }).click();
@@ -262,9 +284,12 @@ try {
   // Transport loss closes the provider session too, then permits a fresh call.
   await startVoice();
   const beforeDisconnect = endCalls;
+  await emit({ type: "input_audio_buffer.speech_started", item_id: "disconnect-glow-fixture" });
+  await expect(launcher).toHaveAttribute("data-voice-state", "speaking");
   await page.evaluate(() => { const p = window.fixtureVoice.peers.at(-1); p.connectionState = "disconnected"; p.onconnectionstatechange(); });
   await expect(panel.getByRole("status")).toContainText("Conversation ended");
   assert.equal(endCalls, beforeDisconnect+1);
+  await expect(launcher).toHaveAttribute("data-voice-state", "off");
   await emit({ type: "output_audio_buffer.stopped", response_id: "late-after-disconnect" });
   await expect(panel.getByRole("status")).toContainText("Conversation ended");
   await startVoice();

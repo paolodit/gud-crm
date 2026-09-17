@@ -19,6 +19,8 @@ Try: “Sarah at Acme wants a £5,000 website before Christmas. Follow up next T
 
 The private `gud_action_drafts` table scopes every read/write by organisation and owner. Drafts expire after 24 hours and survive navigation/reconnection. Manual changes use draft versions. Existing-record fingerprints reject a stale save. The final button commits the reviewed draft versions and their receipts in one PostgreSQL transaction; retrying a saved draft returns its receipt rather than creating another record. Existing service transactions join the outer transaction using request-local AsyncLocalStorage. Failure in a later draft rolls the bundle back.
 
+Tool fields are partial patches: unused fields can be omitted or null (both mean unchanged). Every supplied value remains validated and unknown keys are rejected. Invalid-call feedback names only safe contract fields so GUD can correct its arguments without exposing record values. Project progress updates use the opened project's tasks and milestone; moving to a matching task does not implicitly complete earlier tasks.
+
 No deleting, archiving, terminal won/lost sales moves, outbound messages, arbitrary database actions, invoice operations, whole-database provider upload, or autonomous background work. Private Thought text is not copied into shared audit events.
 
 ## Operations and limits
@@ -32,6 +34,7 @@ No deleting, archiving, terminal won/lost sales moves, outbound messages, arbitr
 - Closing the panel ends voice and keeps unfinished drafts; cancelling clears the draft fields. Expired drafts are unavailable but retained in the private table pending a retention/cleanup policy. Transcripts are kept in the browser component, not a new transcript database.
 - A fresh voice connection restores drafts and page context, not a transcript of previous voice sessions. Finish/close never implies permission to save.
 - End stops microphone tracks immediately, even while a response is pending. Late responses cannot navigate or speak; any draft already staged is reloaded for review. Lost voice connections close the provider session before reconnecting. A spoken sign-off waits for its own audio to drain, not the preceding response; speaking again interrupts the sign-off.
+- The Talk to GUD launcher glows while the microphone is live and pulses when speech is detected, including with the panel minimised. Muting or disconnecting removes the glow. Reduced-motion preferences retain a steady glow without animation. This uses existing voice events, not another audio stream or provider request.
 - Manual draft edits are acknowledged independently, so an interrupted second edit can retry without invalidating a successful first edit. An empty amount is never silently converted to £0. The Save button pauses microphone input and rejects late voice actions until Resume mic; an explicit voice save can continue the conversation. Identical adjacent confirmation messages are deduplicated.
 - Thought date sorting is a newest-first column display only: Free sort restores the saved manual positions. Categories are saved on private notes, not a shared taxonomy. The category picker explicitly offers existing categories and creation; quick colour controls and swatches are square.
 

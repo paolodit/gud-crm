@@ -9,7 +9,7 @@ import { applyWorkspaceVoiceAction, loadVoiceWorkspaceAction, prepareWorkspaceVo
 import { voiceChangesSchema, voiceChoicesForScope, voiceScopeForPath, voiceScopeForTarget, voiceScopeLabel, voiceFieldKeys, voiceIsoToLocal, voiceLabels, voiceLocalToIso, voiceRecordHref, type VoiceChanges, type VoiceChoice, type VoiceFieldKey, type VoiceReceipt, type VoiceScope, type VoiceTarget } from "@/lib/domain/voice-workspace";
 import { useDialogFocus } from "./use-dialog-focus";
 import { useSpeechCapture } from "./use-speech-capture";
-import { GudConversation } from "./gud-conversation";
+import { GudConversation, type GudVoiceState } from "./gud-conversation";
 
 type Review = Extract<Awaited<ReturnType<typeof prepareWorkspaceVoiceAction>>, { ok: true }>;
 type VoiceSession = { transcript: string; target: VoiceTarget | null; updatedAt: number; pending?: { planId: string; changes: VoiceChanges } };
@@ -29,6 +29,7 @@ export function WorkspaceVoiceProvider({ memberKey, voicePreferences = null, con
   const [session, setSession] = useState<VoiceSession>({ transcript: "", target: null, updatedAt: 0 });
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const [conversationVoice, setConversationVoice] = useState<GudVoiceState>("off");
   const [preferredTarget, setPreferredTarget] = useState<VoiceTarget | null>(null);
   const [notice, setNotice] = useState<ReceiptNotice | null>(null);
   const [noticeError, setNoticeError] = useState("");
@@ -92,8 +93,8 @@ export function WorkspaceVoiceProvider({ memberKey, voicePreferences = null, con
     });
   }
   return <VoiceContext.Provider value={{ open: show }}>{children}
-    {conversationEnabled ? <GudConversation memberKey={memberKey} initialPreferences={voicePreferences} onClassic={() => { setPreferredTarget(null); setOpen(true); }} /> : null}
-    <button className="workspace-voice-launch" type="button" onClick={() => show()} aria-label="Talk to GUD" title="Talk to GUD (Ctrl/⌘ + Shift + Space)"><Mic size={19} /><span>Talk to GUD</span>{session.transcript.trim() ? <i aria-label="Draft saved" /> : null}</button>
+    {conversationEnabled ? <GudConversation memberKey={memberKey} initialPreferences={voicePreferences} onVoiceStateChange={setConversationVoice} onClassic={() => { setPreferredTarget(null); setOpen(true); }} /> : null}
+    <button className="workspace-voice-launch" data-voice-state={conversationVoice} type="button" onClick={() => show()} aria-label="Talk to GUD" aria-describedby="gud-launch-voice-status" title="Talk to GUD (Ctrl/⌘ + Shift + Space)"><Mic size={19} /><span>Talk to GUD</span><span id="gud-launch-voice-status" className="sr-only">{conversationVoice === "speaking" ? "Hearing you" : conversationVoice === "listening" ? "Microphone on" : conversationVoice === "paused" ? "Microphone paused" : "Microphone off"}</span>{session.transcript.trim() ? <i aria-label="Draft saved" /> : null}</button>
     {mounted && (notice || undone || noticeError) && !open ? createPortal(<aside className="workspace-voice-receipt" aria-label="Voice update receipt"><div role="status"><CheckCircle2 size={18} /><strong>{notice ? `Saved · ${notice.companyName}` : undone ? "Voice update undone" : "Talk to GUD"}</strong></div>{notice ? <><p>Your reviewed changes were applied together. Undo is available for 15 minutes.</p><div className="button-row"><Link href={voiceRecordHref(notice.target)}>Open record <ArrowRight size={13} /></Link><button type="button" className="btn btn-quiet" onClick={undo} disabled={undoing}>{undoing ? <LoaderCircle className="spin" size={14} /> : <RotateCcw size={14} />}Undo update</button></div></> : null}{noticeError ? <p role="alert" className="form-error">{noticeError}</p> : null}<button type="button" className="icon-button receipt-dismiss" aria-label="Dismiss voice receipt" onClick={() => { setNotice(null); setNoticeError(""); setUndone(false); }} disabled={undoing}><X size={15} /></button></aside>, document.body) : null}
     {mounted && open ? createPortal(<WorkspaceVoiceDialog preferredTarget={preferredTarget} pageScope={voiceScopeForPath(pathname)} session={session} onSession={saveSession} onClose={() => setOpen(false)} onApplied={applied} />, document.body) : null}
   </VoiceContext.Provider>;

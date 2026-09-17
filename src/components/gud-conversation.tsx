@@ -11,6 +11,7 @@ import { isSaveRequest, VoiceSaveApproval } from "@/lib/gud-actions/save-approva
 import "./gud-conversation.css";
 
 type Message = { role: "user" | "assistant"; content: string };
+export type GudVoiceState = "off" | "listening" | "speaking" | "paused";
 type References = { offers: Array<{ id: string; name: string }>; stages: Array<{ id: string; name: string }>; projectStages: Array<{ id: string; name: string }>; owners?: Array<{ id: string; name: string }>; activityTypes?: Array<{ id: string; name: string }>; thoughtsAllowed: boolean };
 type Session = { id: string; expiresAt: string };
 type Result = { error?: string; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; closeRecord?: boolean; closed?: boolean; saved?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
@@ -22,7 +23,7 @@ async function api(op: string, input?: unknown, sessionId?: string): Promise<Res
   return result;
 }
 
-export function GudConversation({ memberKey, initialPreferences = null, onClassic }: { memberKey: string; initialPreferences?: string | null; onClassic: () => void }) {
+export function GudConversation({ memberKey, initialPreferences = null, onClassic, onVoiceStateChange }: { memberKey: string; initialPreferences?: string | null; onClassic: () => void; onVoiceStateChange?: (state: GudVoiceState) => void }) {
   const router = useRouter(), pathname = usePathname(), params = useSearchParams();
   const [open, setOpen] = useState(false), [minimised, setMinimised] = useState(false);
   const [session, setSession] = useState<Session | null>(null), [drafts, setDrafts] = useState<GudDraft[]>([]);
@@ -30,6 +31,8 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   const [messages, setMessages] = useState<Message[]>([]), [text, setText] = useState("");
   const [status, setStatus] = useState("Ready when you are"), [error, setError] = useState("");
   const [busy, setBusy] = useState(false), [voice, setVoice] = useState(false), [muted, setMuted] = useState(false);
+  const [userSpeaking, setUserSpeaking] = useState(false);
+  useEffect(() => { onVoiceStateChange?.(!voice ? "off" : muted ? "paused" : userSpeaking ? "speaking" : "listening"); }, [voice, muted, userSpeaking, onVoiceStateChange]);
   const [preferences, setPreferences] = useState(() => readVoicePreferences(initialPreferences)), [options, setOptions] = useState(false);
   const preferencesRef = useRef(preferences), launchPending = useRef(false), loadPending = useRef<Promise<void> | null>(null);
   const preferenceWrites = useRef(Promise.resolve()), [preferenceWarning, setPreferenceWarning] = useState("");
@@ -114,7 +117,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     peer.current?.close(); peer.current = null;
     media.current?.getTracks().forEach(track => track.stop()); media.current = null;
     if (audio.current) { audio.current.pause(); audio.current.srcObject = null; } audio.current = null;
-    setVoice(false); setMuted(false);
+    setVoice(false); setMuted(false); setUserSpeaking(false);
   }, []);
   useEffect(() => {
     const show = () => {
@@ -165,7 +168,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
           router.push(pathname, { scroll: false }); event.closed = true;
         }
       }
-      if (event.draft) { draftsRef.current = [event.draft, ...draftsRef.current.filter(d => d.id !== event.draft!.id)]; setDrafts(draftsRef.current); }
+      if (event.draft) { draftsRef.current = [event.draft, ...draftsRef.current.filter(d => d.id !== event.draft!.id)]; setDrafts(draftsRef.current); setError(""); }
       if (event.drafts) { draftsRef.current = event.drafts; setDrafts(event.drafts); }
       if (event.receipts?.some(receipt => !seenReceipts.current.has(receipt.draftId))) {
         event.receipts.forEach(receipt => seenReceipts.current.add(receipt.draftId));
@@ -260,12 +263,13 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
         let value: Record<string, unknown>; try { value = JSON.parse(event.data); } catch { return; }
         if (value.type === "input_audio_buffer.speech_started") {
           if (reviewing.current || !media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended")) return;
-          lastActivity.current = Date.now(); setStatus("Listening…");
+          lastActivity.current = Date.now(); setStatus("Listening…"); setUserSpeaking(true);
           saveApproval.current.begin(String(value.item_id ?? ""), draftsRef.current.map(({ id, version }) => ({ id, version })));
           // Speaking again interrupts the sign-off, not just its audio.
           finishAfterAudio.current = false; signOffPlayback.current.reset();
           if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
         }
+        if (value.type === "input_audio_buffer.speech_stopped") setUserSpeaking(false);
         if (value.type === "response.created") { activeResponse.current = (value.response as { id?: string })?.id ?? null; setStatus("GUD is thinking…"); }
         if (value.type === "response.output_audio.delta" || value.type === "output_audio_buffer.started") setStatus("GUD is speaking…");
         if (value.type === "output_audio_buffer.stopped") setStatus(reviewing.current ? saved.current ? "All Gud · saved · microphone paused" : "Drafts ready · microphone paused" : media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended") ? "Listening" : "Microphone paused");
@@ -362,7 +366,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     if (protectedEditor()) { setError("Save or close the other editor before applying your conversation drafts."); return; }
     lock(true); reviewing.current = true; setError(""); setStatus("Saving reviewed changes…");
     // Pause input while the user commits the visible review.
-    media.current?.getAudioTracks().forEach(track => { track.enabled = false; }); setMuted(voice);
+    media.current?.getAudioTracks().forEach(track => { track.enabled = false; }); setMuted(voice); setUserSpeaking(false);
     cancelResponse();
     try {
       const reviewed = await flushEdits();
@@ -403,7 +407,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       <footer>
         {drafts.length ? <button type="button" className="btn btn-primary gud-save" onClick={() => void save()} disabled={busy}>Save {drafts.length === 1 ? "changes" : `all ${drafts.length} drafts`}</button> : null}
         <form onSubmit={event => { event.preventDefault(); void submitText(); }}><textarea aria-label="Message GUD" placeholder="What are you working on?" maxLength={12000} value={text} onChange={e => setText(e.target.value)} disabled={busy || voice} rows={2} /><button type="submit" className="icon-button" aria-label="Send message to GUD" disabled={!text.trim() || busy || !consent || voice}><Send size={17} /></button></form>
-        <div className="gud-conversation-controls">{!voice ? <button type="button" className="btn btn-voice" onClick={() => void startVoice()} disabled={busy || !consent}><Mic size={15} />Start conversation</button> : <><button type="button" className="btn btn-quiet" disabled={busy} onClick={() => { media.current?.getAudioTracks().forEach(track => { track.enabled = muted; }); if (muted) reviewing.current = false; setMuted(!muted); setStatus(muted ? "Listening" : "Microphone paused"); }}><MicOff size={15} />{muted ? "Resume mic" : "Mute"}</button><button type="button" className="btn btn-quiet" onClick={() => void audio.current?.play()}>Play voice</button></>}{session || busy ? <button type="button" className="btn btn-quiet" onClick={() => void end()} disabled={stopping || (busy && reviewing.current)}><Square size={13} />End</button> : null}</div>
+        <div className="gud-conversation-controls">{!voice ? <button type="button" className="btn btn-voice" onClick={() => void startVoice()} disabled={busy || !consent}><Mic size={15} />Start conversation</button> : <><button type="button" className="btn btn-quiet" disabled={busy} onClick={() => { media.current?.getAudioTracks().forEach(track => { track.enabled = muted; }); if (muted) reviewing.current = false; setMuted(!muted); setUserSpeaking(false); setStatus(muted ? "Listening" : "Microphone paused"); }}><MicOff size={15} />{muted ? "Resume mic" : "Mute"}</button><button type="button" className="btn btn-quiet" onClick={() => void audio.current?.play()}>Play voice</button></>}{session || busy ? <button type="button" className="btn btn-quiet" onClick={() => void end()} disabled={stopping || (busy && reviewing.current)}><Square size={13} />End</button> : null}</div>
         <div className="gud-conversation-links"><button className="gud-classic" type="button" disabled={voice || busy} onClick={() => { void end().then(ended => { if (ended) { loaded.current = false; setOpen(false); onClassic(); } }); }}>Use classic voice review</button><button type="button" className="gud-options-button" aria-expanded={options} onClick={() => setOptions(!options)}><Settings2 size={14} />Options</button></div>
       </footer>
     </> : null}

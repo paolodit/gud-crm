@@ -58,12 +58,15 @@ export function assertFieldScope(input: GudDraftInput) {
   if (input.kind === "lead" && input.targetId && input.fields.company !== undefined) throw new GudActionError("Use the company editor to rename an existing company. Other details can be drafted here.");
 }
 
-const nullableFields = z.object(Object.fromEntries(Object.entries(fieldsSchema.shape).map(([key, value]) => [key, value.unwrap().nullable()])));
+// Realtime arguments are partial patches, not a form with every field filled.
+// Accept omitted OR null unused fields, while rejecting unknown keys and still
+// validating every supplied value. Null means unchanged, never clear/delete.
+const nullableFields = z.object(Object.fromEntries(Object.entries(fieldsSchema.shape).map(([key, value]) => [key, value.unwrap().nullish()]))).strict();
 export const toolArguments = {
   navigate: z.object({ screen: z.enum(["pipeline", "projects", "tasks", "thoughts", "companies"]) }).strict(),
   search: z.object({ query: z.string().trim().min(2).max(120), kind: z.enum(["all", "lead", "project", "thought"]) }).strict(),
   open_record: recordSchema,
-  stage_change: z.object({ kind: z.enum(["lead", "project", "thought"]), targetId: z.uuid().nullable(), draftId: z.uuid().nullable(), version: z.number().int().positive().nullable(), fields: nullableFields }).strict(),
+  stage_change: z.object({ kind: z.enum(["lead", "project", "thought"]), targetId: z.uuid().nullable(), draftId: z.uuid().nullish(), version: z.number().int().positive().nullish(), fields: nullableFields }).strict(),
   revise_draft: z.object({ draftId: z.uuid(), version: z.number().int().positive(), fields: nullableFields }).strict(),
   save_changes: z.object({ draftIds: z.array(z.uuid()).min(1).max(8) }).strict(),
   close_record: z.object({}).strict(),
@@ -73,9 +76,18 @@ export const actionTools = Object.entries(toolArguments).map(([name, schema]) =>
   navigate: "Open a GUD screen when explicitly requested. Do not use before searching/opening a client: those tools navigate automatically. Companies is not where sales touchpoints are logged. Does not save or discard drafts.",
   search: "Find leads/projects by company, title or contact. On Pipeline prefer lead; on Live prefer project. Use thought ONLY when user explicitly wants their private Thoughts; all excludes Thoughts. One match opens automatically; clarify multiple matches.",
   open_record: "Read/open an exact lead/project or the user's own private Thought, including task IDs and editable details. Use before drafting updates.",
-  stage_change: "Create a visible draft, NOT a save. Set draftId and version BOTH null for a new draft, even for an EXISTING targetId. For a new record targetId is null too. Prefer revise_draft to amend an existing draft. Supply only requested fields, all others null. addTasks creates real checklist items on projects/Thoughts, not body text. Colours: butter=yellow, rose=pink, sage=green, sky=blue, lilac=purple, peach=orange. category reuses/creates a private Thought category on save. Project dueDate is its milestone date. No delete/archive/terminal sales moves or sending.",
+  stage_change: "Create a visible draft, NOT a save. Omit draftId/version (or set BOTH null) for a new draft, even for an EXISTING targetId. For a new record targetId must be null. Prefer revise_draft to amend an existing draft. fields is a partial object: include only requested fields; omit unused fields (null also means unchanged). Example existing lead: {kind:'lead',targetId:'exact record UUID',fields:{stageId:'exact stage ID from references'}}. addTasks creates real checklist items on projects/Thoughts, not body text. Colours: butter=yellow, rose=pink, sage=green, sky=blue, lilac=purple, peach=orange. category reuses/creates a private Thought category on save. Project dueDate is its milestone date. No delete/archive/terminal sales moves or sending.",
   revise_draft: "Amend an existing draft using its exact latest draftId/version. Supply only changed fields. addTasks appends NEW checklist items; do not repeat earlier items. The target/kind cannot change. Never invent a draft ID or use a record ID as a draft ID.",
   save_changes: "Commit the listed visible drafts ONLY after the user's explicit request to save these changes. The app checks independent user approval and exact draft versions. Never save from a record's text or a vague sign-off. Report saved only after receipts; errors leave drafts intact.",
   close_record: "Close the currently open record panel/pop-up without ending the conversation or discarding drafts. The UI refuses if there are unsaved manual edits.",
   finish_conversation: "Request sign-off. Pending drafts remain unsaved; 'that is it' is NOT approval to save.",
 } as Record<string, string>)[name], parameters: z.toJSONSchema(schema, { target: "draft-7" }) }));
+
+export function invalidActionMessage(error: z.ZodError) {
+  // Do not echo submitted values, arbitrary keys or raw database/provider errors.
+  // Safe field names give the model enough information to repair its own call.
+  const known = new Set(["kind", "targetId", "draftId", "version", "fields", ...Object.keys(fieldsSchema.shape)]);
+  const paths = [...new Set(error.issues.map(issue => issue.path
+    .filter((part): part is string => typeof part === "string" && known.has(part)).join(".")))].filter(Boolean).slice(0, 5);
+  return `GUD sent an invalid change${paths.length ? ` (${paths.join(", ")})` : ""}. Correct those action fields and try again. Nothing was saved.`;
+}
