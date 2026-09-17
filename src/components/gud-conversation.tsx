@@ -8,13 +8,15 @@ import { signOff, type GudDraft, type GudFields } from "@/lib/gud-actions/contra
 import { acknowledgeEdits, SignOffPlayback, type DraftEdits, type EditableFields } from "@/lib/gud-actions/client-state";
 import { gudVoices, latestVoicePreferences, readVoicePreferences, type VoicePreferences } from "@/lib/gud-actions/voice-preferences";
 import { isSaveRequest, VoiceSaveApproval } from "@/lib/gud-actions/save-approval";
+import { LiveCaptions, monitorMicrophone, VoiceProtocol, waitForIce, type VoiceEvent } from "@/lib/gud-actions/voice-protocol";
+import type { VoiceAdapter } from "@/lib/gud-actions/voice-provider";
 import "./gud-conversation.css";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { id?: string; role: "user" | "assistant"; content: string };
 export type GudVoiceState = "off" | "listening" | "speaking" | "paused";
 type References = { offers: Array<{ id: string; name: string }>; stages: Array<{ id: string; name: string }>; projectStages: Array<{ id: string; name: string }>; owners?: Array<{ id: string; name: string }>; activityTypes?: Array<{ id: string; name: string }>; thoughtsAllowed: boolean };
 type Session = { id: string; expiresAt: string };
-type Result = { error?: string; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; closeRecord?: boolean; closed?: boolean; saved?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
+type Result = { error?: string; adapter?: VoiceAdapter; saveConfirmationRequired?: boolean; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; closeRecord?: boolean; closed?: boolean; saved?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
 const protectedEditor = () => document.querySelector('.dialog-card:not(.workspace-voice-dialog):not([data-gud-navigation-safe="true"]), .inline-detail-form');
 async function api(op: string, input?: unknown, sessionId?: string): Promise<Result> {
   const response = await fetch("/api/gud-conversation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, input, sessionId }) });
@@ -32,6 +34,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   const [status, setStatus] = useState("Ready when you are"), [error, setError] = useState("");
   const [busy, setBusy] = useState(false), [voice, setVoice] = useState(false), [muted, setMuted] = useState(false);
   const [userSpeaking, setUserSpeaking] = useState(false);
+  const [adapter, setAdapter] = useState<VoiceAdapter | null>(null);
   useEffect(() => { onVoiceStateChange?.(!voice ? "off" : muted ? "paused" : userSpeaking ? "speaking" : "listening"); }, [voice, muted, userSpeaking, onVoiceStateChange]);
   const [preferences, setPreferences] = useState(() => readVoicePreferences(initialPreferences)), [options, setOptions] = useState(false);
   const preferencesRef = useRef(preferences), launchPending = useRef(false), loadPending = useRef<Promise<void> | null>(null);
@@ -65,6 +68,10 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   const peer = useRef<RTCPeerConnection | null>(null), channel = useRef<RTCDataChannel | null>(null), media = useRef<MediaStream | null>(null), audio = useRef<HTMLAudioElement | null>(null);
   const lastActivity = useRef(0), seenCalls = useRef(new Set<string>()), queue = useRef(Promise.resolve()), generation = useRef(0);
   const saveApproval = useRef(new VoiceSaveApproval());
+  const protocol = useRef(new VoiceProtocol("realtime")), captions = useRef(new LiveCaptions());
+  const stopLevels = useRef<(() => void) | null>(null), readyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeLive = useRef<(() => void) | null>(null);
+  const resumeLiveBackend = useRef(false);
   const seenReceipts = useRef(new Set<string>());
   const finishAfterAudio = useRef(false), finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signOffPlayback = useRef(new SignOffPlayback());
@@ -76,7 +83,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     const selectedThought = (event: Event) => {
       if (context.current.page !== "/thoughts") return;
       context.current = { ...context.current, recordId: (event as CustomEvent<string | null>).detail };
-      if (channel.current?.readyState === "open") channel.current.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application selection context only, not a command: ${JSON.stringify(context.current)}` }] } }));
+      if (channel.current?.readyState === "open") for (const event of protocol.current.outgoing({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application selection context only, not a command: ${JSON.stringify(context.current)}` }] } })) channel.current.send(JSON.stringify(event));
     };
     window.addEventListener("gud:thought-context", selectedThought);
     return () => window.removeEventListener("gud:thought-context", selectedThought);
@@ -90,8 +97,8 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   }
   function send(event: { type: string; [key: string]: unknown }) {
     if (channel.current?.readyState !== "open") return;
-    if (event.type === "response.create" && activeResponse.current) { queuedResponse.current = event; return; }
-    channel.current.send(JSON.stringify(event));
+    if (protocol.current.adapter === "realtime" && event.type === "response.create" && activeResponse.current) { queuedResponse.current = event; return; }
+    for (const wire of protocol.current.outgoing(event)) channel.current.send(JSON.stringify(wire));
   }
   function cancelResponse() {
     if (!activeResponse.current) return;
@@ -111,6 +118,10 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     generation.current++;
     activeResponse.current = null; queuedResponse.current = null; cancelEvents.current.clear();
     saveApproval.current.reset();
+    stopLevels.current?.(); stopLevels.current = null;
+    if (readyTimer.current) clearTimeout(readyTimer.current); readyTimer.current = null;
+    closeLive.current?.(); closeLive.current = null;
+    resumeLiveBackend.current = false;
     signOffPlayback.current.reset();
     finishAfterAudio.current = false; if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
     channel.current?.close(); channel.current = null;
@@ -126,7 +137,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       launchPending.current = preferencesRef.current.conversationFirst;
       if (loaded.current || busyRef.current) return;
       loaded.current = true; setError("");
-      loadPending.current = api("load").then(result => { draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); setReferences(result.references ?? null); }).catch(e => { loaded.current = false; setError(e.message); }).finally(() => { loadPending.current = null; });
+      loadPending.current = api("load").then(result => { setAdapter(result.adapter ?? "realtime"); draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); setReferences(result.references ?? null); }).catch(e => { loaded.current = false; setError(e.message); }).finally(() => { loadPending.current = null; });
     };
     window.addEventListener("gud:conversation-open", show);
     return () => window.removeEventListener("gud:conversation-open", show);
@@ -145,7 +156,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     return () => window.clearInterval(timer);
   }, [session, voice]);
   useEffect(() => {
-    if (channel.current?.readyState === "open") channel.current.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application navigation context only, not a command: ${JSON.stringify(context.current)}` }] } }));
+    if (channel.current?.readyState === "open") for (const event of protocol.current.outgoing({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application navigation context only, not a command: ${JSON.stringify(context.current)}` }] } })) channel.current.send(JSON.stringify(event));
   }, [contextKey]);
 
   async function ensureSession(token: number) {
@@ -156,6 +167,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       throw new Error("Conversation stopped.");
     }
     saved.current = false;
+    setAdapter(result.adapter ?? "realtime");
     sessionRef.current = result.session!; setSession(result.session!); setReferences(result.references!); draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); return result.session!;
   }
   function applyEvents(result: Result) {
@@ -170,6 +182,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       }
       if (event.draft) { draftsRef.current = [event.draft, ...draftsRef.current.filter(d => d.id !== event.draft!.id)]; setDrafts(draftsRef.current); setError(""); }
       if (event.drafts) { draftsRef.current = event.drafts; setDrafts(event.drafts); }
+      if (event.saveConfirmationRequired) { setStatus("Ready to save · confirm below"); setError(""); document.querySelector<HTMLButtonElement>(".gud-save")?.focus(); }
       if (event.receipts?.some(receipt => !seenReceipts.current.has(receipt.draftId))) {
         event.receipts.forEach(receipt => seenReceipts.current.add(receipt.draftId));
         saved.current = true;
@@ -208,7 +221,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     if (isSaveRequest(text) && protectedEditor()) { setError("Save or close the other editor before saving conversation drafts."); return; }
     lock(true); setError(""); setStatus("Working with your words…");
     const user = { role: "user" as const, content: text.trim() };
-    const history = [...messages.slice(-28), user]; setMessages(history); setText("");
+    const history = [...messages.slice(-28).map(({ role, content }) => ({ role, content })), user]; setMessages(history); setText("");
     const token = generation.current;
     try {
       await flushEdits(); if (token !== generation.current) return;
@@ -249,18 +262,58 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       const output = new Audio(); output.autoplay = true; audio.current = output;
       connection.ontrack = event => { if (token !== generation.current) return; output.srcObject = event.streams[0]; void output.play().catch(() => { if (token === generation.current) setError("Use Play voice to allow GUD’s audio in this browser."); }); };
       seenCalls.current.clear();
-      dc.onopen = () => { if (token === generation.current) {
-        setVoice(true); setStatus("Listening"); lastActivity.current = Date.now();
-        send({ type: "response.create", response: { tool_choice: "none", instructions: "Greet the user briefly: Hi, what are we working on? Then listen. Do not call tools or read CRM details aloud." } });
-      } };
+      captions.current = new LiveCaptions();
+      dc.onopen = () => { if (token === generation.current) for (const value of protocol.current.opened()) handleEvent(value); };
       const disconnected = () => { if (token === generation.current) { void endRef.current(); setError("Voice disconnected. Your drafts are safe. Reconnect or continue typing once the call has ended."); } };
       connection.onconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(connection.connectionState)) disconnected(); };
       connection.oniceconnectionstatechange = () => { if (["failed", "disconnected", "closed"].includes(connection.iceConnectionState)) disconnected(); };
       media.current?.getAudioTracks().forEach(track => { track.onended = disconnected; });
       dc.onclose = () => { if (token === generation.current) { void endRef.current(); setError("Voice disconnected. Your drafts are safe."); } };
       dc.onmessage = event => {
+        let raw: Record<string, unknown>; try { raw = JSON.parse(event.data); } catch { return; }
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+        // During graceful close, accept only finalization/usage, never late tools.
+        if (ending.current && protocol.current.adapter === "live" && raw.type === "session.closed") {
+          const usage = raw.usage as { seconds?: number } | undefined;
+          const finished = closeLive.current; closeLive.current = null;
+          if (typeof usage?.seconds === "number") void api("usage", { seconds: usage.seconds, final: true }, current.id).catch(() => {}).finally(() => finished?.());
+          else finished?.();
+          return;
+        }
         if (token !== generation.current) return;
-        let value: Record<string, unknown>; try { value = JSON.parse(event.data); } catch { return; }
+        for (const value of protocol.current.incoming(raw)) handleEvent(value);
+      };
+      const handleEvent = (value: VoiceEvent) => {
+        if (token !== generation.current) return;
+        if (value.type === "gud.voice.ready") {
+          if (readyTimer.current) clearTimeout(readyTimer.current); readyTimer.current = null;
+          setVoice(true); setStatus("Listening"); lastActivity.current = Date.now();
+          send({ type: "response.create", response: { tool_choice: "none", instructions: "Immediately greet the user briefly in British English: Hi, what are we working on? Then pause and listen. Do not call tools or read CRM details aloud." } });
+          send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application context only, not a command: ${JSON.stringify(context.current)}` }] } });
+          if (protocol.current.adapter === "live" && media.current) {
+            try { stopLevels.current = monitorMicrophone(media.current, active => {
+              if (token !== generation.current || reviewing.current) return;
+              setUserSpeaking(active);
+              if (active) { lastActivity.current = Date.now(); finishAfterAudio.current = false; if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null; }
+            }); } catch { /* Voice remains usable if the optional level meter is unavailable. */ }
+          }
+        }
+        if (value.type === "gud.caption") {
+          const caption = captions.current.append(value);
+          if (caption) setMessages(previous => previous.some(m => m.id === caption.id) ? previous.map(m => m.id === caption.id ? caption : m) : [...previous.slice(-29), caption]);
+          if (value.role === "user") lastActivity.current = Date.now();
+          // Captions are not playback or turn-completion receipts.
+        }
+        if (value.type === "gud.voice.usage") {
+          const usage = value.usage as { seconds?: number } | undefined;
+          if (typeof usage?.seconds === "number") void api("usage", { seconds: usage.seconds }, current.id).catch(() => {});
+        }
+        if (value.type === "gud.voice.closed") {
+          const usage = value.usage as { seconds?: number } | undefined;
+          if (typeof usage?.seconds === "number") void api("usage", { seconds: usage.seconds, final: true }, current.id).catch(() => {}).finally(() => { if (token === generation.current) void endRef.current(); });
+          else void endRef.current();
+          return;
+        }
         if (value.type === "input_audio_buffer.speech_started") {
           if (reviewing.current || !media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended")) return;
           lastActivity.current = Date.now(); setStatus("Listening…"); setUserSpeaking(true);
@@ -294,13 +347,14 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
           if (response?.usage) void api("usage", { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens }, current.id).catch(() => {});
           if (response?.status && response.status !== "completed") return;
           const calls = response?.output?.filter(item => item.type === "function_call") ?? [];
-          if (!calls.length) return;
+          if (!calls.length) { if (protocol.current.adapter === "live") setStatus(reviewing.current ? "Microphone paused" : "Listening"); return; }
           // A response already in flight must not change the review after Save.
           if (reviewing.current) {
             for (const call of calls.slice(0, 8)) {
               seenCalls.current.add(call.call_id);
               send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify({ error: "Not executed: the user is reviewing/saving. Wait until they resume the microphone." }) } });
             }
+            if (protocol.current.adapter === "live") resumeLiveBackend.current = true;
             return;
           }
           queue.current = queue.current.then(async () => {
@@ -315,7 +369,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
                 let result: Result;
                 try {
                   if (call.name === "save_changes" && protectedEditor()) throw new Error("Save or close the other editor first. Conversation drafts have not been saved.");
-                  const approval = call.name === "save_changes" ? await saveApproval.current.wait() : undefined;
+                  const approval = call.name === "save_changes" && protocol.current.adapter === "realtime" ? await saveApproval.current.wait() : undefined;
                   if (token !== generation.current) return;
                   result = await request("tool", { name: call.name, arguments: JSON.parse(call.arguments), context: context.current, ...(approval ? { approval } : {}) }, current.id);
                   if (token !== generation.current) return; applyEvents(result);
@@ -327,7 +381,10 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
               if (token !== generation.current) return;
               if (finishAfterAudio.current && !draftsRef.current.length) {
                 const marker = crypto.randomUUID(); signOffPlayback.current.arm(marker);
+                if (protocol.current.adapter === "live") send({ type: "response.create" });
                 send({ type: "response.create", response: { metadata: { gud_finish: marker }, tool_choice: "none", instructions: "The user has finished and no unsaved drafts remain. Say exactly: All Gud." } });
+                // Live has no playback-done event: this is a bounded sign-off grace
+                // period, not a claim that captions or backend completion were heard.
                 finishTimer.current = setTimeout(() => void endRef.current(), 15000);
               } else send({ type: "response.create" });
             } finally { lock(false); }
@@ -335,8 +392,12 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
         }
       };
       if (token !== generation.current) return;
-      const result = await request("voice", { sdp: offer.sdp, context: context.current, voice: selectedVoice, pace: preferencesRef.current.pace }, current.id);
+      await waitForIce(connection);
       if (token !== generation.current) return;
+      const result = await request("voice", { sdp: connection.localDescription?.sdp ?? offer.sdp, context: context.current, voice: selectedVoice, pace: preferencesRef.current.pace }, current.id);
+      if (token !== generation.current) return;
+      protocol.current = new VoiceProtocol(result.adapter ?? "realtime"); setAdapter(result.adapter ?? "realtime");
+      readyTimer.current = setTimeout(() => { if (token === generation.current) { void endRef.current(); setError("Voice did not finish connecting. Your drafts are safe; try again after the call ends."); } }, 20000);
       await connection.setRemoteDescription({ type: "answer", sdp: result.sdp! });
     } catch (e) { if (token === generation.current) { await end(); setError((e as Error).message || "Voice could not connect. Typing still works."); setStatus("Ready to type"); } }
     finally { if (token === generation.current) lock(false); }
@@ -346,7 +407,20 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     if (ending.current) return false;
     ending.current = true; setStopping(true); lock(true);
     const current = sessionRef.current;
-    launchPending.current = false; disconnect(); setStatus("Microphone stopped · finishing up…");
+    launchPending.current = false;
+    // Stop capture immediately; preserve the data channel briefly for Live's final usage.
+    generation.current++;
+    media.current?.getTracks().forEach(track => track.stop());
+    audio.current?.pause();
+    setVoice(false); setUserSpeaking(false); setStatus("Microphone stopped · finishing up…");
+    if (protocol.current.adapter === "live" && protocol.current.ready && channel.current?.readyState === "open") {
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(() => { closeLive.current = null; resolve(); }, 2000);
+        closeLive.current = () => { clearTimeout(timer); resolve(); };
+        send({ type: "session.close" });
+      });
+    }
+    disconnect();
     try {
       if (current) { await api("end", undefined, current.id); sessionRef.current = null; setSession(null); }
       // A tool may already have staged a private draft. Wait for it, then reload
@@ -367,11 +441,13 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     lock(true); reviewing.current = true; setError(""); setStatus("Saving reviewed changes…");
     // Pause input while the user commits the visible review.
     media.current?.getAudioTracks().forEach(track => { track.enabled = false; }); setMuted(voice); setUserSpeaking(false);
+    send({ type: "gud.input.mute" });
     cancelResponse();
     try {
       const reviewed = await flushEdits();
       const result = await request("save", reviewed.map(d => ({ id: d.id, version: d.version })));
       applyEvents(result); saved.current = true;
+      send({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application save receipt confirmed. Previously reviewed drafts are saved, not editable. Current unsaved drafts: ${JSON.stringify(draftsRef.current.map(({ id, version }) => ({ id, version })))}` }] } });
       const message = signOff(true, draftsRef.current.length);
       say(message, `The application confirms the reviewed changes were saved successfully. Say exactly: ${message}`);
       setStatus("All Gud · saved");
@@ -383,6 +459,15 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     try { const result = await request("cancel", { id: draft.id, version: draft.version }); draftsRef.current = result.drafts ?? []; setDrafts(draftsRef.current); const next = { ...editsRef.current }; delete next[draft.id]; editsRef.current = next; setEdits(next); }
     catch (e) { setError((e as Error).message); } finally { lock(false); }
   }
+  function toggleMicrophone() {
+    media.current?.getAudioTracks().forEach(track => { track.enabled = muted; });
+    send({ type: muted ? "gud.input.unmute" : "gud.input.mute" });
+    if (muted) {
+      reviewing.current = false;
+      if (resumeLiveBackend.current) { resumeLiveBackend.current = false; send({ type: "response.create" }); }
+    }
+    setMuted(!muted); setUserSpeaking(false); setStatus(muted ? "Listening" : "Microphone paused");
+  }
   if (!open) return null;
   return createPortal(<aside className={`gud-conversation ${minimised ? "is-minimised" : ""}`} aria-label="GUD conversation preview">
     <header><div><strong>Talk to GUD</strong><small>Conversation preview</small></div><button type="button" className="icon-button" aria-label={minimised ? "Expand conversation" : "Minimise conversation"} onClick={() => setMinimised(!minimised)}><ChevronDown size={17} /></button><button type="button" className="icon-button" aria-label="Close conversation" onClick={() => { void end().then(ended => { if (ended) { loaded.current = false; setOpen(false); document.querySelector<HTMLButtonElement>(".workspace-voice-launch")?.focus(); } }); }} disabled={stopping || (busy && reviewing.current)}><X size={17} /></button></header>
@@ -393,6 +478,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
         {consent ? <details className="gud-privacy"><summary title="Your permission is remembered for this account on this browser. Click for details.">Voice & privacy · permission remembered</summary><p>Voice starts only when you ask. Your conversation and relevant CRM details go to OpenAI. GUD’s voice is AI-generated. Changes stay in draft until you ask GUD to save or click Save. The microphone stops after 2 minutes idle or 10 minutes total. Change or revoke permission in Options.</p></details> : null}
         {preferenceWarning ? <p className="form-error" role="alert">{preferenceWarning}</p> : null}
         {options ? <section className="gud-conversation-options" aria-label="Conversation options">
+          <small>Voice engine: {adapter === "live" ? "GPT-Live 1 · preview" : adapter === "realtime" ? "OpenAI Realtime" : "Loading…"}. {adapter === "live" ? "Spoken save requests need the Save button confirmation. Typed saving is unchanged." : ""}</small>
           <label className="gud-conversation-toggle"><input type="checkbox" checked={preferences.conversationFirst} onChange={e => updatePreferences({ conversationFirst: e.target.checked })} />Conversation first</label>
           <small>Start voice when you press Talk to GUD. Switch off to open the panel for typing first. Never starts on page load.</small>
           <label>Voice<select aria-label="GUD voice" value={preferences.voice} disabled={voice || busy} onChange={e => updatePreferences({ voice: e.target.value as VoicePreferences["voice"] })}>{gudVoices.map(name => <option key={name} value={name}>{name[0].toUpperCase() + name.slice(1)}{name === "marin" ? " · default" : ""}</option>)}</select></label>
@@ -400,14 +486,15 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
           <label>Response pace<select aria-label="Response pace" value={preferences.pace} disabled={voice || busy} onChange={e => updatePreferences({ pace: e.target.value as VoicePreferences["pace"] })}><option value="quick">Quick</option><option value="relaxed">Relaxed</option></select></label><small>Quick responds sooner. Choose Relaxed if you like more time to pause and think. Applies to your next conversation.</small>
           {consent ? <button type="button" className="gud-classic" disabled={voice || busy} onClick={() => updatePreferences({ consent: false })}>Ask my permission again next time</button> : null}
         </section> : null}
-        {messages.length ? <div className="gud-conversation-messages" aria-live="polite">{messages.slice(-2).map((message, i) => <p key={`${messages.length}-${i}`} data-role={message.role}><small>{message.role === "user" ? "You" : "GUD"}</small>{message.content}</p>)}{messages.length > 2 ? <details><summary>Conversation history</summary>{messages.slice(0, -2).map((m, i) => <p key={i}><small>{m.role === "user" ? "You" : "GUD"}</small>{m.content}</p>)}</details> : null}</div> : null}
+        {adapter === "live" ? <small className="gud-privacy">GPT-Live 1 · say what to change, then confirm saving with the Save button.</small> : null}
+        {messages.length ? <div className="gud-conversation-messages" aria-live="polite">{messages.slice(-2).map((message, i) => <p key={message.id ?? `${messages.length}-${i}`} data-role={message.role}><small>{message.role === "user" ? "You" : "GUD"}</small>{message.content}</p>)}{messages.length > 2 ? <details><summary>Conversation history</summary>{messages.slice(0, -2).map((m, i) => <p key={m.id ?? i}><small>{m.role === "user" ? "You" : "GUD"}</small>{m.content}</p>)}</details> : null}</div> : null}
         {drafts.map(draft => <DraftCard key={draft.id} draft={draft} fields={{ ...draft.fields, ...edits[draft.id] }} references={references} busy={busy} onEdit={(key, value) => { editsRef.current = { ...editsRef.current, [draft.id]: { ...editsRef.current[draft.id], [key]: value } }; setEdits(editsRef.current); }} onCancel={() => void cancel(draft)} />)}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
       </div>
       <footer>
         {drafts.length ? <button type="button" className="btn btn-primary gud-save" onClick={() => void save()} disabled={busy}>Save {drafts.length === 1 ? "changes" : `all ${drafts.length} drafts`}</button> : null}
         <form onSubmit={event => { event.preventDefault(); void submitText(); }}><textarea aria-label="Message GUD" placeholder="What are you working on?" maxLength={12000} value={text} onChange={e => setText(e.target.value)} disabled={busy || voice} rows={2} /><button type="submit" className="icon-button" aria-label="Send message to GUD" disabled={!text.trim() || busy || !consent || voice}><Send size={17} /></button></form>
-        <div className="gud-conversation-controls">{!voice ? <button type="button" className="btn btn-voice" onClick={() => void startVoice()} disabled={busy || !consent}><Mic size={15} />Start conversation</button> : <><button type="button" className="btn btn-quiet" disabled={busy} onClick={() => { media.current?.getAudioTracks().forEach(track => { track.enabled = muted; }); if (muted) reviewing.current = false; setMuted(!muted); setUserSpeaking(false); setStatus(muted ? "Listening" : "Microphone paused"); }}><MicOff size={15} />{muted ? "Resume mic" : "Mute"}</button><button type="button" className="btn btn-quiet" onClick={() => void audio.current?.play()}>Play voice</button></>}{session || busy ? <button type="button" className="btn btn-quiet" onClick={() => void end()} disabled={stopping || (busy && reviewing.current)}><Square size={13} />End</button> : null}</div>
+        <div className="gud-conversation-controls">{!voice ? <button type="button" className="btn btn-voice" onClick={() => void startVoice()} disabled={busy || !consent}><Mic size={15} />Start conversation</button> : <><button type="button" className="btn btn-quiet" disabled={busy} onClick={toggleMicrophone}><MicOff size={15} />{muted ? "Resume mic" : "Mute"}</button><button type="button" className="btn btn-quiet" onClick={() => void audio.current?.play()}>Play voice</button></>}{session || busy ? <button type="button" className="btn btn-quiet" onClick={() => void end()} disabled={stopping || (busy && reviewing.current)}><Square size={13} />End</button> : null}</div>
         <div className="gud-conversation-links"><button className="gud-classic" type="button" disabled={voice || busy} onClick={() => { void end().then(ended => { if (ended) { loaded.current = false; setOpen(false); onClassic(); } }); }}>Use classic voice review</button><button type="button" className="gud-options-button" aria-expanded={options} onClick={() => setOptions(!options)}><Settings2 size={14} />Options</button></div>
       </footer>
     </> : null}

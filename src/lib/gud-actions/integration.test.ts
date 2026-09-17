@@ -276,6 +276,51 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     const row = (await database.pool.query("SELECT request_count FROM gud_conversation_sessions WHERE id=$1", [session.id])).rows[0];
     expect(row.request_count).toBe(1);
   });
+  it("routes Live through the same actor/draft guards, confirms saves separately and keeps duration cumulative", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    const fetcher = vi.fn(async (url: string) => url.endsWith("/hangup") ? new Response(null) : new Response(JSON.stringify({ session: { id: "live_fixture_1" }, transport: { type: "webrtc", sdp: "fixture-answer" } })));
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const connection = await conversation.connectVoice(actor, session.id, "fixture-offer", { page: "/thoughts", recordId: null, timezone }, "marin", "quick", "live");
+      expect(connection.adapter).toBe("live");
+      const staged = await conversation.executeConversationTool(actor, session.id, "stage_change", { kind: "thought", targetId: null, draftId: null, version: null, fields: { title: "Live fixture", colour: "rose", category: "Video Ideas", addTasks: ["Shop 1", "Shop 2"] } }, timezone);
+      const draft = (staged as { draft: GudDraft }).draft;
+      await expect(conversation.executeConversationTool(colleague, session.id, "save_changes", { draftIds: [draft.id] }, timezone)).rejects.toThrow("ended");
+      const approval = { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(draft)] };
+      expect(await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, approval)).toMatchObject({ saveConfirmationRequired: true, saved: false });
+      expect((await actions.listDrafts(actor)).some(d => d.id === draft.id)).toBe(true);
+      await conversation.recordUsage(actor, session.id, { seconds: 12 });
+      await conversation.recordUsage(actor, session.id, { seconds: 10 });
+      await conversation.recordUsage(actor, session.id, { seconds: 20, final: true });
+      await conversation.recordUsage(actor, session.id, { input_tokens: 6, output_tokens: 3 });
+      expect((await conversation.requireConversation(actor, session.id)).usage).toMatchObject({ seconds: 20, final: true, input_tokens: 6, model: "gpt-live-1", backend_model: "gpt-5.6-luna" });
+      const receipt = await actions.commitDrafts(actor, [approve(draft)]);
+      expect(receipt).toHaveLength(1);
+      await conversation.endConversation(actor, session.id);
+      expect(fetcher.mock.calls.at(-1)?.[0]).toBe("https://api.openai.com/v1/live/sessions/live_fixture_1/hangup");
+      await expect(conversation.executeConversationTool(actor, session.id, "navigate", { screen: "thoughts" }, timezone)).rejects.toThrow("ended");
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("hangs up a Live session that connects after End rather than leaking a paid session", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    let release!: () => void, entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const delayed = new Promise<void>(resolve => { release = resolve; });
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.endsWith("/hangup")) return new Response(null);
+      entered(); await delayed;
+      return new Response(JSON.stringify({ session: { id: "late_live" }, transport: { type: "webrtc", sdp: "answer" } }));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    try {
+      const result = conversation.connectVoice(actor, session.id, "fixture-offer", { page: "/pipeline", recordId: null, timezone }, "marin", "quick", "live");
+      const rejected = expect(result).rejects.toThrow("ended while voice was connecting");
+      await started; await conversation.endConversation(actor, session.id); release(); await rejected;
+      expect(fetcher.mock.calls.at(-1)?.[0]).toBe("https://api.openai.com/v1/live/sessions/late_live/hangup");
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("hangs up a voice call that finishes connecting after the user ended the session", async () => {
     const conversation = await import("./conversation");
     const session = await conversation.startConversation(actor);

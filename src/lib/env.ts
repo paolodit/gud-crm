@@ -18,6 +18,7 @@ const environmentSchema = z.object({
   AI_PROVIDER: z.enum(["local", "openai"]).default("local"),
   AI_MODEL: z.string().default("gpt-5.6-luna"),
   GUD_CONVERSATION_ENABLED: z.enum(["true", "false"]).default("true"),
+  GUD_VOICE_ADAPTER: z.enum(["live", "realtime"]).default("live"),
   GUD_REALTIME_MODEL: z.string().default("gpt-realtime-2.1"),
   AI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(120_000).default(30_000),
   AI_RATE_LIMIT: z.coerce.number().int().min(1).max(30).default(6),

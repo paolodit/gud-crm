@@ -5,7 +5,7 @@ vi.mock("@/lib/session", () => ({ getCurrentMember: mocks.member }));
 vi.mock("@/lib/gud-actions/service", () => ({ assertConversationActor: mocks.actor, listDrafts: mocks.load, actionReferences: mocks.refs, commitDrafts: mocks.commit }));
 vi.mock("@/lib/gud-actions/conversation", async () => {
   const { z } = await import("zod");
-  return { contextSchema: z.object({}), connectRealtime: mocks.voice, safeConversationError: () => "GUD could not complete this request. Nothing was saved." };
+  return { contextSchema: z.object({}), connectVoice: mocks.voice, safeConversationError: () => "GUD could not complete this request. Nothing was saved." };
 });
 import { POST } from "./route";
 const actor = { id: "fixture-actor", organisationId: "fixture-org" };

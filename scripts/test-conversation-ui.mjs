@@ -23,6 +23,7 @@ await page.addInitScript(() => {
     return { getTracks: () => [track], getAudioTracks: () => [track] };
   } });
   window.RTCPeerConnection = class {
+    iceGatheringState = "complete";
     connectionState = "new";
     constructor() { window.fixtureVoice.peers.push(this); }
     addTrack() {}
@@ -40,6 +41,7 @@ const errors = []; page.on("pageerror", e => errors.push(e.message));
 const offerId = randomUUID(), stageId = randomUUID();
 const references = { offers: [{ id: offerId, name: "Websites" }], stages: [{ id: stageId, name: "Outreach active" }], projectStages: [{ id: "kickoff", name: "Kickoff" }], thoughtsAllowed: true };
 let drafts = [], saves = 0, failSave = true, endCalls = 0, toolCalls = 0, failEditId = null;
+let voiceAdapter = "realtime";
 let toolHandler = async () => ({ finish: true }), saveCheck = () => assert.equal(drafts[0].fields.value, 6200), beforeStartReply = async () => {};
 const voiceRequests = [];
 const operations = [];
@@ -65,7 +67,7 @@ await page.route("**/api/gud-conversation", async route => {
     saveCheck(); drafts = []; result = { drafts, receipts: [{ draftId: input[0].id, href: "/pipeline", label: "Fixture saved" }] };
   }
   if (op === "end") { endCalls++; result = { ok: true }; }
-  if (op === "voice") { voiceRequests.push(input); result = { sdp: "fixture-answer-sdp" }; }
+  if (op === "voice") { voiceRequests.push(input); result = { sdp: "fixture-answer-sdp", adapter: voiceAdapter }; }
   if (op === "tool") { toolCalls++; result = await toolHandler(input); }
   await route.fulfill({ json: result });
 });
@@ -346,11 +348,69 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.length), 0);
   await panel.getByRole("button", { name: "Options", exact: true }).click();
   await expect(panel.getByLabel("Response pace", { exact: true })).toHaveValue("relaxed");
+  // GPT-Live uses a different event protocol. Test it in the real panel with
+  // synthetic transport events, never a real microphone or paid model request.
+  voiceAdapter = "live"; drafts = []; failSave = false; saveCheck = () => {};
+  await panel.getByRole("button", { name: "Start conversation", exact: true }).click();
+  await page.waitForFunction(() => window.fixtureVoice.peers.at(-1)?.dc.readyState === "open");
+  const sentBeforeReady = await page.evaluate(() => window.fixtureVoice.sent.length);
+  await expect(launcher).toHaveAttribute("data-voice-state", "off");
+  await emit({ type: "session.started", session: { id: "live-fixture" } });
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
+  assert.equal(await page.evaluate(n => window.fixtureVoice.sent.slice(n).some(e => e.type === "session.instructions.append" && e.content.includes("Immediately greet")), sentBeforeReady), true);
+  assert.equal(await page.evaluate(n => window.fixtureVoice.sent.slice(n).some(e => e.type === "response.create" && e.response), sentBeforeReady), false);
+  await emit({ type: "session.input_transcript.delta", delta: "Create a ", start_ms: 0, end_ms: 100 });
+  await emit({ type: "session.output_transcript.delta", delta: "Okay", start_ms: 50, end_ms: 90 });
+  await emit({ type: "session.input_transcript.delta", delta: "pink thought", start_ms: 100, end_ms: 400 });
+  await expect(panel.locator('[data-role="user"]').filter({ hasText: "Create a pink thought" })).toBeVisible();
+  const liveDraft = makeDraft("Live pink thought", { colour: "rose", addTasks: ["Shop 1", "Shop 2"] });
+  toolHandler = async input => {
+    if (input.name === "save_changes") { assert.equal(input.approval, undefined); return { saveConfirmationRequired: true, saved: false, drafts }; }
+    drafts = [liveDraft]; return { draft: liveDraft, saved: false };
+  };
+  const liveEvent = event => emit({ type: "response.event", delegation_id: "delegation-fixture", event });
+  await liveEvent({ type: "response.created", response: { id: "live-response-1" } });
+  await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "live-call-1", name: "stage_change", arguments: '{}' } });
+  await liveEvent({ type: "response.completed", response: { id: "live-response-1", status: "completed", output: [] } });
+  await expect(panel.getByRole("region", { name: "Draft Live pink thought" })).toBeVisible();
+  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.type === "response.item.create" && e.item.call_id === "live-call-1"));
+  const beforeSaveRequest = saves;
+  await emit({ type: "session.input_transcript.delta", delta: "Save changes", start_ms: 5000, end_ms: 5200 });
+  await liveEvent({ type: "response.created", response: { id: "live-response-2" } });
+  await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "live-call-2", name: "save_changes", arguments: JSON.stringify({ draftIds: [liveDraft.id] }) } });
+  await liveEvent({ type: "response.completed", response: { id: "live-response-2", status: "completed", output: [] } });
+  await expect(panel.getByRole("status")).toContainText("Ready to save");
+  assert.equal(saves, beforeSaveRequest, "Streaming captions never auto-authorize a save");
+  await panel.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("saved");
+  assert.equal(saves, beforeSaveRequest + 1);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "session.input_audio.mute")), true);
+  const pausedTools = toolCalls;
+  await liveEvent({ type: "response.created", response: { id: "live-paused-response" } });
+  await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "live-paused-call", name: "stage_change", arguments: '{}' } });
+  await liveEvent({ type: "response.completed", response: { id: "live-paused-response", status: "completed", output: [] } });
+  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.type === "response.item.create" && e.item.call_id === "live-paused-call"));
+  assert.equal(toolCalls, pausedTools, "Live cannot change a paused review");
+  const beforeResume = await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.create").length);
+  await panel.getByRole("button", { name: "Resume mic", exact: true }).click();
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "session.input_audio.unmute")), true);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.create").length), beforeResume + 1, "Resume continues the rejected tool result without replaying its action");
+  await panel.getByRole("button", { name: "End", exact: true }).click();
+  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.type === "session.close"));
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).stopped), true);
+  const liveToolCount = toolCalls;
+  await liveEvent({ type: "response.created", response: { id: "late-live-response" } });
+  await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "late-live-call", name: "stage_change", arguments: '{}' } });
+  await liveEvent({ type: "response.completed", response: { id: "late-live-response", status: "completed", output: [] } });
+  await emit({ type: "session.closed", reason: "close_requested", usage: { seconds: 20 } });
+  await expect(panel.getByRole("status")).toContainText("Conversation ended");
+  assert.equal(toolCalls, liveToolCount, "Late Live work cannot mutate after End");
+  await expect(launcher).toHaveAttribute("data-voice-state", "off");
   const revoked = await context.request.post("/api/gud-conversation", { headers: { Origin: baseURL }, data: { op: "preferences", input: { ...cookieOptions, consent: false, updatedAt: Date.now() + 2000 } } });
   assert.equal(revoked.ok(), true);
   await page.reload();
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   await expect(panel.getByRole("checkbox", { name: /Allow my conversation/ })).toBeVisible();
   assert.deepEqual(errors, []);
-  console.log("Conversation browser checks passed: consent/revocation, parallel voice preparation, remembered voice choice, conversation-first/default/opt-out, no automatic page-load microphone, duplicate-launch guard, late microphone cancellation, draft/edit, blank-value guard, route persistence, manual-editor protection, failed-save honesty, partial-edit retry, final audio drain, immediate mic stop, late-tool recovery, save/mic pause, cancelled-response rejection, reconnect, All Gud sign-off and mobile fit.");
+  console.log("Conversation browser checks passed: Realtime regressions plus GPT-Live startup gating, captions, empty-output tool collection, drafting, explicit save confirmation, pause/resume, immediate mic stop, late-action rejection, graceful close, All Gud sign-off and mobile fit. No live provider calls.");
 } finally { await browser.close(); }
