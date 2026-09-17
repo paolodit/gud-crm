@@ -1,5 +1,53 @@
 import { expect, test } from "@playwright/test";
 
+test("square colours, clear categories and date columns preserve the free layout", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  await page.goto("/thoughts");
+  const label = `Date sort ${Date.now()}`;
+  for (const suffix of ["older", "newer"]) {
+    await page.getByLabel("New thought", { exact: true }).fill(`${label} ${suffix}`);
+    await page.getByRole("button", { name: "Add thought", exact: true }).click();
+    await expect(page.locator(".thought-note").filter({ hasText: `${label} ${suffix}` })).toBeVisible();
+  }
+  const notes = page.locator(".thought-note").filter({ hasText: label });
+  const positions = await notes.evaluateAll(elements => Object.fromEntries(elements.map(el => [el.getAttribute("data-thought-id"), [el.style.left, el.style.top]])));
+  await page.getByRole("button", { name: "Sort by date", exact: true }).click();
+  await expect(page.locator(".thoughts-canvas")).toHaveAttribute("data-sort", "date");
+  await expect(notes.first()).toContainText("newer");
+  await expect(notes.first().getByRole("button", { name: /^Move thought/ })).toBeHidden();
+  const box = (await notes.first().boundingBox())!;
+  expect(box.width).toBeGreaterThan(200); expect(box.width).toBeLessThan(500);
+  await page.screenshot({ path: info.outputPath("thoughts-date-columns.png") });
+  await page.getByRole("button", { name: "Free sort", exact: true }).click();
+  expect(await notes.evaluateAll(elements => Object.fromEntries(elements.map(el => [el.getAttribute("data-thought-id"), [el.style.left, el.style.top]])))).toEqual(positions);
+  const note = notes.filter({ hasText: "newer" });
+  const tint = await note.locator(".thought-colour-toggle span").evaluate(el => ({ radius: getComputedStyle(el).borderRadius, width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }));
+  expect(tint.width).toBe(tint.height); expect(tint.radius).toBe("3px");
+  await note.getByRole("button", { name: /^Change colour/ }).click();
+  const swatch = (await note.getByRole("button", { name: "rose note", exact: true }).boundingBox())!;
+  expect(swatch.width).toBe(swatch.height); expect(swatch.width).toBe(32);
+  await note.getByRole("button", { name: "rose note", exact: true }).click();
+  await note.getByRole("button", { name: /^Edit thought/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Find or create category", exact: true }).fill(label);
+  await dialog.getByRole("button", { name: `Create “${label}”`, exact: true }).click();
+  await expect(dialog).toContainText(`Selected: ${label}`);
+  await dialog.getByRole("button", { name: "Save thought", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await notes.filter({ hasText: "older" }).getByRole("button", { name: /^Edit thought/ }).click();
+  await dialog.getByRole("textbox", { name: "Find or create category", exact: true }).fill(label);
+  await dialog.getByRole("button", { name: label, exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "rose note", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.screenshot({ path: info.outputPath("thought-category-picker.png") });
+  await dialog.getByRole("button", { name: "Save thought", exact: true }).click();
+  await page.reload();
+  await expect(notes.locator(".thought-note-category")).toHaveCount(2);
+  await page.goto("/reports");
+  await expect(page.getByRole("heading", { name: "Needs attention", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Live projects", exact: true })).toBeVisible();
+});
+
 test("quick colour, editor exploration, spaced capture, remembered dots and optimistic drag", async ({ page }, info) => {
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.goto("/thoughts");
@@ -40,7 +88,7 @@ test("quick colour, editor exploration, spaced capture, remembered dots and opti
   await page.unroute("**/thoughts");
 
   // A failed save restores the last confirmed position and explains recovery.
-  const confirmed = (await note.boundingBox())!;
+  const confirmed = await note.evaluate(el => ({ left: el.style.left, top: el.style.top }));
   let failSave = true;
   await page.route("**/thoughts", async route => {
     if (failSave && route.request().method() === "POST" && route.request().headers()["next-action"]) { failSave = false; await route.abort("failed"); }
@@ -50,7 +98,9 @@ test("quick colour, editor exploration, spaced capture, remembered dots and opti
   await page.mouse.move(again.x + 8, again.y + 8); await page.mouse.down();
   await page.mouse.move(again.x + 108, again.y + 88, { steps: 15 }); await page.mouse.up();
   await expect(page.locator(".thoughts-page").getByRole("alert")).toContainText("Could not confirm the save");
-  await expect.poll(async () => (await note.boundingBox())!.x).toBe(confirmed.x);
+  // The viewport can auto-scroll while dragging near its edge; compare stored
+  // board coordinates rather than screen coordinates to verify rollback.
+  await expect.poll(() => note.evaluate(el => ({ left: el.style.left, top: el.style.top }))).toEqual(confirmed);
   await page.unroute("**/thoughts");
   await page.getByRole("button", { name: "Reload private board", exact: true }).click();
   await expect(page.locator(".thoughts-page").getByRole("alert")).toHaveCount(0);

@@ -7,12 +7,13 @@ import { createPortal } from "react-dom";
 import { signOff, type GudDraft, type GudFields } from "@/lib/gud-actions/contract";
 import { acknowledgeEdits, SignOffPlayback, type DraftEdits, type EditableFields } from "@/lib/gud-actions/client-state";
 import { gudVoices, latestVoicePreferences, readVoicePreferences, type VoicePreferences } from "@/lib/gud-actions/voice-preferences";
+import { isSaveRequest, VoiceSaveApproval } from "@/lib/gud-actions/save-approval";
 import "./gud-conversation.css";
 
 type Message = { role: "user" | "assistant"; content: string };
-type References = { offers: Array<{ id: string; name: string }>; stages: Array<{ id: string; name: string }>; projectStages: Array<{ id: string; name: string }>; thoughtsAllowed: boolean };
+type References = { offers: Array<{ id: string; name: string }>; stages: Array<{ id: string; name: string }>; projectStages: Array<{ id: string; name: string }>; owners?: Array<{ id: string; name: string }>; activityTypes?: Array<{ id: string; name: string }>; thoughtsAllowed: boolean };
 type Session = { id: string; expiresAt: string };
-type Result = { error?: string; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
+type Result = { error?: string; session?: Session; references?: References; drafts?: GudDraft[]; draft?: GudDraft; message?: string; events?: Result[]; navigate?: string; finish?: boolean; closeRecord?: boolean; closed?: boolean; saved?: boolean; sdp?: string; receipts?: Array<{ draftId: string; href: string; label: string }> };
 const protectedEditor = () => document.querySelector('.dialog-card:not(.workspace-voice-dialog):not([data-gud-navigation-safe="true"]), .inline-detail-form');
 async function api(op: string, input?: unknown, sessionId?: string): Promise<Result> {
   const response = await fetch("/api/gud-conversation", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ op, input, sessionId }) });
@@ -60,12 +61,23 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   const sessionRef = useRef<Session | null>(null), draftsRef = useRef<GudDraft[]>([]), busyRef = useRef(false), saved = useRef(false);
   const peer = useRef<RTCPeerConnection | null>(null), channel = useRef<RTCDataChannel | null>(null), media = useRef<MediaStream | null>(null), audio = useRef<HTMLAudioElement | null>(null);
   const lastActivity = useRef(0), seenCalls = useRef(new Set<string>()), queue = useRef(Promise.resolve()), generation = useRef(0);
+  const saveApproval = useRef(new VoiceSaveApproval());
+  const seenReceipts = useRef(new Set<string>());
   const finishAfterAudio = useRef(false), finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signOffPlayback = useRef(new SignOffPlayback());
   const activeResponse = useRef<string | null>(null), queuedResponse = useRef<object | null>(null), cancelEvents = useRef(new Set<string>());
-  const context = useRef({ page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: "Europe/London" });
-  const contextKey = `${pathname}:${params.get("opportunity") ?? params.get("project") ?? ""}`;
-  useEffect(() => { context.current = { page: pathname, recordId: params.get("opportunity") ?? params.get("project"), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; }, [pathname, params]);
+  const context = useRef({ page: pathname, recordId: params.get("opportunity") ?? params.get("project") ?? params.get("thought"), timezone: "Europe/London" });
+  const contextKey = `${pathname}:${params.get("opportunity") ?? params.get("project") ?? params.get("thought") ?? ""}`;
+  useEffect(() => { context.current = { page: pathname, recordId: params.get("opportunity") ?? params.get("project") ?? params.get("thought"), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }; }, [pathname, params]);
+  useEffect(() => {
+    const selectedThought = (event: Event) => {
+      if (context.current.page !== "/thoughts") return;
+      context.current = { ...context.current, recordId: (event as CustomEvent<string | null>).detail };
+      if (channel.current?.readyState === "open") channel.current.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: `Application selection context only, not a command: ${JSON.stringify(context.current)}` }] } }));
+    };
+    window.addEventListener("gud:thought-context", selectedThought);
+    return () => window.removeEventListener("gud:thought-context", selectedThought);
+  }, []);
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { draftsRef.current = drafts; }, [drafts]);
   const lock = (value: boolean) => { busyRef.current = value || ending.current; setBusy(busyRef.current); };
@@ -85,12 +97,17 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     send({ type: "response.cancel", event_id: eventId, response_id: activeResponse.current });
   }
   function say(message: string, instructions?: string) {
-    setMessages(previous => [...previous.slice(-29), { role: "assistant", content: message }]);
+    appendMessage("assistant", message);
     if (instructions) send({ type: "response.create", response: { tool_choice: "none", instructions } });
+  }
+  function appendMessage(role: Message["role"], content: string) {
+    if (!content.trim()) return;
+    setMessages(previous => previous.at(-1)?.role === role && previous.at(-1)?.content.trim().toLowerCase() === content.trim().toLowerCase() ? previous : [...previous.slice(-29), { role, content }]);
   }
   const disconnect = useCallback(() => {
     generation.current++;
     activeResponse.current = null; queuedResponse.current = null; cancelEvents.current.clear();
+    saveApproval.current.reset();
     signOffPlayback.current.reset();
     finishAfterAudio.current = false; if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
     channel.current?.close(); channel.current = null;
@@ -140,10 +157,26 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   }
   function applyEvents(result: Result) {
     for (const event of result.events ?? [result]) {
+      if (event.closeRecord) {
+        if (protectedEditor()) { event.error = "Your current editor has unsaved changes. Save or close it yourself; nothing was discarded."; event.closed = false; setError(event.error); }
+        else {
+          document.querySelector<HTMLButtonElement>('[aria-label="Close project"], [aria-label="Close panel"], [aria-label="Close thought editor"]')?.click();
+          window.dispatchEvent(new CustomEvent("gud:conversation-navigation", { detail: pathname }));
+          router.push(pathname, { scroll: false }); event.closed = true;
+        }
+      }
       if (event.draft) { draftsRef.current = [event.draft, ...draftsRef.current.filter(d => d.id !== event.draft!.id)]; setDrafts(draftsRef.current); }
-      if (event.navigate && /^\/(pipeline|live|my-work|thoughts|companies)(\?(opportunity|project)=[a-f0-9-]{36})?$/.test(event.navigate)) {
+      if (event.drafts) { draftsRef.current = event.drafts; setDrafts(event.drafts); }
+      if (event.receipts?.some(receipt => !seenReceipts.current.has(receipt.draftId))) {
+        event.receipts.forEach(receipt => seenReceipts.current.add(receipt.draftId));
+        saved.current = true;
+        setError(""); setStatus("All Gud · saved"); window.dispatchEvent(new Event("gud:conversation-saved")); router.refresh();
+        const href = event.receipts.at(-1)?.href;
+        if (href && !protectedEditor()) router.push(href, { scroll: false });
+      }
+      if (event.navigate && /^\/(pipeline|live|my-work|thoughts|companies)(\?(opportunity|project|thought)=[a-f0-9-]{36})?$/.test(event.navigate)) {
         // Never navigate away from another unsaved editor without the user's choice.
-        if (protectedEditor()) setError("Close your current editor to let GUD move to the other record. The conversation draft is safe.");
+        if (protectedEditor()) { event.error = "Close your current editor to let GUD move to the other record. The conversation draft is safe."; setError(event.error); }
         else { window.dispatchEvent(new CustomEvent("gud:conversation-navigation", { detail: event.navigate })); router.push(event.navigate, { scroll: false }); }
       }
       if (event.finish) {
@@ -169,6 +202,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   }
   async function submitText() {
     if (!text.trim() || busyRef.current || !consent || voice) return;
+    if (isSaveRequest(text) && protectedEditor()) { setError("Save or close the other editor before saving conversation drafts."); return; }
     lock(true); setError(""); setStatus("Working with your words…");
     const user = { role: "user" as const, content: text.trim() };
     const history = [...messages.slice(-28), user]; setMessages(history); setText("");
@@ -177,7 +211,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
       await flushEdits(); if (token !== generation.current) return;
       const current = await ensureSession(token); if (token !== generation.current) return;
       const result = await request("text", { history, context: context.current }, current.id); if (token !== generation.current) return;
-      applyEvents(result); say(result.message!); setStatus("Ready for your next thought");
+      applyEvents(result); say(result.events?.find(event => event.error)?.error ?? result.message!); setStatus("Ready for your next thought");
     }
     catch (e) { if (token === generation.current) { setError((e as Error).message); setStatus("Your drafts are safe"); } }
     finally { lock(false); }
@@ -227,6 +261,7 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
         if (value.type === "input_audio_buffer.speech_started") {
           if (reviewing.current || !media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended")) return;
           lastActivity.current = Date.now(); setStatus("Listening…");
+          saveApproval.current.begin(String(value.item_id ?? ""), draftsRef.current.map(({ id, version }) => ({ id, version })));
           // Speaking again interrupts the sign-off, not just its audio.
           finishAfterAudio.current = false; signOffPlayback.current.reset();
           if (finishTimer.current) clearTimeout(finishTimer.current); finishTimer.current = null;
@@ -235,8 +270,11 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
         if (value.type === "response.output_audio.delta" || value.type === "output_audio_buffer.started") setStatus("GUD is speaking…");
         if (value.type === "output_audio_buffer.stopped") setStatus(reviewing.current ? saved.current ? "All Gud · saved · microphone paused" : "Drafts ready · microphone paused" : media.current?.getAudioTracks().some(track => track.enabled && track.readyState !== "ended") ? "Listening" : "Microphone paused");
         if (signOffPlayback.current.observe(value)) { void endRef.current(); return; }
-        if (value.type === "conversation.item.input_audio_transcription.completed" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "user", content: value.transcript as string }]);
-        if (value.type === "response.output_audio_transcript.done" && typeof value.transcript === "string") setMessages(previous => [...previous.slice(-29), { role: "assistant", content: value.transcript as string }]);
+        if (value.type === "conversation.item.input_audio_transcription.completed" && typeof value.transcript === "string") {
+          appendMessage("user", value.transcript);
+          saveApproval.current.complete(String(value.item_id ?? ""), value.transcript);
+        }
+        if (value.type === "response.output_audio_transcript.done" && typeof value.transcript === "string") appendMessage("assistant", value.transcript);
         if (value.type === "error") {
           const detail = value.error as { code?: string; event_id?: string } | undefined;
           // A response can complete between our cancellation and the server receiving it.
@@ -271,7 +309,14 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
                 if (seenCalls.current.has(call.call_id)) continue;
                 seenCalls.current.add(call.call_id);
                 let result: Result;
-                try { result = await request("tool", { name: call.name, arguments: JSON.parse(call.arguments), context: context.current }, current.id); if (token !== generation.current) return; applyEvents(result); }
+                try {
+                  if (call.name === "save_changes" && protectedEditor()) throw new Error("Save or close the other editor first. Conversation drafts have not been saved.");
+                  const approval = call.name === "save_changes" ? await saveApproval.current.wait() : undefined;
+                  if (token !== generation.current) return;
+                  result = await request("tool", { name: call.name, arguments: JSON.parse(call.arguments), context: context.current, ...(approval ? { approval } : {}) }, current.id);
+                  if (token !== generation.current) return; applyEvents(result);
+                  if (result.saved) saveApproval.current.reset();
+                }
                 catch (e) { if (token !== generation.current) return; result = { error: (e as Error).message }; setError(result.error!); }
                 send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(result) } });
               }
@@ -322,11 +367,10 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     try {
       const reviewed = await flushEdits();
       const result = await request("save", reviewed.map(d => ({ id: d.id, version: d.version })));
-      setDrafts(result.drafts ?? []); draftsRef.current = result.drafts ?? []; saved.current = true;
+      applyEvents(result); saved.current = true;
       const message = signOff(true, draftsRef.current.length);
       say(message, `The application confirms the reviewed changes were saved successfully. Say exactly: ${message}`);
-      setStatus("All Gud · saved"); window.dispatchEvent(new Event("gud:conversation-saved")); router.refresh();
-      if (result.receipts?.at(-1)?.href) router.push(result.receipts.at(-1)!.href, { scroll: false });
+      setStatus("All Gud · saved");
     } catch (e) { setError((e as Error).message); setStatus("Not saved · review needed"); }
     finally { lock(false); }
   }
@@ -341,8 +385,8 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
     <div className="gud-conversation-status" role="status">{busy ? <LoaderCircle className="spin" size={15} /> : voice ? <Mic size={15} /> : <Check size={15} />}{status}{drafts.length ? <span>{drafts.length} unsaved</span> : null}</div>
     {!minimised ? <>
       <div className="gud-conversation-scroll">
-        {!consent ? <div className="gud-conversation-intro"><p>Tell GUD what happened. It will find the right screen and prepare changes for you to review.</p><label><input type="checkbox" checked={consent} onChange={e => { updatePreferences({ consent: e.target.checked }); if (e.target.checked && launchPending.current) void startVoiceRef.current(); }} />Allow my conversation and relevant CRM details to be sent to OpenAI. Remember for my account on this browser.</label><small>{preferences.conversationFirst ? "Allowing this starts the conversation you just requested. Future clicks on Talk to GUD start voice directly." : "Voice uses my microphone only after I start it."} No CRM changes until Save. Voice stops after 2 minutes idle or 10 minutes total. GUD’s voice is AI-generated. Change these choices in Options.</small></div> : null}
-        {consent ? <details className="gud-privacy"><summary title="Your permission is remembered for this account on this browser. Click for details.">Voice & privacy · permission remembered</summary><p>Voice starts only when you ask. Your conversation and relevant CRM details go to OpenAI. GUD’s voice is AI-generated. Changes stay in draft until you click Save. The microphone stops after 2 minutes idle or 10 minutes total. Change or revoke permission in Options.</p></details> : null}
+        {!consent ? <div className="gud-conversation-intro"><p>Tell GUD what happened. It will find the right screen and prepare changes for you to review.</p><label><input type="checkbox" checked={consent} onChange={e => { updatePreferences({ consent: e.target.checked }); if (e.target.checked && launchPending.current) void startVoiceRef.current(); }} />Allow my conversation and relevant CRM details to be sent to OpenAI. Remember for my account on this browser.</label><small>{preferences.conversationFirst ? "Allowing this starts the conversation you just requested. Future clicks on Talk to GUD start voice directly." : "Voice uses my microphone only after I start it."} No CRM changes until you ask to save or click Save. Voice stops after 2 minutes idle or 10 minutes total. GUD’s voice is AI-generated. Change these choices in Options.</small></div> : null}
+        {consent ? <details className="gud-privacy"><summary title="Your permission is remembered for this account on this browser. Click for details.">Voice & privacy · permission remembered</summary><p>Voice starts only when you ask. Your conversation and relevant CRM details go to OpenAI. GUD’s voice is AI-generated. Changes stay in draft until you ask GUD to save or click Save. The microphone stops after 2 minutes idle or 10 minutes total. Change or revoke permission in Options.</p></details> : null}
         {preferenceWarning ? <p className="form-error" role="alert">{preferenceWarning}</p> : null}
         {options ? <section className="gud-conversation-options" aria-label="Conversation options">
           <label className="gud-conversation-toggle"><input type="checkbox" checked={preferences.conversationFirst} onChange={e => updatePreferences({ conversationFirst: e.target.checked })} />Conversation first</label>
@@ -366,12 +410,17 @@ export function GudConversation({ memberKey, initialPreferences = null, onClassi
   </aside>, document.body);
 }
 
-const fieldLabels: Partial<Record<keyof GudFields, string>> = { company: "Company", title: "Title", contact: "Contact name", value: "Value (£)", note: "Append note", task: "Follow-up task", dueDate: "Due date", dueTime: "Time", body: "Private thought" };
+const fieldLabels: Partial<Record<keyof GudFields, string>> = { company: "Company", title: "Title", contact: "Contact name", value: "Value (£)", note: "Append note", task: "Follow-up task", dueDate: "Due date", dueTime: "Time", body: "Private thought", category: "Category", colour: "Note colour", priority: "Priority", temperature: "Temperature", probability: "Probability (%)", expectedCloseDate: "Expected close", outreachAngle: "Outreach angle", fitScore: "Company fit (1–5)", qualificationNote: "Qualification note", contactEmail: "Contact email", contactPhone: "Contact phone", contactTitle: "Contact role", activityOutcome: "Activity outcome", occurredAt: "Activity time (ISO with time zone)", nextMilestone: "Next milestone" };
 function DraftCard({ draft, fields, references, busy, onEdit, onCancel }: { draft: GudDraft; fields: EditableFields; references: References | null; busy: boolean; onEdit: (key: keyof GudFields, value: unknown) => void; onCancel: () => void }) {
   const keys: Array<keyof GudFields> = draft.kind === "thought" ? ["title", "body"] : draft.kind === "lead" ? [...(!draft.targetId ? ["company", "title", "contact"] as const : fields.title !== undefined ? ["title"] as const : []), ...(fields.value !== undefined ? ["value"] as const : []), "note", "task", ...(fields.task ? ["dueDate", "dueTime"] as const : [])] : [...(!draft.targetId || fields.company !== undefined ? ["company"] as const : []), ...(!draft.targetId || fields.title !== undefined ? ["title"] as const : []), ...(fields.value !== undefined ? ["value"] as const : []), "note", "task", ...(fields.dueDate ? ["dueDate"] as const : [])];
+  for (const key of Object.keys(fieldLabels) as Array<keyof GudFields>) if (fields[key] !== undefined && !keys.includes(key)) keys.push(key);
+  const choices: Partial<Record<keyof GudFields, string[]>> = { colour: ["butter", "rose", "sage", "sky", "lilac", "peach"], priority: ["low", "medium", "high", "critical"], temperature: ["cold", "warm", "hot", "at_risk", "unresponsive"] };
   return <section className="gud-draft" aria-label={`Draft ${draft.label}`}><div className="gud-draft-heading"><span>Draft · {draft.kind === "thought" ? "private" : draft.kind}</span><button type="button" aria-label={`Cancel draft ${draft.label}`} className="icon-button" onClick={onCancel} disabled={busy}><X size={14} /></button></div><strong>{draft.label}</strong>
-    {keys.map(key => <label key={key}>{key === "task" && draft.kind === "project" ? "Add to project list" : key === "dueDate" && draft.kind === "project" ? "Project milestone date" : fieldLabels[key]}{key === "note" || key === "body" ? <textarea aria-label={fieldLabels[key]} rows={key === "body" ? 4 : 2} maxLength={key === "body" ? 20000 : 5000} value={String(fields[key] ?? "")} onChange={e => onEdit(key, e.target.value)} disabled={busy} /> : <input aria-label={fieldLabels[key]} type={key === "value" ? "number" : key === "dueDate" ? "date" : key === "dueTime" ? "time" : "text"} min={key === "value" ? "0" : undefined} step={key === "value" ? "0.01" : undefined} value={String(fields[key] ?? "")} onChange={e => onEdit(key, key === "value" && e.target.value !== "" ? Number(e.target.value) : e.target.value)} disabled={busy} />}</label>)}
-    {draft.kind === "lead" && (!draft.targetId || fields.offerId) ? <label>Offer<select aria-label="Draft offer" value={fields.offerId ?? ""} onChange={e => onEdit("offerId", e.target.value)} disabled={busy}><option value="">Choose offer</option>{references?.offers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : null}
+    {keys.map(key => <label key={key}>{key === "task" && draft.kind === "project" ? "Add to project list" : key === "dueDate" && draft.kind === "project" ? "Project milestone date" : fieldLabels[key]}{choices[key] ? <select aria-label={fieldLabels[key]} value={String(fields[key] ?? "")} onChange={e => onEdit(key, e.target.value)} disabled={busy}>{choices[key]!.map(option => <option key={option} value={option}>{option}</option>)}</select> : key === "note" || key === "body" || key === "outreachAngle" || key === "qualificationNote" ? <textarea aria-label={fieldLabels[key]} rows={key === "body" ? 4 : 2} maxLength={key === "body" ? 20000 : 5000} value={String(fields[key] ?? "")} onChange={e => onEdit(key, e.target.value)} disabled={busy} /> : <input aria-label={fieldLabels[key]} type={["value", "probability", "fitScore"].includes(key) ? "number" : key === "dueDate" || key === "expectedCloseDate" ? "date" : key === "dueTime" ? "time" : "text"} min={key === "value" ? "0" : undefined} step={key === "value" ? "0.01" : undefined} value={String(fields[key] ?? "")} onChange={e => onEdit(key, ["value", "probability", "fitScore"].includes(key) && e.target.value !== "" ? Number(e.target.value) : e.target.value)} disabled={busy} />}</label>)}
+    {fields.addTasks ? <label>Add checklist items<textarea aria-label="Add checklist items" value={fields.addTasks.join("\n")} onChange={e => onEdit("addTasks", e.target.value.split("\n"))} disabled={busy} /><small>One task per line</small></label> : null}
+    {fields.ownerId !== undefined ? <label>Owner<select aria-label="Draft owner" value={fields.ownerId} onChange={e => onEdit("ownerId", e.target.value)} disabled={busy}>{references?.owners?.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : null}
+    {fields.activityTypeId !== undefined ? <label>Activity type<select aria-label="Draft activity type" value={fields.activityTypeId} onChange={e => onEdit("activityTypeId", e.target.value)} disabled={busy}>{references?.activityTypes?.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : null}
+{draft.kind !== "thought" && (!draft.targetId || fields.offerId) ? <label>Offer<select aria-label="Draft offer" value={fields.offerId ?? ""} onChange={e => onEdit("offerId", e.target.value)} disabled={busy}><option value="">Choose offer</option>{references?.offers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : null}
     {draft.kind !== "thought" && (fields.stageId || !draft.targetId) ? <label>Stage<select aria-label="Draft stage" value={fields.stageId ?? ""} onChange={e => onEdit("stageId", e.target.value)} disabled={busy}><option value="">Choose stage</option>{(draft.kind === "lead" ? references?.stages : references?.projectStages)?.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label> : null}
     {fields.completeTaskIds?.length ? <div><small>Mark complete</small>{fields.completeTaskIds.map(id => <p key={id}><Check size={13} />{draft.taskOptions?.find(t => t.id === id)?.title ?? "Selected task"}</p>)}</div> : null}
     {fields.dueTime ? <small>Time zone: {draft.timezone}</small> : null}

@@ -12,7 +12,7 @@ test("simpler editing, formatting, voice draft, direction and archive", async ({
   await expect(page.getByRole("link", { name: "Thoughts", exact: true }).locator("svg")).toHaveClass(/lucide-thought-bubble/);
   await note.getByRole("button", { name: /^Voice edit thought/ }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Your thought" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toBeVisible();
   await dialog.getByLabel("Voice draft text", { exact: true }).fill("Add an extra observation");
   await dialog.getByRole("button", { name: "Apply to draft" }).click();
   await expect(dialog.getByLabel("Thought", { exact: true })).toContainText("Add an extra observation");
@@ -32,8 +32,8 @@ test("simpler editing, formatting, voice draft, direction and archive", async ({
   await expect(dialog.getByLabel("Formatted preview").getByRole("link")).toHaveAttribute("href", "https://example.com/");
   await expect(dialog.getByText("List", { exact: true })).toBeVisible();
   await dialog.getByLabel("Title", { exact: true }).fill("Title comes first");
-  await dialog.getByText("Optional category", { exact: true }).click();
-  await dialog.getByLabel("Category", { exact: true }).fill("Video content");
+  await dialog.getByLabel("Find or create category", { exact: true }).fill("Video content");
+  await dialog.getByRole("button", { name: "Create “Video content”", exact: true }).click();
   await page.screenshot({ path: info.outputPath("thought-editor.png") });
   await dialog.getByRole("button", { name: "Save thought", exact: true }).click();
   await expect(note.locator(".thought-note-open strong")).toHaveText("Refinement fixture");

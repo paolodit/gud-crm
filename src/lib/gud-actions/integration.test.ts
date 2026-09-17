@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { CurrentMember } from "@/lib/session";
+import { fieldsSchema, type GudDraft, type GudFields } from "./contract";
 const provider = vi.hoisted(() => ({ respond: vi.fn() }));
 vi.mock("openai", () => ({ default: class { responses = { create: provider.respond }; } }));
 
@@ -84,6 +85,79 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     ]);
     expect(result.map(r => r.status)).toEqual(["rejected", "fulfilled"]);
     expect((await database.pool.query("SELECT id FROM organisations WHERE id=ANY($1::uuid[])", [[a,b]])).rows.map(r => r.id)).toEqual([b]);
+  });
+  it("saves the transcript's coloured, categorised Thought and real checklist on explicit request", async () => {
+    const conversation = await import("./conversation");
+    await database.pool.query("UPDATE organisations SET ai_enabled=true WHERE id=$1", [org]);
+    const session = await conversation.startConversation(actor);
+    const fields = (patch: GudFields) => ({ ...Object.fromEntries(Object.keys(fieldsSchema.shape).map(key => [key, null])), ...patch });
+    const staged = await conversation.executeConversationTool(actor, session.id, "stage_change", { kind: "thought", targetId: null, draftId: null, version: null, fields: fields({ title: "Job reminder", body: "Must go for a job today", colour: "rose" }) }, timezone) as { draft: GudDraft };
+    const revised = await conversation.executeConversationTool(actor, session.id, "revise_draft", { draftId: staged.draft.id, version: staged.draft.version, fields: fields({ category: "Video Ideas", addTasks: ["Sausages", "Potatoes", "Dog"] }) }, timezone) as { draft: GudDraft };
+    const draft = revised.draft, save = { draftIds: [draft.id] };
+    await expect(conversation.executeConversationTool(actor, session.id, "save_changes", save, timezone)).rejects.toThrow("explicitly");
+    const approval = { utterance: "Perfect. Perfect. Can you save it, please?", capturedAt: Date.now(), drafts: [approve(draft)] };
+    const result = await conversation.executeConversationTool(actor, session.id, "save_changes", save, timezone, approval) as { receipts: Array<{ href: string }>; saved: boolean };
+    expect(result.saved).toBe(true);
+    const id = new URL(result.receipts[0].href, "https://fixture.test").searchParams.get("thought")!;
+    const note = await thoughts.getThought(actor, id);
+    expect(note).toMatchObject({ colour: "rose", category: "Video Ideas", body: "Must go for a job today" });
+    expect(note.checklist.map(t => t.text)).toEqual(["Sausages", "Potatoes", "Dog"]);
+    await conversation.executeConversationTool(actor, session.id, "save_changes", save, timezone, approval);
+    expect((await thoughts.listThoughts(actor)).filter(n => n.id === id)).toHaveLength(1);
+    expect(await actions.searchRecords(colleague, "Job reminder", "thought")).toMatchObject({ matches: [] });
+    expect(await actions.searchRecords(actor, "Job reminder", "all")).toMatchObject({ matches: [] });
+    await expect(actions.openRecord(colleague, { kind: "thought", id })).rejects.toThrow();
+    const update = await actions.stageDraft(actor, { kind: "thought", targetId: id, timezone, fields: { colour: "sky", category: "video ideas", completeTaskIds: [note.checklist[0].id], addTasks: ["Write CV"] } });
+    await actions.commitDrafts(actor, [approve(update)]);
+    const changed = await thoughts.getThought(actor, id);
+    expect(changed).toMatchObject({ colour: "sky", category: "Video Ideas", body: note.body, x: note.x, y: note.y });
+    expect(changed.checklist).toHaveLength(4); expect(changed.checklist[0].done).toBe(true);
+    const stale = await actions.stageDraft(actor, { kind: "thought", targetId: id, timezone, fields: { body: "Voice body" } });
+    await thoughts.saveThought(actor, { id, version: changed.version, content: { title: changed.title, body: "Newer human body", colour: changed.colour, category: changed.category, checklist: changed.checklist, x: changed.x, y: changed.y } });
+    await expect(actions.commitDrafts(actor, [approve(stale)])).rejects.toThrow("Thought changed");
+    expect((await thoughts.getThought(actor, id)).body).toBe("Newer human body");
+    await actions.cancelDraft(actor, stale.id, stale.version);
+    await conversation.endConversation(actor, session.id);
+  });
+  it("adds separate project tasks across turns without confusing a record version with a draft version", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    const fields = (patch: GudFields) => ({ ...Object.fromEntries(Object.keys(fieldsSchema.shape).map(key => [key, null])), ...patch });
+    const project = await actions.stageDraft(actor, { kind: "project", timezone, fields: { company: "Cargo fixture", title: "Power Cargo", value: 1500, note: "Contact: Carter", nextMilestone: "Refine sitemap", dueDate: "2026-10-01", offerId: offer, ownerId: colleague.id } });
+    const [receipt] = await actions.commitDrafts(actor, [approve(project)]);
+    const id = new URL(receipt.href, "https://fixture.test").searchParams.get("project")!;
+    const a = await conversation.executeConversationTool(actor, session.id, "stage_change", { kind: "project", targetId: id, draftId: null, version: 1, fields: fields({ addTasks: ["Build $1 trial"] }) }, timezone) as { draft: GudDraft };
+    const b = await conversation.executeConversationTool(actor, session.id, "revise_draft", { draftId: a.draft.id, version: a.draft.version, fields: fields({ addTasks: ["Draft a logo", "Speak to Carter and refine sitemap and project cost"] }) }, timezone) as { draft: GudDraft };
+    expect(b.draft.fields.addTasks).toHaveLength(3);
+    const approval = { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(a.draft)] };
+    await expect(conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [b.draft.id] }, timezone, approval)).rejects.toThrow("changed");
+    await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [b.draft.id] }, timezone, { ...approval, drafts: [approve(b.draft)] });
+    const result = await actions.openRecord(actor, { kind: "project", id });
+    expect(result.tasks.map(t => t.title)).toEqual(b.draft.fields.addTasks);
+    expect(result).toMatchObject({ value: 1500, details: { nextMilestone: "Refine sitemap", dueDate: "2026-10-01", notes: "Contact: Carter", ownerId: colleague.id, offerId: offer } });
+    expect(await conversation.executeConversationTool(actor, session.id, "close_record", {}, timezone)).toEqual({ closeRecord: true });
+    await conversation.endConversation(actor, session.id);
+  });
+  it("persists rich opportunity details, named contacts and a real touchpoint", async () => {
+    const refs = await actions.actionReferences(actor);
+    const draft = await actions.stageDraft(actor, { kind: "lead", targetId: leadId, timezone, fields: { value: 7200, priority: "high", temperature: "hot", probability: 75, expectedCloseDate: "2026-11-12", ownerId: colleague.id, outreachAngle: "New AI business website", fitScore: 4, qualificationNote: "Budget confirmed", contact: "Luke", contactEmail: "luke@fixture.test", contactPhone: "+441234567890", contactTitle: "Founder", note: "Discussed website scope", activityTypeId: refs.activityTypes[0].id, activityOutcome: "Agreed follow-up", occurredAt: "2026-09-17T10:00:00Z" } });
+    await actions.commitDrafts(actor, [approve(draft)]);
+    const record = await actions.openRecord(actor, { kind: "lead", id: leadId });
+    expect(record).toMatchObject({ value: 7200, details: { priority: "high", temperature: "hot", probability: 75, ownerId: colleague.id, fitScore: 4, qualificationNote: "Budget confirmed", outreachAngle: "New AI business website" } });
+    expect(record.contacts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Luke", email: "luke@fixture.test", phone: "+441234567890", title: "Founder" })]));
+    expect(record.contacts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Sarah" })]));
+    const touch = (await database.pool.query("SELECT notes,outcome,occurred_at FROM activities WHERE opportunity_id=$1 ORDER BY created_at DESC LIMIT 1", [leadId])).rows[0];
+    expect(touch).toMatchObject({ notes: "Discussed website scope", outcome: "Agreed follow-up", occurred_at: new Date("2026-09-17T10:00:00Z") });
+  });
+  it("handles an explicit typed save without a model round trip", async () => {
+    const conversation = await import("./conversation");
+    const draft = await actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: "Direct typed save fixture" } });
+    const session = await conversation.startConversation(actor);
+    provider.respond.mockClear();
+    const result = await conversation.textConversation(actor, session.id, [{ role: "user", content: "OK, save the changes." }], { page: "/thoughts", recordId: null, timezone });
+    expect(result).toMatchObject({ message: "Saved. All Gud.", drafts: [], events: [{ saved: true, receipts: [{ draftId: draft.id }] }] });
+    expect(provider.respond).not.toHaveBeenCalled();
+    await conversation.endConversation(actor, session.id);
   });
   it("gives batch-created Thoughts separate positions, including concurrent saves", async () => {
     const drafts = await Promise.all(Array.from({ length: 3 }, (_, i) => actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: `Batch placement ${i}` } })));

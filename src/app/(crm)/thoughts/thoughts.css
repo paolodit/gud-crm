@@ -48,8 +48,10 @@
 .thought-note-actions .thought-mic { cursor:pointer; }
 .thought-note-actions button:hover, .thought-colour-toggle:hover { background:#ffffff60; }
 .thought-quick-colour { position:relative; display:flex; justify-content:flex-end; margin:0 -7px 5px 0; }
-.thought-colour-toggle { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:50%; padding:5px; color:#647153; background:transparent; cursor:pointer; }
-.thought-quick-colour .thought-colour-popover { position:absolute; bottom:32px; right:0; z-index:101; width:224px; margin:0; padding:10px; border:1px solid #cbd5c5; border-radius:10px; background:#fff; box-shadow:0 5px 20px #22332226; }
+.thought-colour-toggle { display:grid; place-items:center; width:28px; height:28px; border:0; border-radius:4px; padding:6px; background:transparent; cursor:pointer; }
+.thought-colour-toggle span { width:16px; height:16px; border-radius:3px; background:color-mix(in srgb, var(--note-colour) 80%, #796b39); border:1px solid color-mix(in srgb, var(--note-colour) 66%, #796b39); }
+.thought-colour-toggle:focus-visible { outline:2px solid #355d43; outline-offset:2px; }
+.thought-quick-colour .thought-colour-popover { position:absolute; bottom:32px; right:0; z-index:101; width:260px; margin:0; padding:12px; border:1px solid #cbd5c5; border-radius:8px; background:#fff; box-shadow:0 5px 20px #22332226; }
 .thought-colour-popover legend { float:left; width:100%; padding:0 0 8px; font-size:11px; }
 .thought-editor footer { flex-wrap:wrap; }
 .thoughts-canvas[data-compact="true"] .thought-note { width: 220px; padding: 7px 12px 0; }
@@ -79,7 +81,21 @@
 .thought-editor details .field-label { margin-top: 12px; }
 .thought-colours { display: flex; gap: 8px; border: 0; padding: 0; }
 .thought-colours legend { font-size: 12px; margin-bottom: 8px; }
-.thought-colours button { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid #41522b20; border-radius: 50%; background: var(--note-colour); color: #38472f; }
+.thought-colours button { width: 32px; height: 32px; flex:0 0 32px; display: grid; place-items: center; border: 1px solid #41522b20; border-radius: 4px; background: var(--note-colour); color: #38472f; }
+.thought-editor .thought-editor-heading { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:#697767; }
+.thought-category-picker { display:grid; gap:8px; padding:14px; border:1px solid #dfe3d8; border-radius:8px; background:#fafbf8; }
+.thought-category-picker .field-label { display:grid; gap:8px; font-family:inherit; font-size:13px; font-weight:600; }
+.thought-category-picker .field-label small { margin-left:4px; font-weight:400; }
+.thought-category-picker input, .thought-category-options button, .thoughts-sort button { font-family:inherit; }
+.thought-category-picker input { background:white; border:1px solid #cbd4c8; border-radius:6px; padding:10px; font-size:13px; }
+.thought-category-options { display:flex; flex-wrap:wrap; gap:6px; max-height:130px; overflow:auto; }
+.thought-category-options button, .thoughts-sort button { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border:1px solid #d4dccf; border-radius:5px; background:#fff; color:#42543e; font-size:12px; }
+.thought-category-options button[aria-pressed="true"], .thoughts-sort button[aria-pressed="true"] { background:#e8efe3; border-color:#749369; }
+.thoughts-sort { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.thoughts-sort small { font-size:11px; color:#677467; }
+.thoughts-canvas[data-sort="date"] { columns:286px; column-gap:24px; padding:32px; min-height:100%; width:100%; }
+.thoughts-canvas[data-sort="date"] .thought-note { position:relative; display:inline-block; vertical-align:top; width:100%; left:auto !important; top:auto !important; break-inside:avoid; margin-bottom:24px; transform:none !important; }
+.thoughts-canvas[data-sort="date"] .thought-note-actions > button:last-child { display:none; }
 .thought-colours button[aria-pressed="true"] { outline: 2px solid #627756; outline-offset: 2px; }
 .thought-exploration-panel { flex: 0 0 min(var(--thought-panel-width), 75vw); width: min(var(--thought-panel-width), 75vw); max-width: 100%; position: relative; background: #fffefa; border: 1px solid #d9dece; box-shadow: -6px 0 20px #34472d0c; display: flex; flex-direction: column; min-width: 0; height: calc(100dvh - 316px); min-height: 480px; z-index: 110; }
 .thought-exploration-panel[data-wide="true"] { position: absolute; right: 0; width: 100%; }

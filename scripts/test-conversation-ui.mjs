@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chromium, expect } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:3000";
+const baseURL = process.env.CONVERSATION_TEST_BASE_URL ?? "http://127.0.0.1:3000";
+if (new URL(baseURL).hostname !== "127.0.0.1") throw new Error("Conversation fixtures must run on localhost, never a customer workspace.");
 if (!process.env.AUTH_SMOKE_EMAIL || !process.env.AUTH_SMOKE_PASSWORD) throw new Error("CI auth credentials required.");
 const browser = await chromium.launch();
 const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 960 } });
@@ -136,10 +137,53 @@ try {
   await panel.getByRole("alert").filter({ hasText: "Close your current editor" }).waitFor();
   assert.equal(new URL(page.url()).pathname, "/live");
   assert.equal(await page.getByRole("dialog").getByLabel("Delivery notes", { exact: true }).inputValue(), "Human work must stay here");
+  toolHandler = async () => ({ closeRecord: true });
+  await call("close_record", "protected-close");
+  await panel.getByRole("alert").filter({ hasText: "unsaved changes" }).waitFor();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Close project", exact: true }).click();
   await page.getByRole("dialog").waitFor({ state: "hidden" });
+  toolHandler = async () => ({ navigate: "/pipeline" });
   await call("navigate", "allowed-navigation");
   await page.waitForURL("**/pipeline");
+
+  // Closing a clean editor works, while the dirty editor above is never discarded.
+  toolHandler = async () => ({ navigate: "/thoughts" });
+  await call("navigate", "thoughts-for-close");
+  await page.waitForURL("**/thoughts");
+  await page.getByRole("button", { name: "Compose", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  toolHandler = async () => ({ closeRecord: true });
+  await call("close_record", "clean-close");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // Speech recognition may finish after the model calls save_changes. Only the
+  // independent, matching transcription can authorize the visible versions.
+  const spokenDraft = makeDraft("Voice-save fixture", { colour: "rose", category: "Video Ideas", addTasks: ["Sausages", "Potatoes", "Dog"] });
+  drafts = [spokenDraft];
+  toolHandler = async () => ({ draft: spokenDraft });
+  await call("stage_change", "spoken-draft");
+  await panel.getByRole("region", { name: "Draft Voice-save fixture", exact: true }).waitFor();
+  await expect(panel.getByLabel("Add checklist items", { exact: true })).toHaveValue("Sausages\nPotatoes\nDog");
+  await emit({ type: "input_audio_buffer.speech_started", item_id: "save-utterance" });
+  const beforeSpokenSave = toolCalls;
+  toolHandler = async input => {
+    assert.equal(input.name, "save_changes");
+    assert.equal(input.approval.utterance, "Perfect. Can you save it, please?");
+    assert.deepEqual(input.approval.drafts, [{ id: spokenDraft.id, version: spokenDraft.version }]);
+    drafts = [];
+    return { saved: true, drafts, receipts: [{ draftId: spokenDraft.id, href: "/thoughts", label: "Voice-save fixture" }] };
+  };
+  await call("save_changes", "spoken-save");
+  await emit({ type: "conversation.item.input_audio_transcription.completed", item_id: "older-utterance", transcript: "Save changes" });
+  assert.equal(toolCalls, beforeSpokenSave);
+  await emit({ type: "conversation.item.input_audio_transcription.completed", item_id: "save-utterance", transcript: "Perfect. Can you save it, please?" });
+  await expect.poll(() => toolCalls).toBe(beforeSpokenSave+1);
+  await expect(panel.getByRole("region", { name: "Draft Voice-save fixture", exact: true })).toHaveCount(0);
+  await emit({ type: "response.output_audio_transcript.done", transcript: "Saved. All Gud." });
+  await emit({ type: "response.output_audio_transcript.done", transcript: "Saved. All Gud." });
+  await expect(panel.locator('.gud-conversation-messages > p[data-role="assistant"]').filter({ hasText: "Saved. All Gud." })).toHaveCount(1);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), true, "Explicit voice save can continue talking");
   toolHandler = async () => ({ finish: true });
   const beforeFinish = endCalls;
   await call("finish_conversation", "finish-one");

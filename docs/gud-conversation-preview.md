@@ -4,16 +4,18 @@ The global **Talk to GUD** button opens a compact panel that persists between CR
 
 ## First workflows
 
-- Create a sales lead with company/contact, offer, value, appended note and dated follow-up.
+- Create/update a sales lead with company/contact details, owner, offer, value, priority, temperature, probability, expected close, outreach angle, company fit/qualification, a typed/outcome-dated touchpoint and scheduled follow-up.
 - Find/open an existing lead or project, prepare updates, and switch clients without discarding earlier drafts.
 - Add/complete sales follow-ups and project checklist items. Project checklist items do not have independent due dates.
-- Capture a private Thought. Existing Thoughts cannot be searched/read by this prototype. Personal Thoughts remain disabled on the shared public Demo.
+- Create/update live projects with value, owner, offer, stage, milestone/date, appended notes and multiple separate checklist items.
+- Create, search, read and update your own private Thoughts with title/body, colour, existing/new category and real checklist items. Shared `all` search excludes Thoughts; personal Thoughts remain disabled on the shared public Demo.
+- Close a clean record/editor pop-up by asking GUD. Unsaved manual edits are protected.
 
-Try: “Sarah at Acme wants a £5,000 website before Christmas. Follow up next Thursday at ten.” GUD should look for an existing match, prepare the lead and ask for any genuinely missing offer/identity details. Review the visible fields and click **Save changes**. A successful save receives **“Saved. All Gud.”** Unsaved or failed work gets an explicit draft/error message instead.
+Try: “Sarah at Acme wants a £5,000 website before Christmas. Follow up next Thursday at ten.” GUD should look for an existing match, prepare the lead and ask for any genuinely missing offer/identity details. Review the visible fields, then say/type **“Save changes”** or click the button. A successful save receives **“Saved. All Gud.”** Unsaved or failed work gets an explicit draft/error message instead.
 
 ## Safety contract
 
-`src/lib/gud-actions/contract.ts` defines allowlisted navigation, scoped search/read, staging and finishing tools. There is deliberately **no model-callable save**. Both typed and realtime transports use the same server actions. POST requests require the signed-in member and matching Origin; actor/organisation IDs are never taken from model arguments. Impersonation and non-PostgreSQL workspaces are excluded.
+`src/lib/gud-actions/contract.ts` defines allowlisted navigation, scoped search/read, staging, revision, guarded saving, close-record and finishing tools. `save_changes` cannot authorize itself: it requires an independent, explicit user Save command bound to the visible draft IDs/versions. Realtime transcription is correlated with the speech-start item and may arrive after a tool call; GUD waits briefly for it. Old, negated, conditional or vague requests never count. A clear typed Save goes directly through the same guarded transaction without another model request. Both transports require the signed-in member and matching Origin; actor/organisation IDs are never taken from model arguments. Impersonation and non-PostgreSQL workspaces are excluded.
 
 The private `gud_action_drafts` table scopes every read/write by organisation and owner. Drafts expire after 24 hours and survive navigation/reconnection. Manual changes use draft versions. Existing-record fingerprints reject a stale save. The final button commits the reviewed draft versions and their receipts in one PostgreSQL transaction; retrying a saved draft returns its receipt rather than creating another record. Existing service transactions join the outer transaction using request-local AsyncLocalStorage. Failure in a later draft rolls the bundle back.
 
@@ -30,7 +32,8 @@ No deleting, archiving, terminal won/lost sales moves, outbound messages, arbitr
 - Closing the panel ends voice and keeps unfinished drafts; cancelling clears the draft fields. Expired drafts are unavailable but retained in the private table pending a retention/cleanup policy. Transcripts are kept in the browser component, not a new transcript database.
 - A fresh voice connection restores drafts and page context, not a transcript of previous voice sessions. Finish/close never implies permission to save.
 - End stops microphone tracks immediately, even while a response is pending. Late responses cannot navigate or speak; any draft already staged is reloaded for review. Lost voice connections close the provider session before reconnecting. A spoken sign-off waits for its own audio to drain, not the preceding response; speaking again interrupts the sign-off.
-- Manual draft edits are acknowledged independently, so an interrupted second edit can retry without invalidating a successful first edit. An empty amount is never silently converted to £0. Save pauses microphone input and rejects late voice actions until Resume mic.
+- Manual draft edits are acknowledged independently, so an interrupted second edit can retry without invalidating a successful first edit. An empty amount is never silently converted to £0. The Save button pauses microphone input and rejects late voice actions until Resume mic; an explicit voice save can continue the conversation. Identical adjacent confirmation messages are deduplicated.
+- Thought date sorting is a newest-first column display only: Free sort restores the saved manual positions. Categories are saved on private notes, not a shared taxonomy. The category picker explicitly offers existing categories and creation; quick colour controls and swatches are square.
 
 Roll out using `npm run release:all -- --ref <full-sha> --targets demo,refresh`. The target selector allows only canary-order prefixes; omitting it retains the existing all-three rollout. The same guarded image, backups, health checks and record-retention checks apply. HSM is excluded from this preview rollout.
 

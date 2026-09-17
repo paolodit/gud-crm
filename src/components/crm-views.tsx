@@ -236,10 +236,6 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
           <div className="surface-header"><div><h2>Activity mix</h2><p>Recorded touchpoints in this snapshot</p></div><MessageSquareText size={18} /></div>
           <div className="channel-stats">{Object.entries(channelCounts).map(([channel, count]) => <div key={channel}><strong>{count}</strong><span>{sentenceCase(channel)}</span></div>)}</div>
         </section>
-        <section className="surface report-panel attention-panel">
-          <div className="surface-header"><div><h2>Needs attention</h2><p>The shortest route to a healthier board</p></div><AlertTriangle size={18} /></div>
-          <div className="attention-list">{[...new Map([...overdue, ...unscheduled, ...atRisk].map((item) => [item.id, item])).values()].slice(0, 6).map((item) => <Link href={`/pipeline?opportunity=${item.id}`} key={item.id}><span><strong>{item.company.name}</strong><small>{attentionReason(item, now)}</small></span><ArrowRight size={15} /></Link>)}{!overdue.length && !unscheduled.length && !atRisk.length ? <div className="all-clear"><Check size={17} /> Every open record has a healthy next step.</div> : null}</div>
-        </section>
         <LiveReports snapshot={snapshot} offerId={offerFilter} />
       </div>
     </WorkspaceFrame>
@@ -711,5 +707,4 @@ function aggregateCompanies(opportunities: OpportunitySummary[]) {
 function initials(name: string) { return name.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase(); }
 function formatShortDate(value: string) { return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value)); }
 function sentenceCase(value: string) { return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()); }
-function attentionReason(item: OpportunitySummary, now: number) { if (!item.nextActionAt) return "No next action"; if (new Date(item.nextActionAt).getTime() < now) return "Next action overdue"; return sentenceCase(item.temperature); }
 function highlight(text: string, query: string) { const index = text.toLowerCase().indexOf(query); if (index < 0) return text; return <>{text.slice(0, index)}<mark>{text.slice(index, index + query.length)}</mark>{text.slice(index + query.length)}</>; }
