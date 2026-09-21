@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { useTypedVoice } from "./typed-voice-fixture";
 
 test("simpler editing, formatting, voice draft, direction and archive", async ({ page }, info) => {
+  await useTypedVoice(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/thoughts");
   await expect(page.getByRole("link", { name: "Marketing Ideas", exact: true })).toBeVisible();
@@ -12,7 +14,7 @@ test("simpler editing, formatting, voice draft, direction and archive", async ({
   await expect(page.getByRole("link", { name: "Thoughts", exact: true }).locator("svg")).toHaveClass(/lucide-thought-bubble/);
   await note.getByRole("button", { name: /^Voice edit thought/ }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toHaveClass("sr-only");
   await dialog.getByLabel("Voice draft text", { exact: true }).fill("Add an extra observation");
   await dialog.getByRole("button", { name: "Apply to draft" }).click();
   await expect(dialog.getByLabel("Thought", { exact: true })).toContainText("Add an extra observation");

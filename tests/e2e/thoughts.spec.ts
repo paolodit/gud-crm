@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { useTypedVoice } from "./typed-voice-fixture";
 
 test("private capture, dragging, checklist, colour and exploration history", async ({ page }, info) => {
+  await useTypedVoice(page);
   await page.setViewportSize({ width: 1440, height: 1050 });
   await page.goto("/thoughts");
   await expect(page.getByRole("heading", { name: "Thoughts", exact: true })).toBeVisible();

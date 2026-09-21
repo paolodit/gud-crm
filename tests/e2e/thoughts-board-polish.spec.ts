@@ -29,7 +29,7 @@ test("square colours, clear categories and date columns preserve the free layout
   await note.getByRole("button", { name: "rose note", exact: true }).click();
   await note.getByRole("button", { name: /^Edit thought/ }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Edit thought", exact: true })).toHaveClass("sr-only");
   await dialog.getByRole("textbox", { name: "Find or create category", exact: true }).fill(label);
   await dialog.getByRole("button", { name: `Create “${label}”`, exact: true }).click();
   await expect(dialog).toContainText(`Selected: ${label}`);

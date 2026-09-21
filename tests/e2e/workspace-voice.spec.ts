@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import Database from "better-sqlite3";
 import path from "node:path";
 import type { BoardSnapshot } from "../../src/lib/domain/types";
+import { useTypedVoice } from "./typed-voice-fixture";
 
 test.skip(process.env.AI_MODEL !== "test-model", "Run with node scripts/run-voice-e2e.mjs (loopback provider fixture).");
 test.use({ timezoneId: "Europe/London" });
@@ -21,6 +22,7 @@ async function createSales(page: Page, name: string) {
 }
 
 test("reviews one combined update, corrects and unticks fields, then undoes after reload", async ({ page }, info) => {
+  await useTypedVoice(page);
   const id = await createSales(page, "DEMO · Combined Voice Studio");
   const before = snapshot().opportunities.find((item) => item.id === id)!;
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
@@ -59,6 +61,7 @@ test("reviews one combined update, corrects and unticks fields, then undoes afte
 });
 
 test("recovers a committed save after its response is lost, without duplicate work", async ({ page }) => {
+  await useTypedVoice(page);
   const id = await createSales(page, "DEMO · Interrupted Save Studio");
   const before = snapshot().opportunities.find((item) => item.id === id)!;
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
@@ -91,6 +94,7 @@ test("recovers a committed save after its response is lost, without duplicate wo
 });
 
 test("keeps words after close, navigation, clarification and provider failure", async ({ page }, info) => {
+  await useTypedVoice(page);
   await createSales(page, "DEMO · Draft Recovery Studio");
   await page.getByRole("button", { name: "Talk through an update", exact: true }).click();
   const dialog = page.locator(".workspace-voice-dialog");
@@ -134,7 +138,8 @@ test("requires an explicit record globally and captures microphone words before 
   await expect(dialog.getByRole("button", { name: "Review changes", exact: true })).toBeDisabled();
   await dialog.getByLabel("Find a voice record").fill("Microphone Studio");
   await dialog.getByRole("button", { name: /DEMO · Microphone Studio Website design Sales/ }).click();
-  await dialog.getByRole("button", { name: "Start recording", exact: true }).click();
+  // The launcher click starts capture; choosing the record does not need a second mic click.
+  await expect(dialog.getByRole("button", { name: "Stop recording", exact: true })).toBeVisible();
   await expect(dialog.getByText("Listening…", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Your update", { exact: true })).toContainText("The client approved");
   await expect(dialog.getByRole("button", { name: "Review changes", exact: true })).toBeDisabled();
@@ -145,6 +150,7 @@ test("requires an explicit record globally and captures microphone words before 
 });
 
 test("opens the shared review from a live project and preserves sales figures", async ({ page }) => {
+  await useTypedVoice(page);
   await page.goto("/live");
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   await page.getByLabel("Project name", { exact: true }).fill("Voice delivery test");

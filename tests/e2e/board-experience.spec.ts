@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { useTypedVoice } from "./typed-voice-fixture";
 
 test("live cards, density, motion and page-aware voice work together", async ({ page }, info) => {
+  await useTypedVoice(page);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/pipeline");
   await expect(page.getByRole("heading", { level: 1, name: "Pipeline", exact: true })).toBeVisible();
