@@ -52,12 +52,16 @@ function VoiceCapture({ kind, creatingProject = false, onDraft, onClose, aiConfi
     active.current = true;
     const browser = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     queueMicrotask(() => setSupported(Boolean(browser.SpeechRecognition ?? browser.webkitSpeechRecognition)));
+    const initialCapture = setTimeout(() => start(), 0);
     return () => {
       active.current = false;
+      clearTimeout(initialCapture);
       const current = recognition.current;
       if (current) { current.onend = null; current.onresult = null; current.onerror = null; current.abort(); }
       recognition.current = null;
     };
+    // Start once in response to the user opening the capture dialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (state !== "listening") return;

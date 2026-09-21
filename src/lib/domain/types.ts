@@ -133,6 +133,7 @@ export type TaskSummary = {
 };
 
 export type OpportunitySummary = {
+  researchThemeIds?: string[];
   id: string;
   delivery?: import("./delivery").DeliveryDetails;
   isExample?: boolean;

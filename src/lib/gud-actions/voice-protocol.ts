@@ -95,7 +95,7 @@ export class VoiceProtocol {
 }
 
 type Fragment = { delta: string; start: number; end: number };
-/** Display grouping only: never used to authorize saves or trigger actions. */
+/** Caption assembly only: never infers turn completion or triggers an action. */
 export class LiveCaptions {
   private rows: Array<{ id: string; role: "user" | "assistant"; fragments: Fragment[] }> = [];
   private events = new Set<string>();

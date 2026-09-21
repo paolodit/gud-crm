@@ -160,7 +160,7 @@ function chooseLocalOffer(snapshot: BoardSnapshot, offerId: string | null, allow
     if (!chosen) throw new Error("That offer is not available.");
     return chosen;
   }
-  if (allowUnassigned) return active.length === 1 ? active[0] : null;
+  if (allowUnassigned) return null;
   const chosen = active.length === 1 ? active[0] : null;
   if (!chosen) throw new Error("Choose what you are pitching.");
   return chosen;
@@ -178,7 +178,7 @@ async function resolvePostgresOfferId(tx: DbTransaction, organisationId: string,
     if (!chosen) throw new Error("That offer is not available.");
     return chosen.id;
   }
-  if (allowUnassigned) return rows.length === 1 ? rows[0].id : null;
+  if (allowUnassigned) return null;
   if (rows.length === 1) return rows[0].id;
   throw new Error("Choose what you are pitching.");
 }

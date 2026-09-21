@@ -11,7 +11,7 @@ type Recognition = {
 };
 type BrowserSpeech = { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition };
 
-export function useSpeechCapture(onWords: (words: string) => void) {
+export function useSpeechCapture(onWords: (words: string) => void, autoStart = false, initialText = "") {
   const recognition = useRef<Recognition | null>(null);
   const callback = useRef(onWords);
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,12 +22,16 @@ export function useSpeechCapture(onWords: (words: string) => void) {
   useEffect(() => {
     const browser = window as typeof window & BrowserSpeech;
     queueMicrotask(() => setSupported(Boolean(browser.SpeechRecognition ?? browser.webkitSpeechRecognition)));
+    const initialCapture = autoStart ? setTimeout(() => start(initialText), 0) : null;
     return () => {
+      if (initialCapture) clearTimeout(initialCapture);
       if (stopTimer.current) clearTimeout(stopTimer.current);
       const current = recognition.current;
       if (current) { current.onresult = null; current.onerror = null; current.onend = null; current.abort(); }
       recognition.current = null;
     };
+    // Capture is requested by the click that mounted this component, once only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   function start(before: string) {
     if (recognition.current) return;

@@ -4071,3 +4071,12 @@ details.research-assistant-path { display: block; padding: 0; }
 .project-task-add { display:grid; grid-template-columns:26px minmax(0,1fr) 30px; align-items:center; color:#667085; margin-top:5px; }
 .project-task-add>svg { justify-self:center; }
 .project-task-add+small { display:block; font-size:10px; margin-top:6px; }
+.theme-dialog .research-state-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border:0;padding:0;margin:0;min-width:0}
+.theme-dialog .research-state-options legend{font-size:12px;font-weight:650;margin-bottom:8px}
+.theme-dialog .research-state-choice{display:flex;align-items:flex-start;justify-content:flex-start;gap:8px;border:1px solid #dce3ed;border-radius:8px;padding:10px;cursor:pointer;font-size:12px;font-weight:400}
+.theme-dialog .research-state-choice:has(input:checked){border-color:#128470;background:#ecf8f4}
+.theme-dialog .research-state-choice input[type="radio"],.research-idea-choice input[type="checkbox"]{width:17px;height:17px;min-height:0;flex:none;padding:0;margin:1px 0 0;accent-color:#128470}
+.research-state-choice small,.research-state-choice strong{display:block}
+.research-state-choice small{font-size:11px;color:#64748b;margin-top:4px;line-height:1.4}
+.research-idea-choice{display:flex;align-items:flex-start;gap:9px;margin-top:10px;font-size:13px;line-height:1.5;cursor:pointer}
+@media(max-width:600px){.theme-dialog .research-state-options{grid-template-columns:1fr}}

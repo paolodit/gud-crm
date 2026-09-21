@@ -143,3 +143,4 @@
 .thought-dictation p { margin:0; }
 @media (max-width: 800px) { .thoughts-header { padding: 20px; } .thoughts-header p { font-size: 12px; } .thoughts-capture { margin: 14px 12px; gap: 7px; } .thoughts-capture > svg { display: none; } .thoughts-capture .btn { font-size: 11px; padding: 9px; } .thoughts-toolbar { padding: 0 12px 12px; gap: 5px; } .thoughts-search { width: 100%; } .thought-exploration-panel { position: absolute; width: 100%; right: 0; height: 100%; } .thought-panel-resize { display: none; } .thoughts-footnote { padding: 10px 12px 70px; } .thought-editor { padding: 18px; } }
 @media (prefers-reduced-motion: reduce) { .thoughts-page * { scroll-behavior: auto !important; transition: none !important; } }
+.thought-editor.dialog-card>header{justify-content:flex-end;margin-bottom:8px}

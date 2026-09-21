@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { nextThoughtPosition } from "./thought-placement";
 describe("graceful thought placement", () => {
+  it("fills a nearby gap below short measured cards instead of a distant fixed row", () => {
+    expect(nextThoughtPosition([{ x: 32, y: 32, height: 130, archived: false }], { x: 32, y: 32 }, 1)).toEqual({ x: 32, y: 182 });
+  });
   it("avoids freely positioned notes and ignores archives", () => {
     expect(nextThoughtPosition([{ x: 50, y: 40, archived: false }])).toEqual({ x: 362, y: 32 });
     expect(nextThoughtPosition([{ x: 32, y: 32, archived: true }])).toEqual({ x: 32, y: 32 });

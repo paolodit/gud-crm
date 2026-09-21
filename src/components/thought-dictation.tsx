@@ -6,7 +6,7 @@ import { useSpeechCapture } from "./use-speech-capture";
 export function ThoughtDictation({ onApply, onClose, disabled = false }: { onApply: (text: string, replace: boolean) => void; onClose: () => void; disabled?: boolean }) {
   const [text, setText] = useState("");
   const [replace, setReplace] = useState(false);
-  const speech = useSpeechCapture(setText);
+  const speech = useSpeechCapture(setText, true);
   return <section className="thought-dictation" aria-label="Voice draft">
     <p>Speak your changes, then review before applying. Audio may be processed by your browser’s speech service; GUD does not store it.</p>
     <button type="button" className="btn btn-secondary" disabled={disabled || !speech.supported || speech.state === "stopping"} onClick={() => speech.state === "listening" ? speech.stop() : speech.start(text)}>{speech.state === "listening" ? <Square size={15} /> : <Mic size={15} />}{speech.state === "listening" ? "Stop recording" : "Start recording"}</button>

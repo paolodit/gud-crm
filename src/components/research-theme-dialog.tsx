@@ -21,6 +21,8 @@ export function ResearchThemeDialog({
 }) {
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [researchState, setResearchState] = useState(theme?.status ?? "idea");
+  const [possibleService, setPossibleService] = useState(theme?.offerId ?? "");
   const [error, setError] = useState<string | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -79,10 +81,10 @@ export function ResearchThemeDialog({
             <details>
               <summary><span><Users size={16} /><strong>Audience and possible service</strong><small>Who feels it, and where might you help?</small></span><ChevronDown size={16} /></summary>
               <div className="form-grid">
-                <label className="field-label">Audience<input className="field" name="audience" defaultValue={theme?.audience ?? ""} placeholder="Who appears to experience it?" /></label>
-                <label className="field-label">Research state<select className="field-select" name="status" defaultValue={theme?.status ?? "idea"}><option value="idea">Idea</option><option value="evidence">Gathering evidence</option><option value="ready">Ready to shortlist</option></select></label>
-                {offers.length > 1 ? <label className="field-label form-span-2">Possible service<select className="field-select" name="offerId" defaultValue={theme?.offerId ?? ""}><option value="">Emerging / not chosen</option>{offers.map((offer) => <option value={offer.id} key={offer.id}>{offer.name}</option>)}</select></label> : <input type="hidden" name="offerId" value={offers[0]?.id ?? ""} />}
-                <label className="field-label form-span-2">Offer angle to test<textarea className="field textarea" name="angle" rows={3} defaultValue={theme?.angle ?? ""} placeholder="How might an existing or emerging service help?" /></label>
+                <label className="field-label form-span-2">Audience<input className="field" name="audience" defaultValue={theme?.audience ?? ""} placeholder="Who appears to experience it?" /></label>
+                <fieldset className="research-state-options form-span-2"><legend>How far along is this idea?</legend><input type="hidden" name="status" value={researchState} />{([["idea", "An early idea", "A hunch to explore"], ["evidence", "Testing the evidence", "Gathering facts and checking the need"], ["ready", "Ready to find targets", "Enough evidence to shortlist accounts"]] as const).map(([value, label, hint]) => <label key={value} className="research-state-choice"><input type="radio" name="researchState" value={value} checked={researchState === value} onChange={() => setResearchState(value)} /><span><strong>{label}</strong><small>{hint}</small></span></label>)}</fieldset>
+                <label className="field-label form-span-2">Possible service or product<select className="field-select" name="offerId" value={possibleService} onChange={event => setPossibleService(event.target.value)}><option value="">New service idea / not decided yet</option>{offers.map((offer) => <option value={offer.id} key={offer.id}>{offer.name}</option>)}</select><small>You can explore a completely new service. It does not have to fit the existing offers.</small></label>
+                <label className="field-label form-span-2">{possibleService ? "Angle to test" : "New service idea and angles to test"}<textarea className="field textarea" name="angle" rows={3} defaultValue={theme?.angle ?? ""} placeholder="How might an existing or emerging service help?" /></label>
               </div>
             </details>
             <details open={Boolean(theme?.signal || theme?.sourceUrls.length)}>

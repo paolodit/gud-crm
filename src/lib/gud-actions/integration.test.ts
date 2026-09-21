@@ -1,3 +1,4 @@
+import { thoughtCardHeight } from "@/lib/domain/thought-placement";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CurrentMember } from "@/lib/session";
@@ -221,7 +222,7 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
       thoughts.saveThought(actor, { content: { body: "Manual and voice together" } }),
     ]);
     const notes = await thoughts.listThoughts(actor);
-    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || Math.abs(a.y-b.y) >= 400).toBe(true);
+    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || a.y + thoughtCardHeight(a) + 20 <= b.y || b.y + thoughtCardHeight(b) + 20 <= a.y).toBe(true);
     expect(await thoughts.listThoughts(colleague)).toEqual([]);
   });
   it("scopes conversations and allows one voice connection, with explicit provider hangup", async () => {
@@ -276,7 +277,7 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     const row = (await database.pool.query("SELECT request_count FROM gud_conversation_sessions WHERE id=$1", [session.id])).rows[0];
     expect(row.request_count).toBe(1);
   });
-  it("routes Live through the same actor/draft guards, confirms saves separately and keeps duration cumulative", async () => {
+  it("routes Live through the same actor/draft guards, saves on explicit approval and keeps duration cumulative", async () => {
     const conversation = await import("./conversation");
     const session = await conversation.startConversation(actor);
     const fetcher = vi.fn(async (url: string) => url.endsWith("/hangup") ? new Response(null) : new Response(JSON.stringify({ session: { id: "live_fixture_1" }, transport: { type: "webrtc", sdp: "fixture-answer" } })));
@@ -288,8 +289,8 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
       const draft = (staged as { draft: GudDraft }).draft;
       await expect(conversation.executeConversationTool(colleague, session.id, "save_changes", { draftIds: [draft.id] }, timezone)).rejects.toThrow("ended");
       const approval = { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(draft)] };
-      expect(await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, approval)).toMatchObject({ saveConfirmationRequired: true, saved: false });
-      expect((await actions.listDrafts(actor)).some(d => d.id === draft.id)).toBe(true);
+      expect(await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, approval)).toMatchObject({ saved: true });
+      expect((await actions.listDrafts(actor)).some(d => d.id === draft.id)).toBe(false);
       await conversation.recordUsage(actor, session.id, { seconds: 12 });
       await conversation.recordUsage(actor, session.id, { seconds: 10 });
       await conversation.recordUsage(actor, session.id, { seconds: 20, final: true });
@@ -340,5 +341,57 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
       expect(fetcher.mock.calls.at(-1)?.[0]).toContain("late_fixture_call/hangup");
       await expect(conversation.requireConversation(actor, session.id)).rejects.toThrow("ended");
     } finally { vi.unstubAllGlobals(); }
+  });
+  it("saves marketing ideas with workspace isolation and protects newer edits", async () => {
+    let draft = await actions.stageDraft(actor, { kind: "idea", timezone, fields: { title: "Hotels campaign", audience: "Independent hotels", problem: "Empty weekdays", angle: "A completely new service", clearOffer: true, researchStatus: "evidence" } });
+    draft = await actions.editDraft(actor, draft.id, draft.version, { offerId: offer });
+    expect(draft.fields.clearOffer).toBe(false);
+    draft = await actions.editDraft(actor, draft.id, draft.version, { clearOffer: true });
+    expect(draft.fields.offerId).toBeUndefined();
+    const [receipt] = await actions.commitDrafts(actor, [approve(draft)]);
+    const id = new URL(receipt.href, "https://fixture.test").searchParams.get("idea")!;
+    expect((await actions.searchRecords(actor, "Hotels campaign", "idea")).matches).toHaveLength(1);
+    await expect(actions.openRecord(outsider, { kind: "idea", id })).rejects.toThrow("unavailable");
+    const update = await actions.stageDraft(actor, { kind: "idea", targetId: id, timezone, fields: { signal: "User-provided observation", sourceUrls: ["https://example.com/evidence"] } });
+    await database.pool.query("UPDATE research_themes SET problem='Newer manual edit', updated_at=now() WHERE id=$1", [id]);
+    await expect(actions.commitDrafts(actor, [approve(update)])).rejects.toThrow("changed");
+    await actions.cancelDraft(actor, update.id, update.version);
+    const researchStage = randomUUID();
+    await database.pool.query("INSERT INTO stages(id,pipeline_id,name,colour,position) VALUES($1,$2,'Researching','#007bff',0)", [researchStage, pipeline]);
+    const target = await actions.stageDraft(actor, { kind: "target", timezone, fields: { company: "New hotel target", title: "Weekday occupancy", researchThemeIds: [id] } });
+    const [targetReceipt] = await actions.commitDrafts(actor, [approve(target)]);
+    const targetId = new URL(targetReceipt.href, "https://fixture.test").searchParams.get("target")!;
+    const row = (await database.pool.query("SELECT offer_id,import_metadata FROM opportunities WHERE id=$1", [targetId])).rows[0];
+    expect(row.offer_id).toBeNull();
+    expect(row.import_metadata.researchThemeIds).toEqual([id]);
+    const serviceToo = await actions.stageDraft(actor, { kind: "target", targetId, timezone, fields: { offerId: offer } });
+    await actions.commitDrafts(actor, [approve(serviceToo)]);
+    expect((await database.pool.query("SELECT offer_id,import_metadata FROM opportunities WHERE id=$1", [targetId])).rows[0]).toMatchObject({ offer_id: offer, import_metadata: { researchThemeIds: [id] } });
+    await expect(actions.stageDraft(actor, { kind: "target", targetId, timezone, fields: { clearOffer: true, stageId: stage } })).rejects.toThrow("Choose a service");
+    await expect(actions.stageDraft(outsider, { kind: "target", timezone, fields: { company: "Other", title: "Other", researchThemeIds: [id] } })).rejects.toThrow("unavailable");
+  });
+  it("accepts a spoken Live save only with independent approval and stays available", async () => {
+    const conversation = await import("./conversation");
+    const session = await conversation.startConversation(actor);
+    await database.pool.query("UPDATE gud_conversation_sessions SET call_id='gud-live:fixture' WHERE id=$1", [session.id]);
+    const draft = await actions.stageDraft(actor, { kind: "thought", timezone, fields: { body: "Live explicit save fixture" } });
+    await expect(conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone)).rejects.toThrow("explicitly");
+    const result = await conversation.executeConversationTool(actor, session.id, "save_changes", { draftIds: [draft.id] }, timezone, { utterance: "Save changes", capturedAt: Date.now(), drafts: [approve(draft)] });
+    expect(result).toMatchObject({ saved: true });
+    expect(await conversation.executeConversationTool(actor, session.id, "finish_conversation", {}, timezone)).toMatchObject({ finish: false });
+    expect(await conversation.requireConversation(actor, session.id)).toBeTruthy();
+  });
+  it("applies an addition before a typed save in the same request", async () => {
+    const conversation = await import("./conversation");
+    for (const d of await actions.listDrafts(actor)) await actions.cancelDraft(actor, d.id, d.version);
+    const draft = await actions.stageDraft(actor, { kind: "thought", timezone, fields: { title: "Shopping", addTasks: ["Sausages"] } });
+    const session = await conversation.startConversation(actor);
+    provider.respond.mockResolvedValueOnce({ output: [{ type: "function_call", name: "revise_draft", call_id: "addition", arguments: JSON.stringify({ draftId: draft.id, version: draft.version, fields: { addTasks: ["Potatoes"] } }) }] });
+    provider.respond.mockResolvedValueOnce({ output: [{ type: "function_call", name: "save_changes", call_id: "save-addition", arguments: JSON.stringify({ draftIds: [draft.id] }) }] });
+    provider.respond.mockResolvedValueOnce({ output: [], output_text: "Saved." });
+    const result = await conversation.textConversation(actor, session.id, [{ role: "user", content: "Add potatoes and save changes" }], { page: "/thoughts", recordId: null, timezone });
+    expect(result.events.some(e => e.saved)).toBe(true);
+    const notes = await thoughts.listThoughts(actor);
+    expect(notes.find(n => n.title === "Shopping")?.checklist.map(t => t.text)).toEqual(["Sausages", "Potatoes"]);
   });
 });

@@ -257,24 +257,21 @@ try {
   assert.equal(await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.cancel").length), 0, "Never cancel a response that is no longer active");
   await emit({ type: "response.created", response: { id: "finishing-at-save" } });
   await panel.getByRole("button", { name: "Save all 2 drafts", exact: true }).click();
-  await expect(panel.getByRole("status")).toContainText("All Gud · saved");
+  await expect(panel.getByRole("status")).toContainText("Listening");
   const cancellation = await page.evaluate(() => window.fixtureVoice.sent.findLast(e => e.type === "response.cancel"));
   assert.equal(cancellation.response_id, "finishing-at-save");
   await emit({ type: "response.done", response: { id: "finishing-at-save", status: "cancelled", output: [] } });
   await emit({ type: "error", error: { code: "response_cancel_not_active", event_id: cancellation.event_id } });
   await expect(panel.getByRole("alert")).toHaveCount(0);
   await emit({ type: "output_audio_buffer.stopped", response_id: "saved-confirmation" });
-  await expect(panel.getByRole("status")).toContainText("microphone paused");
-  await emit({ type: "input_audio_buffer.speech_started" });
-  await expect(panel.getByRole("status")).not.toContainText("Listening");
+  await expect(panel.getByRole("status")).toContainText("Listening");
   assert.equal(saves, 3);
-  await panel.getByRole("button", { name: "Resume mic", exact: true }).waitFor();
-  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), false);
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), true);
+  await panel.getByRole("button", { name: "Mute", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "paused");
+  await launcher.click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
   const beforePaused = toolCalls;
-  await call("stage_change", "late-after-save");
-  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.item?.call_id === "late-after-save"));
-  assert.equal(toolCalls, beforePaused);
-  await panel.getByRole("button", { name: "Resume mic", exact: true }).click();
   toolHandler = async () => ({ navigate: "/live" });
   await emit({ type: "response.done", response: { status: "cancelled", output: [{ type: "function_call", name: "navigate", arguments: "{}", call_id: "cancelled" }] } });
   await call("navigate", "resumed");
@@ -365,7 +362,11 @@ try {
   await expect(panel.locator('[data-role="user"]').filter({ hasText: "Create a pink thought" })).toBeVisible();
   const liveDraft = makeDraft("Live pink thought", { colour: "rose", addTasks: ["Shop 1", "Shop 2"] });
   toolHandler = async input => {
-    if (input.name === "save_changes") { assert.equal(input.approval, undefined); return { saveConfirmationRequired: true, saved: false, drafts }; }
+    if (input.name === "save_changes") {
+      assert.equal(input.approval.utterance, "Save changes");
+      assert.deepEqual(input.approval.drafts, [{ id: liveDraft.id, version: liveDraft.version }]);
+      saves++; drafts = []; return { saved: true, drafts, receipts: [{ draftId: liveDraft.id, href: "/thoughts", label: "Live pink thought" }] };
+    }
     drafts = [liveDraft]; return { draft: liveDraft, saved: false };
   };
   const liveEvent = event => emit({ type: "response.event", delegation_id: "delegation-fixture", event });
@@ -379,22 +380,48 @@ try {
   await liveEvent({ type: "response.created", response: { id: "live-response-2" } });
   await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "live-call-2", name: "save_changes", arguments: JSON.stringify({ draftIds: [liveDraft.id] }) } });
   await liveEvent({ type: "response.completed", response: { id: "live-response-2", status: "completed", output: [] } });
-  await expect(panel.getByRole("status")).toContainText("Ready to save");
-  assert.equal(saves, beforeSaveRequest, "Streaming captions never auto-authorize a save");
-  await panel.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(panel.getByRole("status")).toContainText("saved");
+  await expect(panel.getByRole("region", { name: "Draft Live pink thought" })).toHaveCount(0);
   assert.equal(saves, beforeSaveRequest + 1);
-  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "session.input_audio.mute")), true);
-  const pausedTools = toolCalls;
-  await liveEvent({ type: "response.created", response: { id: "live-paused-response" } });
-  await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "live-paused-call", name: "stage_change", arguments: '{}' } });
-  await liveEvent({ type: "response.completed", response: { id: "live-paused-response", status: "completed", output: [] } });
-  await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.type === "response.item.create" && e.item.call_id === "live-paused-call"));
-  assert.equal(toolCalls, pausedTools, "Live cannot change a paused review");
-  const beforeResume = await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.create").length);
-  await panel.getByRole("button", { name: "Resume mic", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
+  assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).enabled), true);
+  await panel.getByRole("button", { name: "Mute", exact: true }).click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "paused");
+  const pausedColour = await panel.locator("header").evaluate(el => getComputedStyle(el).backgroundColor);
+  await launcher.click();
+  await expect(launcher).toHaveAttribute("data-voice-state", "listening");
+  assert.notEqual(await panel.locator("header").evaluate(el => getComputedStyle(el).backgroundColor), pausedColour);
   assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.type === "session.input_audio.unmute")), true);
-  assert.equal(await page.evaluate(() => window.fixtureVoice.sent.filter(e => e.type === "response.create").length), beforeResume + 1, "Resume continues the rejected tool result without replaying its action");
+
+  // Navigation really reaches each formerly missing page, whose controls reply
+  // to the same tool call with page-owned state rather than a guessed success.
+  for (const path of ["/research", "/targets", "/reports", "/playbook"]) {
+    toolHandler = async () => ({ navigate: path });
+    const key = path.slice(1);
+    await liveEvent({ type: "response.created", response: { id: "nav-" + key } });
+    await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "nav-call-" + key, name: "navigate", arguments: "{}" } });
+    await liveEvent({ type: "response.completed", response: { id: "nav-" + key, status: "completed", output: [] } });
+    await page.waitForURL("**" + path);
+    await expect(page.locator("h1")).toBeVisible();
+    toolHandler = async () => ({ pageControl: { page: path, action: "read" } });
+    await liveEvent({ type: "response.created", response: { id: "read-" + key } });
+    await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "read-call-" + key, name: "page_control", arguments: "{}" } });
+    await liveEvent({ type: "response.completed", response: { id: "read-" + key, status: "completed", output: [] } });
+    await page.waitForFunction(id => window.fixtureVoice.sent.some(e => e.item?.call_id === id && JSON.parse(e.item.output).pageResult?.data), "read-call-" + key);
+    const pageData = await page.evaluate(id => JSON.parse(window.fixtureVoice.sent.find(e => e.item?.call_id === id).item.output).pageResult.data, "read-call-" + key);
+    const control = path === "/research" ? null : path === "/reports" ? { page: path, action: "filter", value: pageData.offers[0]?.id ?? "all" } : { page: path, action: "search", value: "fixture search" };
+    if (control) {
+      toolHandler = async () => ({ pageControl: control });
+      await liveEvent({ type: "response.created", response: { id: "control-" + key } });
+      await liveEvent({ type: "response.output_item.done", item: { type: "function_call", call_id: "control-call-" + key, name: "page_control", arguments: "{}" } });
+      await liveEvent({ type: "response.completed", response: { id: "control-" + key, status: "completed", output: [] } });
+      await page.waitForFunction(id => window.fixtureVoice.sent.some(e => e.item?.call_id === id && JSON.parse(e.item.output).pageResult?.applied), "control-call-" + key);
+      if (path === "/targets") await expect(page.locator(".target-list-search input")).toHaveValue("fixture search");
+      if (path === "/playbook") await expect(page.getByRole("searchbox", { name: "Search video guides" })).toHaveValue("fixture search");
+    } else {
+      await page.getByRole("button", { name: "Talk it through", exact: true }).click();
+      assert.equal(await page.evaluate(() => window.fixtureVoice.sent.some(e => e.item?.content?.some(c => c.text?.includes("Start a guided refinement")))), true);
+    }
+  }
   await panel.getByRole("button", { name: "End", exact: true }).click();
   await page.waitForFunction(() => window.fixtureVoice.sent.some(e => e.type === "session.close"));
   assert.equal(await page.evaluate(() => window.fixtureVoice.tracks.at(-1).stopped), true);
@@ -412,5 +439,5 @@ try {
   await page.getByRole("button", { name: "Talk to GUD", exact: true }).click();
   await expect(panel.getByRole("checkbox", { name: /Allow my conversation/ })).toBeVisible();
   assert.deepEqual(errors, []);
-  console.log("Conversation browser checks passed: Realtime regressions plus GPT-Live startup gating, captions, empty-output tool collection, drafting, explicit save confirmation, pause/resume, immediate mic stop, late-action rejection, graceful close, All Gud sign-off and mobile fit. No live provider calls.");
+  console.log("Conversation browser checks passed: Realtime regressions plus GPT-Live startup gating, captions, empty-output tool collection, drafting, spoken saves, continuing conversations, missing-page controls, launcher pause/resume, immediate mic stop, late-action rejection, graceful close, All Gud sign-off and mobile fit. No live provider calls.");
 } finally { await browser.close(); }

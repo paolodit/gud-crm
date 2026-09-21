@@ -34,6 +34,7 @@ import {
   GripVertical,
   LoaderCircle,
   Mail,
+  Mic,
   Pencil,
   Phone,
   Plus,
@@ -47,9 +48,11 @@ import {
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { requestIdeaConversation, useGudPage } from "./gud-page-controls";
+import { saveTargetIdeasAction } from "@/app/actions/target-ideas";
 
-import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
+import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction, saveOpportunityFieldAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
@@ -92,6 +95,8 @@ export function ResearchHub({
   const [filter, setFilter] = useState<ResearchReadiness | "all">("all");
   const availableOffers = activeOffers(snapshot.offers);
   const [offerFilter, setOfferFilter] = useState("all");
+  const [ideaFilter, setIdeaFilter] = useState("all");
+  useEffect(() => { queueMicrotask(() => setThemes(snapshot.researchThemes)); }, [snapshot.researchThemes]);
   const [showHandoff, setShowHandoff] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
@@ -99,6 +104,7 @@ export function ResearchHub({
   const [editingOpportunity, setEditingOpportunity] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [ideaLinkEdit, setIdeaLinkEdit] = useState<{ target: OpportunitySummary; ids: string[] } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [contactImportMode, setContactImportMode] = useState<ResearchContactImportMode>("merge");
   const [pendingReplaceImport, setPendingReplaceImport] = useState<{ payload: unknown; fileName: string; targetCount: number } | null>(null);
@@ -116,7 +122,7 @@ export function ResearchHub({
       ...opportunity.contacts.map((contact) => `${contact.name} ${contact.title ?? ""}`),
     ].join(" ").toLowerCase();
     const matchesOffer = offerFilter === "all" || (offerFilter === "unassigned" ? !opportunity.offer : opportunity.offer?.id === offerFilter);
-    return searchText.includes(query.trim().toLowerCase()) && matchesOffer && (filter === "all" || readiness === filter);
+    return searchText.includes(query.trim().toLowerCase()) && (ideaFilter === "all" || (opportunity.researchThemeIds ?? []).includes(ideaFilter)) && matchesOffer && (filter === "all" || readiness === filter);
   });
   const requestedId = searchParams.get("target");
   const selected = requestedId
@@ -125,6 +131,7 @@ export function ResearchHub({
       ?? null
     : null;
   const selectedStage = selected ? snapshot.stages.find((stage) => stage.id === selected.stageId) : undefined;
+  const selectedIdeaIds = ideaLinkEdit?.target === selected ? ideaLinkEdit.ids : selected?.researchThemeIds ?? [];
   const selectedReadiness = selected ? researchReadiness(selected, selectedStage) : null;
   const selectedWebsiteUrl = safeExternalUrl(selected?.company.websiteUrl);
   const selectedSourceUrls = (selected?.company.sourceUrls ?? []).map(safeExternalUrl).filter((url): url is string => Boolean(url));
@@ -133,8 +140,20 @@ export function ResearchHub({
   const activeResearchStage = snapshot.stages.find((stage) => stage.name === "Researching");
   const holdStage = snapshot.stages.find((stage) => stage.name === "Research holding");
   const freeMaxConfigured = freeMaxStatus.hunter.configured || freeMaxStatus.norbert.configured;
-  const selectedTheme = themes.find((theme) => theme.id === selectedThemeId) ?? themes[0] ?? null;
+  const selectedTheme = themes.find((theme) => theme.id === (searchParams.get("idea") ?? selectedThemeId)) ?? themes[0] ?? null;
 
+  async function linkIdeas(ids: string[]) {
+    if (!selected) return;
+    setPendingAction("ideas");
+    setIdeaLinkEdit({ target: selected, ids });
+    setNotice(null);
+    try {
+      const result = await saveTargetIdeasAction({ targetId: selected.id, ideaIds: ids });
+      if (!result.ok) { setIdeaLinkEdit(null); setNotice(result.error!); }
+      else { setNotice("Marketing idea links saved."); router.refresh(); }
+    } catch { setIdeaLinkEdit(null); setNotice("Could not save these links. Please try again."); }
+    finally { setPendingAction(null); }
+  }
   const counts = decorated.reduce<Record<ResearchReadiness, number>>((total, item) => {
     total[item.readiness] += 1;
     return total;
@@ -168,15 +187,7 @@ export function ResearchHub({
     if (!selected) return;
     setPendingAction("offer");
     setNotice(null);
-    const result = await saveOpportunityDetailsAction({
-      opportunityId: selected.id,
-      title: selected.title,
-      offerId: offerId || null,
-      ownerId: selected.owner?.id ?? null,
-      priority: selected.priority,
-      temperature: selected.temperature,
-      outreachAngle: selected.outreachAngle ?? "",
-    });
+    const result = await saveOpportunityFieldAction({ opportunityId: selected.id, field: "offerId", value: offerId || null });
     setPendingAction(null);
     if (!result.ok) return setNotice(result.error);
     setNotice(offerId ? "Offer assigned. This target can now be promoted when the research is ready." : "Offer cleared while this target remains in research.");
@@ -292,6 +303,42 @@ export function ResearchHub({
     URL.revokeObjectURL(url);
   }
 
+  useGudPage(researchView === "themes" ? "/research" : "/targets", {
+    actions: ["read", "search (targets)", "filter (secondary: service, idea or status)", "clear_filters", "open (record ID)", "new", "edit", "archive (target confirmation)", "delete (idea confirmation)", "copy_brief", "research_handoff", "export", "import (opens file chooser)", "edit_contact", "edit_opportunity", "reorder (idea ID then secondary idea ID, requires confirmation)"],
+    ideas: themes.map(({ id, title, status }) => ({ id, title, status })), selectedIdea: selectedTheme,
+    targets: filtered.slice(0, 80).map(({ opportunity: t, readiness }) => ({ id: t.id, company: t.company.name, title: t.title, readiness, offerId: t.offer?.id, researchThemeIds: t.researchThemeIds })),
+    selectedTarget: selected, offers: availableOffers.map(({ id, name }) => ({ id, name })),
+    filters: { query, offerFilter, ideaFilter, filter }, statuses: ["all", "ready", "needs_contact", "needs_evidence", "held"],
+  }, async request => {
+    const value = request.value ?? "";
+    if (request.action === "search" && researchView === "accounts") setQuery(value);
+    else if (request.action === "clear_filters") { setQuery(""); setFilter("all"); setOfferFilter("all"); setIdeaFilter("all"); }
+    else if (request.action === "filter" && researchView === "accounts") {
+      if (request.secondary === "idea" && (value === "all" || themes.some(t => t.id === value))) setIdeaFilter(value);
+      else if (request.secondary === "service" && (["all", "unassigned"].includes(value) || availableOffers.some(o => o.id === value))) setOfferFilter(value);
+      else if (["all", "ready", "needs_contact", "needs_evidence", "held"].includes(value)) setFilter(value as ResearchReadiness | "all");
+      else throw new Error("Choose one of the current target filters.");
+    } else if (request.action === "open") {
+      if (researchView === "themes" && themes.some(t => t.id === value)) { setSelectedThemeId(value); router.replace(`/research?idea=${value}`, { scroll: false }); }
+      else if (researchView === "accounts" && targets.some(t => t.id === value)) selectTarget(value);
+      else throw new Error("That record is not on this page.");
+    } else if (request.action === "new") { if (researchView === "themes") setThemeEditor("new"); else setAddingCompany(true); }
+    else if (request.action === "edit") { if (researchView === "themes" && selectedTheme) setThemeEditor(selectedTheme); else if (selected) setEditingCompany(selected); else throw new Error("Open a record first."); }
+    else if (request.action === "archive" && selected) { setConfirmingArchive(true); return { confirmationRequired: true, saved: false }; }
+    else if (request.action === "delete" && researchView === "themes" && selectedTheme) { setThemeEditor(selectedTheme); return { confirmationRequired: true, saved: false, message: "Use Delete idea in the editor and confirm. No idea was deleted." }; }
+    else if (request.action === "copy_brief") await copyBrief();
+    else if (request.action === "research_handoff") setShowHandoff(true);
+    else if (request.action === "export") downloadPack();
+    else if (request.action === "import" && researchView === "accounts") { fileInput.current?.click(); return { message: "Choose your research JSON file in the file picker; nothing is imported until you select it." }; }
+    else if (request.action === "edit_contact" && selected) { const contact = selected.contacts.find(c => c.id === value); if (value && !contact) throw new Error("Choose a contact on this target."); setEditingContact(contact ?? "new"); }
+    else if (request.action === "edit_opportunity" && selected) setEditingOpportunity(true);
+    else if (request.action === "reorder" && researchView === "themes" && themes.some(t => t.id === value) && themes.some(t => t.id === request.secondary)) {
+      if (!window.confirm("Save this new Marketing Ideas order?")) return { saved: false };
+      await reorderThemes(value, request.secondary!);
+    } else throw new Error("That page action is not available. Use stage_change to draft record details.");
+    return { applied: true };
+  });
+
   return (
     <div className="research-page">
       <header className="research-hero">
@@ -301,6 +348,7 @@ export function ResearchHub({
           <p>{researchView === "themes" ? "Explore a need, test the evidence, then carry only credible prospects into Targets." : "Build the account and contact picture before outreach enters the pipeline."}</p>
         </div>
         <div className="research-hero-actions">
+          {researchView === "themes" ? <button className="btn btn-voice" type="button" onClick={() => requestIdeaConversation(selectedTheme?.id)}><Mic size={17} />Talk it through</button> : null}
           <button className="btn btn-quiet research-handoff-button" type="button" onClick={() => setShowHandoff(true)}><Bot size={17} />Research with AI</button>
           <button className="btn btn-primary" type="button" onClick={() => researchView === "themes" ? setThemeEditor("new") : setAddingCompany(true)}><Plus size={17} />{researchView === "themes" ? "Add idea" : "Add target"}</button>
         </div>
@@ -319,7 +367,7 @@ export function ResearchHub({
                 <span className="research-row-mark">{initials(opportunity.company.name)}</span>
                 <span className="research-row-copy">
                   <span className="research-row-title"><strong>{opportunity.company.name}</strong><ResearchStatus status={readiness} /></span>
-                  {availableOffers.length > 1 ? <span className="research-row-offer">{opportunity.offer?.name ?? "Offer not chosen"}</span> : null}
+                  <span className="research-row-offer">{[opportunity.offer?.name, ...(opportunity.researchThemeIds ?? []).map(id => themes.find(t => t.id === id)?.title)].filter(Boolean).join(" · ") || "Link an idea or service"}</span>
                   <span className="research-row-company-context">{opportunity.company.sector || "Sector not set"}{opportunity.company.scaleNote ? ` · ${opportunity.company.scaleNote}` : ""}</span>
                   <small className="research-row-contact">{contact ? `${contact.name}${contact.title ? ` · ${contact.title}` : ""}` : "No contact route yet"}</small>
                 </span>
@@ -341,12 +389,15 @@ export function ResearchHub({
               </header>
 
               <div className="research-fit-strip">
-                {availableOffers.length > 1 ? <label><small>Offer</small><select value={selected.offer?.id ?? ""} onChange={(event) => assignSelectedOffer(event.target.value)} disabled={pendingAction !== null}><option value="">Decide after research</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
+                <label><small>Service / product (optional)</small><select value={selected.offer?.id ?? ""} onChange={(event) => assignSelectedOffer(event.target.value)} disabled={pendingAction !== null}><option value="">Decide after research</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label>
                 <span><small>Fit</small><strong>{selected.company.fitScore ? `${selected.company.fitScore}/5` : "Unscored"}</strong></span>
                 <span><small>Contacts</small><strong>{selected.contacts.length}</strong></span>
                 <span><small>Sources</small><strong>{selected.company.sourceUrls?.length ?? 0}</strong></span>
               </div>
 
+              <section className="research-section"><h3>Linked marketing ideas</h3><p>Link ideas, a service above, or both. No service is required for an early idea.</p>
+                {themes.length ? themes.map(theme => <label key={theme.id} className="research-idea-choice"><input type="checkbox" checked={selectedIdeaIds.includes(theme.id)} disabled={pendingAction !== null} onChange={event => void linkIdeas(event.target.checked ? [...selectedIdeaIds, theme.id] : selectedIdeaIds.filter(id => id !== theme.id))} /><span>{theme.title}</span></label>) : <Link href="/research">Create a marketing idea</Link>}
+              </section>
               <section className="research-section">
                 <div className="research-section-head"><div><span className="eyebrow">Why this target</span><h3>Qualification evidence</h3></div></div>
                 <p className="research-summary">{selected.company.researchNote || "No research note yet. Add one useful fact, why it matters, and the source."}</p>
@@ -401,7 +452,7 @@ export function ResearchHub({
             </>
           ) : <div className="research-empty research-empty-panel"><Target size={28} /><strong>Select a target</strong><span>Research details, sources and contacts will appear here.</span></div>}
         </aside> : null}
-      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={setSelectedThemeId} onEdit={setThemeEditor} onReorder={reorderThemes} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
+      </div></> : <ThemeWorkspace themes={themes} selected={selectedTheme} offers={availableOffers} onSelect={id => { setSelectedThemeId(id); router.replace(`/research?idea=${id}`, { scroll: false }); }} onEdit={setThemeEditor} onReorder={reorderThemes} onAddTarget={() => router.push("/targets")} onCopied={() => setNotice("Idea brief copied. Paste it into Codex or your preferred research assistant.")} />}
 
       {showHandoff ? (
         <div className="dialog-backdrop" role="presentation">
@@ -532,7 +583,7 @@ function TargetOpportunityDialog({ opportunity, snapshot, onClose, onSaved }: { 
       <form className="dialog-form" onSubmit={submit}>
         <div className="form-grid">
           <label className="field-label form-span-2">Opportunity<input className="field" name="title" defaultValue={opportunity.title} required minLength={2} autoFocus /></label>
-          {offers.length > 1 ? <label className="field-label">Offer<select className="field-select" name="offerId" defaultValue={opportunity.offer?.id ?? ""}><option value="">Decide after research</option>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : <input type="hidden" name="offerId" value={opportunity.offer?.id ?? offers[0]?.id ?? ""} />}
+          <label className="field-label">Service / product (optional)<select className="field-select" name="offerId" defaultValue={opportunity.offer?.id ?? ""}><option value="">Decide after research</option>{offers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label>
           <label className="field-label">Owner<select className="field-select" name="ownerId" defaultValue={opportunity.owner?.id ?? ""}><option value="">Unassigned</option>{snapshot.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
           <label className="field-label">Priority<select className="field-select" name="priority" defaultValue={opportunity.priority}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></label>
           <label className="field-label">Temperature<select className="field-select" name="temperature" defaultValue={opportunity.temperature}><option value="cold">Cold</option><option value="warm">Warm</option><option value="hot">Hot</option><option value="at_risk">At risk</option><option value="unresponsive">Unresponsive</option></select></label>

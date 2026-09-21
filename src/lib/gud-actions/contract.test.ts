@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import { actionTools, assertFieldScope, draftInputSchema, fieldsSchema, invalidActionMessage, recordHref, signOff, toolArguments } from "./contract";
 
 describe("GUD action contract", () => {
+  it("exposes marketing, targets, reports and guides without arbitrary browser execution", () => {
+    for (const screen of ["marketing", "targets", "reports", "guides"]) expect(() => toolArguments.navigate.parse({ screen })).not.toThrow();
+    expect(() => toolArguments.page_control.parse({ page: "/reports", action: "eval", value: "fetch('/secret')" })).toThrow();
+    expect(() => assertFieldScope({ kind: "idea", timezone: "Europe/London", fields: { title: "Hotel campaigns", problem: "Empty rooms", angle: "New booking service", clearOffer: true } })).not.toThrow();
+    expect(() => assertFieldScope({ kind: "target", timezone: "Europe/London", fields: { researchThemeIds: [crypto.randomUUID()] } })).not.toThrow();
+    expect(() => assertFieldScope({ kind: "idea", timezone: "Europe/London", fields: { body: "Private thought" } })).toThrow();
+  });
   it("exposes bounded actions with independently guarded saving, never arbitrary execution", () => {
-    expect(actionTools.map(t => t.name)).toEqual(["navigate", "search", "open_record", "stage_change", "revise_draft", "save_changes", "close_record", "finish_conversation"]);
+    expect(actionTools.map(t => t.name)).toEqual(["navigate", "search", "open_record", "stage_change", "revise_draft", "save_changes", "page_control", "close_record", "finish_conversation"]);
     expect(() => toolArguments.navigate.parse({ screen: "https://evil.test" })).toThrow();
     expect(() => fieldsSchema.parse({ sql: "UPDATE users" })).toThrow();
   });

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { ExternalLink, Play, Search, Video } from "lucide-react";
 import { useState } from "react";
+import { useGudPage } from "./gud-page-controls";
 import { videoGuides, type VideoGuide } from "@/lib/video-guides";
 
 const topics = ["All videos", ...new Set(videoGuides.map((video) => video.topic))];
@@ -13,6 +14,18 @@ export function VideoLibrary() {
   const videos = videoGuides.filter((video) => (topic === "All videos" || video.topic === topic)
     && `${video.title} ${video.speaker} ${video.publisher} ${video.reason}`.toLowerCase().includes(query.trim().toLowerCase()));
 
+  useGudPage("/playbook", { actions: ["search", "filter (topic)", "open (video ID)", "clear_filters"], topics, query, topic, videos: videos.map(({ id, title, speaker, topic, reason }) => ({ id, title, speaker, topic, reason })) }, request => {
+    if (request.action === "search") setQuery(request.value ?? "");
+    else if (request.action === "filter" && topics.includes(request.value ?? "")) setTopic(request.value!);
+    else if (request.action === "clear_filters") { setQuery(""); setTopic("All videos"); }
+    else if (request.action === "open") {
+      const video = videoGuides.find(v => v.id === request.value);
+      if (!video) throw new Error("Choose a video from the library.");
+      const opened = window.open(`https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}`, "_blank", "noopener,noreferrer");
+      return { requested: true, message: "YouTube was requested in a new tab. If the browser blocks it, use the visible video link.", opened: Boolean(opened) };
+    } else throw new Error("That video control is not available.");
+    return { applied: true };
+  });
   return <>
     <header className="page-header"><div className="page-title"><h1>Video guides</h1><p>A small, curated library for better sales conversations.</p></div></header>
     <div className="workspace-page video-library">

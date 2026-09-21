@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const screens = { pipeline: "/pipeline", projects: "/live", tasks: "/my-work", thoughts: "/thoughts", companies: "/companies" } as const;
-export const recordSchema = z.object({ kind: z.enum(["lead", "project", "thought"]), id: z.uuid() }).strict();
+export const screens = { pipeline: "/pipeline", projects: "/live", tasks: "/my-work", thoughts: "/thoughts", companies: "/companies", marketing: "/research", targets: "/targets", reports: "/reports", guides: "/playbook" } as const;
+export const recordSchema = z.object({ kind: z.enum(["lead", "project", "thought", "idea", "target"]), id: z.uuid() }).strict();
 export type GudRecord = z.infer<typeof recordSchema>;
 export const fieldsSchema = z.object({
   company: z.string().trim().max(200).optional(),
@@ -34,23 +34,38 @@ export const fieldsSchema = z.object({
   activityTypeId: z.uuid().optional(),
   activityOutcome: z.string().trim().max(240).optional(),
   occurredAt: z.iso.datetime({ offset: true }).optional(),
+  websiteUrl: z.url().refine(url => /^https?:\/\//i.test(url)).optional(),
+  companyLinkedinUrl: z.url().refine(url => /^https?:\/\//i.test(url)).optional(),
+  contactLinkedinUrl: z.url().refine(url => /^https?:\/\//i.test(url)).optional(),
+  sector: z.string().trim().max(160).optional(),
+  researchNote: z.string().trim().max(10000).optional(),
+  audience: z.string().trim().max(2000).optional(),
+  problem: z.string().trim().max(10000).optional(),
+  signal: z.string().trim().max(10000).optional(),
+  angle: z.string().trim().max(10000).optional(),
+  researchStatus: z.enum(["idea", "evidence", "ready"]).optional(),
+  sourceUrls: z.array(z.url().refine(url => /^https?:\/\//i.test(url))).max(50).optional(),
+  researchThemeIds: z.array(z.uuid()).max(30).optional(),
+  clearOffer: z.boolean().optional(),
   nextMilestone: z.string().trim().max(240).optional(),
 }).strict();
 export type GudFields = z.infer<typeof fieldsSchema>;
 export const draftInputSchema = z.object({
-  kind: z.enum(["lead", "project", "thought"]), targetId: z.uuid().optional(),
+  kind: z.enum(["lead", "project", "thought", "idea", "target"]), targetId: z.uuid().optional(),
   fields: fieldsSchema, timezone: z.string().min(1).max(100).refine((value) => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }),
 }).strict();
 export type GudDraftInput = z.infer<typeof draftInputSchema>;
 export type GudDraft = GudDraftInput & { id: string; version: number; label: string; status: "draft" | "saved" | "cancelled"; expiresAt: string; warnings: string[]; baseline: string; taskOptions?: Array<{ id: string; title: string }>; result?: { href: string; label: string } };
 export class GudActionError extends Error {}
-export function recordHref(record: GudRecord) { return `${record.kind === "thought" ? "/thoughts?thought=" : record.kind === "lead" ? "/pipeline?opportunity=" : "/live?project="}${encodeURIComponent(record.id)}`; }
+export function recordHref(record: GudRecord) { return `${record.kind === "idea" ? "/research?idea=" : record.kind === "target" ? "/targets?target=" : record.kind === "thought" ? "/thoughts?thought=" : record.kind === "lead" ? "/pipeline?opportunity=" : "/live?project="}${encodeURIComponent(record.id)}`; }
 export function signOff(saved: boolean, unsaved: number) {
   return unsaved ? "Your changes are still in draft. Save or cancel them when you’re ready." : saved ? "Saved. All Gud." : "All Gud. Nothing changed.";
 }
 export function assertFieldScope(input: GudDraftInput) {
   const permitted: Record<GudDraftInput["kind"], Array<keyof GudFields>> = {
-    lead: ["company", "title", "contact", "value", "offerId", "stageId", "note", "task", "dueDate", "dueTime", "completeTaskIds", "ownerId", "priority", "temperature", "probability", "expectedCloseDate", "outreachAngle", "fitScore", "qualificationNote", "contactId", "contactEmail", "contactPhone", "contactTitle", "activityTypeId", "activityOutcome", "occurredAt"],
+    target: ["websiteUrl", "companyLinkedinUrl", "contactLinkedinUrl", "sector", "researchNote", "sourceUrls", "company", "title", "contact", "value", "offerId", "clearOffer", "researchThemeIds", "stageId", "note", "task", "dueDate", "dueTime", "completeTaskIds", "ownerId", "priority", "temperature", "probability", "expectedCloseDate", "outreachAngle", "fitScore", "qualificationNote", "contactId", "contactEmail", "contactPhone", "contactTitle", "activityTypeId", "activityOutcome", "occurredAt"],
+    idea: ["title", "audience", "problem", "signal", "angle", "researchStatus", "offerId", "clearOffer", "sourceUrls"],
+    lead: ["researchThemeIds", "company", "title", "contact", "value", "offerId", "stageId", "note", "task", "dueDate", "dueTime", "completeTaskIds", "ownerId", "priority", "temperature", "probability", "expectedCloseDate", "outreachAngle", "fitScore", "qualificationNote", "contactId", "contactEmail", "contactPhone", "contactTitle", "activityTypeId", "activityOutcome", "occurredAt"],
     project: ["company", "title", "value", "offerId", "ownerId", "stageId", "note", "task", "addTasks", "nextMilestone", "dueDate", "completeTaskIds"],
     thought: ["title", "body", "colour", "category", "addTasks", "completeTaskIds"],
   };
@@ -63,16 +78,18 @@ export function assertFieldScope(input: GudDraftInput) {
 // validating every supplied value. Null means unchanged, never clear/delete.
 const nullableFields = z.object(Object.fromEntries(Object.entries(fieldsSchema.shape).map(([key, value]) => [key, value.unwrap().nullish()]))).strict();
 export const toolArguments = {
-  navigate: z.object({ screen: z.enum(["pipeline", "projects", "tasks", "thoughts", "companies"]) }).strict(),
-  search: z.object({ query: z.string().trim().min(2).max(120), kind: z.enum(["all", "lead", "project", "thought"]) }).strict(),
+  navigate: z.object({ screen: z.enum(["pipeline", "projects", "tasks", "thoughts", "companies", "marketing", "targets", "reports", "guides"]) }).strict(),
+  search: z.object({ query: z.string().trim().min(2).max(120), kind: z.enum(["all", "lead", "project", "thought", "idea", "target"]) }).strict(),
   open_record: recordSchema,
-  stage_change: z.object({ kind: z.enum(["lead", "project", "thought"]), targetId: z.uuid().nullable(), draftId: z.uuid().nullish(), version: z.number().int().positive().nullish(), fields: nullableFields }).strict(),
+  stage_change: z.object({ kind: z.enum(["lead", "project", "thought", "idea", "target"]), targetId: z.uuid().nullable(), draftId: z.uuid().nullish(), version: z.number().int().positive().nullish(), fields: nullableFields }).strict(),
   revise_draft: z.object({ draftId: z.uuid(), version: z.number().int().positive(), fields: nullableFields }).strict(),
   save_changes: z.object({ draftIds: z.array(z.uuid()).min(1).max(8) }).strict(),
+  page_control: z.object({ page: z.enum(["/research", "/targets", "/reports", "/playbook"]), action: z.enum(["read", "search", "filter", "open", "clear_filters", "copy_brief", "edit", "new", "archive", "delete", "reorder", "research_handoff", "export", "import", "edit_contact", "edit_opportunity"]), value: z.string().max(300).optional(), secondary: z.string().max(300).optional() }).strict(),
   close_record: z.object({}).strict(),
   finish_conversation: z.object({}).strict(),
 };
 export const actionTools = Object.entries(toolArguments).map(([name, schema]) => ({ type: "function" as const, name, description: ({
+  page_control: "Read or operate controls on the currently open page. Call read first for available actions, exact record/filter values and current results. Mutations use stage_change and save_changes; archive/delete open a human confirmation and do NOT bypass it. Use navigate first if the page is not open. Never claim success until the application receipt.",
   navigate: "Open a GUD screen when explicitly requested. Do not use before searching/opening a client: those tools navigate automatically. Companies is not where sales touchpoints are logged. Does not save or discard drafts.",
   search: "Find leads/projects by company, title or contact. On Pipeline prefer lead; on Live prefer project. Use thought ONLY when user explicitly wants their private Thoughts; all excludes Thoughts. One match opens automatically; clarify multiple matches.",
   open_record: "Read/open an exact lead/project or the user's own private Thought, including task IDs and editable details. Use before drafting updates.",

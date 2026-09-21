@@ -225,6 +225,7 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
       id: row.opportunity.id,
       delivery: deliveryDetails(row.opportunity.delivery),
       isExample: row.opportunity.importMetadata?.demoExample === true,
+      researchThemeIds: Array.isArray(row.opportunity.importMetadata?.researchThemeIds) ? row.opportunity.importMetadata.researchThemeIds.filter((id): id is string => typeof id === "string") : [],
       stageId: row.opportunity.stageId,
       position: row.opportunity.position,
       offer: row.offer ? {

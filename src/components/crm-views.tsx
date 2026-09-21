@@ -41,6 +41,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import { useGudPage } from "./gud-page-controls";
 import { arrayMove } from "@dnd-kit/sortable";
 
 import { setWorkspaceAiEnabledAction } from "@/app/actions/ai";
@@ -211,6 +212,17 @@ export function ReportsDashboard({ snapshot }: { snapshot: BoardSnapshot }) {
     return counts;
   }, {});
   records.flatMap((item) => item.activities).forEach((item) => { channelCounts[item.type.channel] = (channelCounts[item.type.channel] ?? 0) + 1; });
+  useGudPage("/reports", {
+    actions: ["read", "filter (service ID or all)", "clear_filters"],
+    offers: availableOffers.map(({ id, name }) => ({ id, name })), offerFilter,
+    metrics: { open: open.length, overdue: overdue.length, unscheduled: unscheduled.length, atRisk: atRisk.length, pipelineValue, weightedValue, health },
+    stages: snapshot.stages.map(s => ({ name: s.name, count: records.filter(r => r.stageId === s.id).length })), channelCounts,
+  }, request => {
+    const value = request.action === "clear_filters" ? "all" : request.value;
+    if (request.action !== "filter" && request.action !== "clear_filters") throw new Error("Reports supports reading, service filtering and clearing filters. Use navigate to open a board.");
+    if (value !== "all" && !availableOffers.some(o => o.id === value)) throw new Error("Choose a service from the report's options.");
+    setOfferFilter(value!); return { applied: true, offerFilter: value };
+  });
 
   return (
     <WorkspaceFrame title="Reports" subtitle={`Live pipeline health · Snapshot ${formatShortDate(snapshot.generatedAt)}`}>

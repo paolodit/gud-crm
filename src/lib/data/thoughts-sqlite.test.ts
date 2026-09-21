@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { thoughtCardHeight } from "@/lib/domain/thought-placement";
 import { afterEach, describe, expect, it } from "vitest";
 import { createSqliteThoughtStore } from "./thoughts-sqlite";
 import { thoughtContentSchema, type ThoughtExploration } from "@/lib/domain/thoughts";
@@ -13,7 +14,7 @@ describe("private Thoughts storage", () => {
   it("places batch-created notes apart while keeping other accounts private", () => {
     const { store } = fixture();
     const notes = Array.from({ length: 8 }, (_, i) => store.save(alice, { content: { body: `Batch ${i}` } }));
-    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || Math.abs(a.y-b.y) >= 400).toBe(true);
+    for (const a of notes) for (const b of notes) if (a.id !== b.id) expect(Math.abs(a.x-b.x) >= 310 || a.y + thoughtCardHeight(a) + 20 <= b.y || b.y + thoughtCardHeight(b) + 20 <= a.y).toBe(true);
     expect(store.save(bob, { content: { body: "My own board" } })).toMatchObject({ x: notes[0].x, y: notes[0].y });
     expect(store.save(alice, { id: notes[0].id, version: 1, content: { body: "Moved", x: 99, y: 101 } })).toMatchObject({ x: 99, y: 101 });
   });
