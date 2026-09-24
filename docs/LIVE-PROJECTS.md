@@ -14,7 +14,11 @@ Workspace admins can open Settings → Live projects to rename, describe, recolo
 
 ## Talk through a delivery update
 
-Open a project and choose Talk through an update. Speak or type what has changed, the delivery stage, next milestone and due date. Prepare for review fills only explicitly stated delivery fields; notes are appended to existing notes. Review the form and choose Save project. Nothing changes until you save, and no sales activity or sales-stage change is created. This works for both direct and sales-linked projects and uses the workspace OpenAI connection in Settings → AI & connections.
+The global **Talk to GUD** conversation can find/open projects, create direct projects, prepare stage/milestone/date/value changes, append notes and add or complete checklist items. Ask explicitly to “Save changes” or use the Save button; it continues listening afterwards unless paused, ended or timed out. Project progress is based on the opened record's actual checklist, not guessed task names. Advancing a milestone does not implicitly complete earlier tasks. See the [conversation contract](gud-conversation-preview.md).
+
+Classic delivery capture remains available from project update controls. The microphone click begins capture where supported; typing also works. It prepares only stated changes for review. Check the proposed fields before applying. It never changes sales stage automatically or sends messages.
+
+Both direct and sales-linked projects support an optional agreed **Project value (£)** separate from the sales estimate, plus ordered, completable checklist items. Checklist items are not separately dated calendar tasks. Delivery notes, next milestone and its due date remain available alongside the checklist. Clearing a project value stores null; zero is valid. Existing projects are not assigned invented values.
 
 Reports includes current projects, overdue milestones, missing milestones, archived totals and a stage breakdown. Offer filtering applies to both sales and delivery. The default `complete` stage is excluded from overdue milestone counts.
 
@@ -28,4 +32,4 @@ Back up before upgrading. No new SQL migration is needed for these additions aft
 
 Settings is grouped into Workspace, People & access, Sales, Live projects, AI & connections, and Data & updates. Safe updates includes an expandable setup guide for private backup and deployment webhooks. Manual database backup followed by CapRover deployment remains supported; never substitute a dummy success response for a real backup.
 
-MCP can list both project sources and read the configured stage IDs. Direct projects are currently managed through the Live projects screen; the existing `update_live_project` tool remains for sales-linked delivery. See [MCP setup](MCP.md).
+External MCP can list both project sources and read configured stage IDs. Direct projects can be changed in the UI or built-in GUD conversation; the external `update_live_project` tool remains for sales-linked delivery. See [MCP setup](MCP.md).

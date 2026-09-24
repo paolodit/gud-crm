@@ -3,6 +3,7 @@
 .thoughts-header h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -.6px; font-weight: 600; }
 .thoughts-header .thoughts-private { color:#d1e9ff; }
 .thoughts-header p { margin: 0; color: #677467; }
+.thoughts-demo-notice { margin: 12px 24px 0; padding: 12px 16px; border: 1px solid #e6cf8a; border-radius: 8px; background: #fff8df; color: #604711; font-size: 13px; line-height: 1.5; }
 .thoughts-private { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; letter-spacing: .04em; color: #687c63; }
 .thoughts-header .btn { background: #fff; border: 1px solid #dbdfd5; color: #334b36; }
 .thoughts-header .btn span { color: #7a8976; }

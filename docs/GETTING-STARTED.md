@@ -7,7 +7,8 @@ GUD CRM is designed to become useful before it becomes configurable. Start with 
 | Use | Runtime | Login boundary |
 | --- | --- | --- |
 | Development, evaluation and shaping the workflow | SQLite | One trusted local admin session; not authentication |
-| Resetting public demonstration | Demo | No persistent data and no authentication |
+| Local read-only fictional fixture | Demo backend | No persistent writes and no authentication |
+| Hosted interactive demonstration | PostgreSQL + public-demo flag | Authenticated accounts; fictional content only |
 | Live team use | PostgreSQL | Separate Better Auth accounts, roles and revocable sessions |
 
 Never expose the SQLite or demo runtime to the public internet. They deliberately skip individual authentication.
@@ -25,13 +26,13 @@ This is workspace configuration, not a separate application version. A real orga
 
 1. Install dependencies and run `npm run dev`.
 2. Open `http://localhost:3000` and choose **Open local workspace**.
-3. Begin on **Pipeline**. Scan the whole book of work, spread any crowded stage into two lanes, then use **Today** when you want a ranked focus list.
+3. Begin on **Pipeline**. Scan the whole book of work, spread any crowded stage into three lanes, then use **Today** when you want a ranked focus list.
 4. In **Settings**, choose the sales model and rename the pipeline.
 5. Review **Offers**. Keep one offer for the cleanest experience. Add a second only when the team is actively pitching another kind of work.
-6. Review the team and roles: admin, manager and sales support. Local changes prepare the roster; separate passwords start with PostgreSQL.
+6. Review the team and roles: admin, manager and member. Local changes prepare the roster; separate passwords start with PostgreSQL.
 7. Review the activity types. Use language the team will actually log consistently.
-8. Open **Sales guide** for the three-step route, message patterns and each offer's progressively disclosed asset kit.
-9. Keep market questions, sector signals and campaign angles in **Ideas** in either edition. Add named organisations directly, import validated research, or carry credible candidates into **Targets**.
+8. Open **Video guides** to search the curated learning library.
+9. Keep shared market questions, sector signals and campaign angles in **Marketing Ideas**. Refine them with “Talk it through”, including ideas for a new service. Link named **Targets** to an idea, an offer, or both before outreach.
 10. Download a SQLite backup after the first meaningful setup session.
 
 ## The minimum useful record
@@ -46,6 +47,12 @@ An opportunity becomes workable when it has:
 - one owned, dated next action.
 
 Do not fill fields for their own sake. GUD is healthy when the next decision is clear and the relationship history is trustworthy.
+
+## Personal thinking and conversation
+
+**Thoughts** is each user's personal space, not a team board. All roles can use notes, colours, categories, checklists, free/date arrangement and separate exploration documents. Other team members—including admins—cannot read them through the app. Give each person a separate login. In the hosted Demo, Thoughts works, but anyone sharing the same demo login sees that login's notes; never enter private information there.
+
+**Talk to GUD** on an AI-enabled PostgreSQL workspace can find records, navigate pages and prepare changes through speech or text. Say/type “Save changes” to save the validated drafts; the conversation continues for your next request. Classic single-record voice review remains available. [Conversation guide](gud-conversation-preview.md) · [Private Thoughts](thoughts.md) · [External MCP connection](MCP.md).
 
 ## Adding another service
 

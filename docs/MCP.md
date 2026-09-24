@@ -21,7 +21,7 @@ Review my GUD sales brief. Show the three opportunities that most need
 attention, explain why, and wait for me to choose before changing anything.
 ```
 
-The MCP connection does **not** need an OpenAI API key. It authenticates with the user's GUD login and OAuth consent. `OPENAI_API_KEY` is only for GUD's separate voice-to-fields and AI coach features.
+The MCP connection does **not** need an OpenAI API key. It authenticates with the user's GUD login and OAuth consent. GUD's own OpenAI connection is separate: it powers conversational voice/text, classic voice-to-fields and optional Thought exploration. The external AI client's own account/billing requirements still apply.
 
 There is no separate MCP package to install: the server ships inside GUD and uses the same database, permissions and audit trail.
 
@@ -33,15 +33,26 @@ There is no separate MCP package to install: the server ships inside GUD and use
 | Start the day | Get an owner-scoped sales brief with weighted value, stage balance, attention items and upcoming actions |
 | Review sales work | List and inspect opportunities; search organisations |
 | Review several records efficiently | Read up to ten known opportunities in one `get_opportunities` call |
-| Track delivery | List won work with `list_live_projects`; change its milestone, due date, notes or delivery stage with `update_live_project` |
+| Track delivery | List won and direct projects with `list_live_projects`; change sales-linked delivery with `update_live_project` |
 | Capture research | Submit cited account/contact research into the human-review target stage |
 | Create and shape work | Create opportunities; update opportunity and organisation details |
 | Maintain relationships | Add or update a contact while preserving provenance and do-not-contact metadata |
 | Keep momentum | Set a next action, complete a task and log a confirmed activity |
 | Tidy safely | Archive or restore an opportunity or organisation without deleting history |
 | Enrich deliberately | Find one named contact's work email through configured FreeMax providers |
+| Personal thinking (separate consent) | List/read/save your own Thoughts and list/save their exploration documents |
 
 GUD does not expose arbitrary SQL, generic delete, team administration, pipeline configuration or outreach-sending tools.
+
+### Personal Thoughts scopes
+
+Sales scopes never include personal notes. Request `gud:thoughts:read` to use `list_thoughts`, `get_thought` and `list_thought_explorations`; additionally request `gud:thoughts:write` for `save_thought` and `save_thought_exploration`. Both the token and recorded consent must permit the operation. Existing connections need renewed consent to add these scopes.
+
+Tools derive the account and organisation from OAuth, with no owner override—even for administrators. Personal content stays out of shared CRM search, exports and audit events. Each team member connects with their own login. The interactive Demo supports these tools too, but visitors sharing its login share that account's notes. See [Thoughts privacy](thoughts.md).
+
+### Built-in conversation is a different surface
+
+The in-app **Talk to GUD** preview uses authenticated application function tools, not this remote OAuth connection. It supports additional page navigation/controls and draft workflows for Marketing Ideas, Targets and direct projects. Its explicit spoken/typed Save command is bound to current draft versions. Do not infer external MCP support from a conversation feature; use the inventory here and the tools advertised by the connected server. See [conversation capabilities and limits](gud-conversation-preview.md).
 
 ### The most useful entry point
 
@@ -59,11 +70,11 @@ It is deterministic and read-only. It does not use model credits and cannot alte
 ## Connect ChatGPT
 
 1. In GUD, open **Settings → Connect an AI coworker** and copy the endpoint.
-2. In ChatGPT, enable developer mode for your supported Business, Enterprise or Edu workspace.
+2. In a ChatGPT account/workspace supporting custom MCP apps, enable developer mode if required by its current interface and administrator policy.
 3. Open **Settings → Apps → Create**, paste the endpoint, choose OAuth and add these **Base scopes**, one per line: `gud:read` and `gud:write`.
 4. Click **Create**. ChatGPT discovers the OAuth endpoints and tools as part of creation; some interfaces do not show a separate **Scan Tools** button.
 5. Sign in with your normal GUD account, then approve **read & write** on GUD's permission screen.
-6. Set GUD's ChatGPT action permissions to **Allow all actions** (or approve individual actions when prompted).
+6. Review the client's action permissions; approve only the actions you want it to perform, individually where supported.
 7. Try: `Review my pipeline, show what needs attention, and wait for me to choose a record before changing anything.`
 
 New connections request bounded read-and-write access so ChatGPT can perform the workflows above. A client can still request only `gud:read`. Existing read-only connections never silently gain write access: disconnect them in GUD Settings, reconnect and approve the new permission screen.
@@ -200,7 +211,7 @@ its contacts, activities, tasks and audit history.
 - `gud:read` and `gud:write` are separate scopes. Every write checks both the token scope and the stored consent grant.
 - Every request resolves the active GUD user and organisation before a tool is constructed. IDs from another workspace are rejected.
 - Inputs are bounded and schema-validated. URLs must be complete HTTP(S) URLs.
-- All mutations use named service operations and create an audit event attributed to the connected user.
+- Shared CRM mutations use named service operations and create an audit event attributed to the connected user. Personal Thought content is deliberately excluded from shared audit events.
 - Tool annotations tell compatible clients which actions read, write, reach an external provider or need consequential-change confirmation.
 - Won/Lost moves, archives and removal of do-not-contact protection require explicit confirmation.
 - Research stays in human review, and GUD never sends outreach through MCP.
@@ -260,4 +271,4 @@ Read the returned record first and use current IDs from GUD. Consequential chang
 
 **The AI coworker says it needs an OpenAI key**
 
-The MCP connection itself does not. Check that you copied the `/mcp` endpoint from **Connect an AI coworker**, not the separate AI coach setup. An OpenAI API key is only needed for voice-to-fields and model-generated coaching inside GUD.
+The MCP connection itself does not. Check that you copied the `/mcp` endpoint from **Connect an AI coworker**, not the separate OpenAI connection setup. GUD's OpenAI key powers in-app conversation, voice-to-fields and optional personal exploration, not external MCP authentication.

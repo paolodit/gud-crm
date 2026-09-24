@@ -11,6 +11,12 @@ Private organisations are deployments, not source-code editions. Their company n
 
 ## Product boundary
 
+Private Thoughts are available to every account without sharing with the team.
+Shared Marketing Ideas, Targets, sales and delivery remain distinct. Live projects
+can also be added directly without inventing a sale, with project values and
+checklists alongside milestones. Conversational voice/text can prepare and save
+changes on explicit request; external MCP uses its own tools and consent scopes.
+
 GUD begins with a potential prospect and carries a won opportunity into a lightweight Live projects board. Delivery stage, next milestone, due date and handover notes remain attached to the same relationship. It does not replace detailed project scheduling, invoicing, support or renewal systems.
 
 > A focused sales workspace that helps businesses understand their prospects, choose the next action and turn opportunities into revenue—without the complexity of a traditional CRM.

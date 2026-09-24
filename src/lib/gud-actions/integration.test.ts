@@ -394,4 +394,17 @@ describe.skipIf(!url)("real PostgreSQL GUD actions", () => {
     const notes = await thoughts.listThoughts(actor);
     expect(notes.find(n => n.title === "Shopping")?.checklist.map(t => t.text)).toEqual(["Sausages", "Potatoes"]);
   });
+  it("enables Demo conversation Thoughts without broadening ownership", async () => {
+    const { env } = await import("@/lib/env");
+    env.publicDemo = true;
+    try {
+      expect((await actions.actionReferences(actor)).thoughtsAllowed).toBe(true);
+      const draft = await actions.stageDraft(actor, { kind: "thought", timezone, fields: { title: "Demo-only personal fixture", body: "Fictional content" } });
+      const receipts = await actions.commitDrafts(actor, [approve(draft)]);
+      const id = new URL(receipts[0].href, "https://fixture.test").searchParams.get("thought")!;
+      expect((await actions.openRecord(actor, { kind: "thought", id })).title).toBe("Demo-only personal fixture");
+      await expect(actions.openRecord(colleague, { kind: "thought", id })).rejects.toThrow();
+      expect((await actions.searchRecords(colleague, "Demo-only personal fixture", "thought")).matches).toEqual([]);
+    } finally { env.publicDemo = false; }
+  });
 });

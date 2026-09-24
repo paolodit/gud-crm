@@ -36,6 +36,10 @@ jobs:
       - run: npm run test:release
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - name: Verify interactive demo Thoughts
+        env:
+          GUD_PUBLIC_DEMO: "true"
+        run: node scripts/run-e2e.mjs tests/e2e/thoughts-demo.spec.ts
       - name: Verify combined voice updates with the isolated AI fixture
         run: node scripts/run-voice-e2e.mjs
       - name: Verify Thoughts explorations with the isolated AI fixture
@@ -56,7 +60,7 @@ jobs:
       - name: Verify personal Thoughts isolation on real PostgreSQL
         env:
           GUD_THOUGHTS_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test
-        run: npx vitest run src/lib/data/thoughts-integration.test.ts
+        run: npx vitest run src/lib/data/thoughts-integration.test.ts src/lib/data/demo-expansion-integration.test.ts
       - name: Verify transactional GUD actions on real PostgreSQL
         env:
           GUD_CONVERSATION_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test

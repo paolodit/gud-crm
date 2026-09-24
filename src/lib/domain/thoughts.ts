@@ -27,7 +27,7 @@ export type ThoughtActor = { id: string; organisationId: string };
 export class ThoughtsError extends Error {}
 export const unavailableThought = () => new ThoughtsError("This thought is unavailable. Reload your board and try again.");
 export function assertPrivateThoughtAccess(input: { demoMode?: boolean; publicDemo?: boolean; impersonated?: boolean }) {
-  if (input.demoMode || input.publicDemo) throw new ThoughtsError("Private Thoughts needs an individual account. It is unavailable on shared demo logins.");
+  if (input.demoMode) throw new ThoughtsError("This read-only fixture cannot save Thoughts. Use the interactive demo or a SQLite/PostgreSQL workspace.");
   if (input.impersonated) throw new ThoughtsError("Private Thoughts cannot be opened while impersonating another user.");
 }
 export function thoughtLabel(note: ThoughtContent) { return note.title || note.body.trim().split("\n")[0]?.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/g, "$1").replace(/\*\*([^*]+)\*\*|\*([^*]+)\*/g, "$1$2").slice(0, 100) || "Untitled thought"; }

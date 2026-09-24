@@ -8,7 +8,8 @@ The simpler editor has bold, italic and link toolbar buttons with a formatted pr
 
 - PostgreSQL rows are owned by both the authenticated user and organisation. Every read/write uses both predicates; administrators have no personal-data override. Server actions derive identity from the session, never from client input. Versions prevent stale tabs overwriting newer edits.
 - Thoughts and their exploration documents never enter `BoardSnapshot`, shared search, reports, CRM exports or shared audit events. AI rate limits have a separate content-free table.
-- Impersonated sessions cannot open Thoughts or authorise external assistants. Shared demos are blocked. Set `GUD_PUBLIC_DEMO=true` for any deployment using public/shared accounts; the existing `guddemo.refreshcreative.com` host is also blocked defensively.
+- Every active role (member, manager and admin) can use its own Thoughts, including in a multi-user team. Impersonated sessions cannot open Thoughts or authorise external assistants.
+- The authenticated interactive Demo supports Thoughts. Set `GUD_PUBLIC_DEMO=true` for shared/public demo accounts; `guddemo.refreshcreative.com` also activates the demo notice. This flag warns about shared-login visibility rather than blocking the feature. Different accounts remain isolated, but people using the same demo login share that account's notes. Use fictional content only. The unauthenticated read-only fixture backend remains unable to save Thoughts.
 - SQLite is local single-user mode, not a multi-user security boundary: anyone who can use that installation uses the same account. Private data has separate SQLite tables, outside the shared snapshot.
 - This is application-level privacy, **not end-to-end encryption**. Infrastructure operators, physical database access and full database backups remain trusted. Full backups contain Thoughts and must be protected accordingly. Never use a shared login to store personal information.
 - Development server-function argument logging is disabled so private content is not echoed to the development terminal. The application does not log provider error payloads or private content.
@@ -21,11 +22,15 @@ With the existing workspace OpenAI configuration enabled, the user can explicitl
 
 Requests use `store:false`, foreground execution, bounded output, a timeout and per-user rate limiting. This does not promise zero provider retention: the provider/account's data controls still apply. See [OpenAI web-search documentation](https://developers.openai.com/api/docs/guides/tools-web-search) and [data controls](https://developers.openai.com/api/docs/guides/your-data).
 
-Voice uses the existing browser speech service after pressing Record. It is not an always-listening wake word. “Gud, new thought”, “bullet”, “to-do” and “explore that” are parsed locally into a reviewable draft. Audio is not saved by GUD, but the browser speech provider may process audio externally. Saving an “explore that” draft opens the panel; AI generation still requires an explicit click.
+Classic dictation starts on the microphone click where speech recognition is available; it is not an always-listening wake word. “Gud, new thought”, “bullet”, “to-do” and “explore that” are parsed locally into a reviewable draft. Audio is not saved by GUD, but the browser speech provider may process audio externally. Saving an “explore that” draft opens the panel; AI generation still requires an explicit click.
+
+The separate [GUD conversation](gud-conversation-preview.md) can search/read your notes, draft titles, text, colours, existing/new categories and real checklist items, and save on an explicit spoken or typed request. Its server-side access checks use the same account/organisation boundary.
+
+Free sort preserves saved manual positions. Sort by date displays newest-first columns without overwriting that arrangement. New notes seek nearby gaps. Colour controls use square swatches, and the category picker offers existing categories or creation explicitly. Clicking the editor backdrop saves valid content and closes only after success; a validation/save failure leaves it open. No visible redundant editor heading is needed; the dialog retains an accessible name.
 
 ## MCP
 
-Note and editor microphone buttons open a reviewable voice draft. Apply appends to the existing text, or replaces it when explicitly selected; the original note is saved only with Save thought. The exploration microphone similarly edits the optional direction, not the original note. Recording never starts merely by opening an editor.
+Note and editor microphone buttons start a reviewable voice draft. Apply appends to the existing text, or replaces it when explicitly selected; Save thought or a successful backdrop save persists the editor. The exploration microphone similarly edits the optional direction, not the original note. Recording never starts merely by opening an ordinary editor.
 
 Default sales scopes stay unchanged. Personal access requires explicitly requested and consented `gud:thoughts:read`; mutations additionally require `gud:thoughts:write`. For example, a client may request `openid profile email offline_access gud:read gud:thoughts:read gud:thoughts:write`. Existing sales connections cannot silently acquire personal access. Reconnect with the extra scopes and review the consent notice. Both token scopes and recorded consent are checked on every request.
 
@@ -35,6 +40,6 @@ Personal tools: `list_thoughts`, `get_thought`, `save_thought`, `list_thought_ex
 
 Apply migration `0011_famous_winter_soldier.sql` through the normal production migration runner before serving the new build. It only adds the personal note, exploration and private rate-limit tables plus foreign keys/indexes. It does not migrate existing CRM content. SQLite creates its separate tables lazily.
 
-Tests cover two-user and cross-organisation isolation, admin non-access, version conflicts, separate exploration history, shared-demo and impersonation rejection, independent MCP grants, provider payload minimisation, failure handling, and the local browser capture/drag/checklist/colour/history/voice flow. Live provider research and multi-user PostgreSQL deployment require staging verification before production rollout.
+Tests cover two-user and cross-organisation isolation (normal and public-demo policy), admin non-access, each role's access, version conflicts, separate exploration history, read-only fixture/impersonation rejection, independent MCP grants, provider payload minimisation, failure handling, and browser capture/drag/checklist/colour/history/voice flows. A separate demo browser test checks saving, reloading and the shared-login warning. Live provider research still needs a separately authorised real-provider check.
 
 Related-thought suggestions and conversion into leads/projects remain future work by design.

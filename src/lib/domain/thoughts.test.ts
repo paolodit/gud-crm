@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { assertPrivateThoughtAccess, explorationDocumentSchema, thoughtContentSchema, thoughtFromSpeech } from "./thoughts";
 describe("Thoughts boundaries", () => {
-  it("blocks shared demos and impersonation", () => {
-    for (const input of [{ demoMode: true }, { publicDemo: true }, { impersonated: true }]) expect(() => assertPrivateThoughtAccess(input)).toThrow();
+  it("allows interactive demo accounts but blocks read-only fixtures and impersonation", () => {
+    for (const input of [{ demoMode: true }, { impersonated: true }, { publicDemo: true, impersonated: true }]) expect(() => assertPrivateThoughtAccess(input)).toThrow();
+    expect(() => assertPrivateThoughtAccess({ publicDemo: true })).not.toThrow();
     expect(() => assertPrivateThoughtAccess({})).not.toThrow();
   });
   it("requires content and rejects owner injection, unsafe links and out-of-range positions", () => {

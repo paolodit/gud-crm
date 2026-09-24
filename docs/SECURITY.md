@@ -27,7 +27,7 @@ This document records the implemented controls and known limits. It is an engine
 - Better Auth provides OAuth 2.1 authorization-code flow with S256 PKCE, one-hour access tokens, renewable refresh tokens and dynamic public-client registration.
 - MCP access resolves the token's user against the current active GUD user and organisation before constructing any tool.
 - `gud:read` and `gud:write` are separate scopes. New connections request both so ChatGPT can update GUD, but clients may request read-only access. Existing read-only grants do not expand silently. Every authorization grant is sent through GUD's explicit consent screen, and write tools activate only when the validated token and its stored consent grant both include `gud:write`.
-- Tool inputs are bounded with Zod, writes are allowlisted and every MCP mutation creates an audit event attributed to the connected GUD user. Update, archive and external-provider tools advertise their actual MCP safety annotations so the host can frame confirmation appropriately.
+- Tool inputs are bounded with Zod and writes are allowlisted. Shared CRM mutations create attributed audit events; personal Thoughts content is excluded from shared audit events. Personal tools require separate `gud:thoughts:read`/`gud:thoughts:write` token and consent grants. Update, archive and external-provider tools advertise their actual MCP safety annotations so the host can frame confirmation appropriately.
 - The endpoint exposes no delete tool, arbitrary SQL, generic record patch, team administration or pipeline-configuration tool. Won/Lost moves, archives and removal of do-not-contact protection require explicit confirmation after the user understands the impact.
 - Research tools accept only HTTP(S) evidence URLs, never initiate outreach and leave newly discovered targets in Researching for human review.
 - The endpoint validates the canonical forwarded host, sends no-store responses and exposes only the CORS headers required by remote MCP clients.
@@ -35,7 +35,13 @@ This document records the implemented controls and known limits. It is an engine
 
 The supported action inventory, reconnection behavior and client setup are documented in [MCP connections](MCP.md).
 
-## XSS, injection and unsafe links
+## Personal Thoughts and conversational access
+
+Thoughts and exploration documents are scoped by both account and organisation on every read/write, available to all active member roles, and excluded from shared CRM snapshots, search, reports and exports. Admins cannot override ownership and impersonated sessions are blocked. This is application-level privacy, not encryption against infrastructure operators; full backups include personal notes. Public Demo accounts can use Thoughts, with an explicit shared-login warning. Separate accounts remain isolated. Read-only local fixtures cannot persist Thoughts.
+
+The built-in GUD conversation uses authenticated, Origin-checked application tools. Relevant voice/conversation and record context is sent to OpenAI only after opt-in. Provider retention policies still apply to `store:false` requests. A save requires an independent explicit user command bound to current draft versions; the model cannot grant itself approval. Writes are transactionally version/fingerprint checked. End stops microphone capture; idle/session/action limits bound activity but are not a guaranteed billing cap. [Detailed contract](gud-conversation-preview.md).
+
+## Browser and input controls
 
 - React renders CRM text as text; the application does not use `dangerouslySetInnerHTML`, `innerHTML`, `eval` or dynamic code execution.
 - Every manually entered, researched or tracker-imported external link is restricted to HTTP or HTTPS. `javascript:`, `data:` and file URLs are rejected, and displayed external links are checked again.
@@ -52,7 +58,7 @@ The supported action inventory, reconnection behavior and client setup are docum
 - Research enrichment is one named contact at a time, honours do-not-contact state and records provenance.
 - AI context is bounded, outputs are schema-validated and nothing is automatically sent or scheduled.
 - Voice-assisted forms use the browser's speech-recognition service, then send only its transcript to the configured AI provider for structuring. GUD does not persist raw audio or the transcript unless the user reviews and saves the populated form; the browser or operating-system speech provider may process audio under its own privacy terms.
-- Camera, microphone and screen-capture permissions are limited to the app's own origin. This keeps browser recording tools compatible without granting silent access: the browser still requires the user to approve every camera, microphone or screen-sharing permission.
+- Camera, microphone and screen-capture permissions are limited to the app's own origin. Browser permission is required; browsers may remember a camera/microphone grant. App microphone controls are explicit, and End stops capture. Browser screen-sharing permission remains a separate browser-controlled action.
 - Health responses expose runtime/database state but no record counts, file paths or credentials.
 - Backups contain personal data and must be encrypted, access-controlled and kept out of email and Git.
 
@@ -64,7 +70,7 @@ Run:
 npm run security:audit
 ```
 
-The July 2026 review removed the deployable PostCSS XSS advisory by overriding Next.js's transitive PostCSS to `8.5.19`, and the runtime is pinned to the patched Next.js `16.2.11`. There are no known high or critical advisories in the production dependency set and no remaining known runtime advisory.
+Exact dependency versions are recorded in `package-lock.json`; transitive overrides are in `package.json`. Run the audit for the release being deployed rather than relying on a historical version or vulnerability count. CI checks the production dependency set and rejects unexpected advisories.
 
 One moderate development-only advisory is explicitly accepted: Drizzle Kit includes `@esbuild-kit/esm-loader`, which carries esbuild `0.18.20`. The advisory concerns exposing esbuild's development server to a hostile website. GUD does not invoke that server, Drizzle Kit is a development dependency, and the production image copies only the built standalone runtime. The audit script fails on any advisory outside this exact chain. Revisit the exception when Drizzle Kit removes the deprecated loader.
 

@@ -22,14 +22,15 @@
 
 GUD CRM is for small sales teams, agencies, consultancies, SaaS companies and independent specialists who want useful sales discipline without traditional CRM sprawl.
 
-It keeps ideas, targets and live opportunities distinct; makes the whole pipeline readable at a glance; and gives every active relationship an owner, context and a next action. AI supports optional research and voice-to-fields input, never an automatic salesperson. Video guides replace the former Sales Guide and in-app coaching panel with a small curated YouTube library.
+It keeps personal Thoughts, shared Marketing Ideas, Targets and live opportunities distinct; makes the pipeline readable at a glance; and gives every active relationship an owner, context and a next action. Optional AI supports research, conversational voice/text and reviewed form updates, never an automatic salesperson. Video guides provide a curated YouTube library.
 
 ## Why GUD feels different
 
 - **The pipeline is the home screen.** Spread a busy stage across three lanes. Edit a card, talk through an update or change its stage directly from the board; dragging is optional.
 - **Research stays out of live sales.** Explore market ideas separately, build named targets before outreach, then promote only credible opportunities.
 - **One product or several services.** Focused Sales suits a single product or SaaS motion. Service Sales suits agencies and consultancies pitching different projects, retainers and advisory work.
-- **Say it, review it, save it.** Talk to GUD combines record changes, an activity and a next action in one review. Edit or untick each change, apply together, and Undo safely. No CRM record is changed until you confirm.
+- **Say it, review it, save it.** Talk to GUD finds records, navigates the workspace and prepares changes. Explicitly say or type “Save changes”, or use the Save button. The conversation stays available for the next request. The separate classic voice review also offers a time-limited Undo.
+- **A personal space inside a team workspace.** Every signed-in member has their own Thoughts, checklists, colours, categories and exploration documents. Teammates—including workspace admins—cannot open them through the app. [Privacy and shared-demo limits](docs/thoughts.md).
 - **Delivery has its own home.** Won opportunities appear on Live projects automatically—or add an existing project without a sales cycle. Configure delivery stages, expand busy columns, track milestones and archive completed work independently of sales. [How it works](docs/LIVE-PROJECTS.md).
 - **Relationships remain human-readable.** Companies, contacts, evidence, activities, tasks, value and decision context stay connected.
 - **Finished records leave without disappearing.** Archive an opportunity or a whole organisation to remove it from active work while preserving its stage, contacts, activity and next actions; restore it at any time.
@@ -38,6 +39,23 @@ It keeps ideas, targets and live opportunities distinct; makes the whole pipelin
 - **Free enrichment goes further.** Optional Hunter and Voila Norbert integrations use a visible, free-first provider order for one-contact-at-a-time email discovery.
 
 Live projects is deliberately lightweight: a delivery overview linked to the sales relationship, not an invoicing system, project scheduler or support desk.
+
+## What's included
+
+| Area | What you can do |
+| --- | --- |
+| Pipeline | Track offers, contacts, owners, stage, value, probability, qualification, activity and dated follow-ups; filter, expand columns and archive/restore |
+| Live projects | Manage won and directly added work, configurable delivery stages, independent project values, milestones, dates, notes and checklists |
+| Today | Review the next actions and relationships needing attention |
+| Thoughts | Capture private notes; arrange freely or by date; use colours, categories, checklists, voice drafts and a separate personal exploration library |
+| Marketing Ideas | Develop an audience, problem/change, evidence and angles to test; refine an existing offer or a completely new service through “Talk it through” |
+| Targets | Qualify organisations before outreach; link them to Marketing Ideas, offers, or both; review sourced research before promotion |
+| Companies and search | Keep organisation/contact context connected across opportunities and find shared CRM work |
+| Reports | Review sales and delivery metrics with the available filters; private Thoughts are excluded |
+| Video guides | Search and filter the curated library; open videos on YouTube |
+| Settings | Configure workspace, people/roles, sales and delivery stages, offers, AI, enrichment, MCP connections, data and safe updates |
+
+The [conversation contract](docs/gud-conversation-preview.md) and [MCP tool inventory](docs/MCP.md) describe their separate automation surfaces and limits; not every UI action is exposed through external MCP.
 
 ## Choose your sales model
 
@@ -59,7 +77,9 @@ npm ci
 npm run demo:service
 ```
 
-Open [http://localhost:3201](http://localhost:3201). The demo contains fictional records, needs no login and resets when restarted.
+Open [http://localhost:3201](http://localhost:3201). This local read-only fixture contains fictional records and needs no login. It is not the hosted, persistent interactive demo and does not support saving personal Thoughts.
+
+The [hosted GUD Demo](https://guddemo.refreshcreative.com) uses authenticated PostgreSQL and supports Thoughts. Each account has its own space, but visitors sharing one demo login see that account's notes. Use fictional content only; the demo displays this warning. A personal/team installation should give everyone a separate login.
 
 For the single-product journey instead:
 
@@ -148,15 +168,23 @@ Read [Operations and backups](docs/OPERATIONS.md), [VPS deployment](docs/VPS-DEP
 
 All three integrations are off or local-first by default:
 
-- Voice-to-fields requires `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`. Voice controls link directly to Settings → AI connections when that connection is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is the canonical name. The in-app sales coaching controls have been removed; existing historical AI records are retained.
+- AI-assisted voice forms, conversation and personal exploration use `AI_ENABLED=true`, `AI_PROVIDER=openai` and a server-side `OPENAI_API_KEY`, plus the workspace AI setting. Voice controls link to Settings when configuration is missing. Early installations using `OPEN_API_KEY` remain compatible, but `OPENAI_API_KEY` is canonical. Plain Thoughts and offline thinking outlines do not need AI.
 - Remote MCP access is available only in authenticated PostgreSQL mode and must be enabled with `MCP_ENABLED=true`. Follow the [ChatGPT, Codex and MCP setup guide](docs/MCP.md) for the supported read/write actions, consent model and example requests.
 - Hunter and Voila Norbert keys can be connected by an administrator and are encrypted server-side. GUD never puts provider keys in browser code.
 
 Nothing is auto-sent, auto-scheduled or silently promoted into the pipeline. External research is treated as untrusted evidence and remains subject to human review.
 
-### Shared voice updates
+### Conversational Talk to GUD
 
-- **Talk to GUD** is available throughout the workspace, including through `Ctrl/⌘ + Shift + Space`. Existing opportunity and live-project update buttons open the same review. Choose one record explicitly when outside a record, or when a client has both sales and delivery records.
+On authenticated PostgreSQL installations, the conversation preview accepts speech or text and remains open across pages. It can find/open records, navigate key pages, prepare sales/project/Thought/Marketing Idea/Target changes, and operate supported page controls. Explicit “Save changes” commits the current validated draft versions; “add this note and save” can stage the addition before committing. Failed or stale changes are not reported as saved. Completing a save does not end the conversation.
+
+The default voice adapter is `live` (`gpt-live-1`); `GUD_VOICE_ADAPTER=realtime` selects the separate Realtime adapter. Typed conversation and delegated reasoning use the configured `AI_MODEL`. These are application function tools routed through GUD's authenticated server, not an automatic connection to the external MCP endpoint. See [transport, model, consent and operational details](docs/gud-conversation-preview.md).
+
+The launcher resumes a paused microphone. Live/paused/off states are distinct; the launcher glows while the microphone is active and pulses on detected speech. End stops capture. Connections are bounded by idle/session limits. The user opts in before relevant conversation/record details are sent to OpenAI; provider processing and costs still apply. Set `GUD_CONVERSATION_ENABLED=false` to disable the preview without removing classic review.
+
+### Classic voice review
+
+- **Use classic voice review** remains available from the conversation panel. Classic single-record update flows combine reviewed record changes, an activity and a next action. Choose one record explicitly when outside a record, or when a client has both sales and delivery records. This is separate from the multi-turn conversation above.
 - Sales updates can change stage, estimate, priority and temperature, log an activity, and create a CRM next action. Sales-linked live projects support delivery changes plus the shared activity/task timeline. Direct projects use delivery notes and their next milestone instead. New-record voice forms remain available before a record exists.
 - Review only shows proposed changes. Each can be corrected or excluded. Missing next-action dates/times must be supplied; times are interpreted in the browser's IANA timezone, with ambiguous clock-change times rejected. No emails, calendar invitations or other external messages are sent.
 - Browser speech recognition is optional and may use the browser vendor's speech service; typing works too. Capture starts only on a click. The editable transcript stays in this browser tab for up to 24 hours and is cleared on sign-out. Only the transcript, selected record name/title and reference options are sent to the configured OpenAI model when requesting a review (`store: false`), not the record's contacts or history.
@@ -187,6 +215,8 @@ gud:write
 ```
 
 One connection belongs to one GUD domain and database. If you run production, a second business workspace and a demo, create three clearly named connections; they use the same GUD code but cannot see one another's records. No custom source files are needed for each instance—only its own domain, PostgreSQL database, environment variables and user accounts.
+
+Personal Thoughts are **not** included in sales scopes. Request and explicitly consent to `gud:thoughts:read` and, for changes, `gud:thoughts:write`. These tools can access only the connected account's own notes and exploration documents; an admin connection cannot read teammates' Thoughts.
 
 Colleagues can connect the same endpoint with their own GUD login and approve their own revocable access. On managed ChatGPT workspaces, an administrator may also need to make the app and its write actions available to the member's role. See [MCP connections: multiple instances and teams](docs/MCP.md#multiple-gud-instances-and-teams) for setup, sharing and upgrade guidance.
 
@@ -223,6 +253,8 @@ Before proposing a change, run the quality commands above and keep the interface
 ## Documentation
 
 - [Getting started](docs/GETTING-STARTED.md)
+- [Private Thoughts and explorations](docs/thoughts.md)
+- [Conversational GUD: capabilities, voice adapters and safety](docs/gud-conversation-preview.md)
 - [Live projects and voice updates](docs/LIVE-PROJECTS.md)
 - [Connect an AI coworker with MCP](docs/MCP.md)
 - [Free hosting with Render and Neon](docs/FREE-HOSTING.md)

@@ -14,7 +14,8 @@ describe.skipIf(!url)("real PostgreSQL Thoughts isolation", () => {
   });
   afterAll(async () => { await pool?.end(); });
 
-  it("enforces ownership, organisation boundaries, versions and exploration history", async () => {
+  it.each([false, true])("enforces ownership, organisation boundaries, versions and exploration history (public demo: %s)", async (publicDemo) => {
+    (await import("@/lib/env")).env.publicDemo = publicDemo;
     const org = randomUUID(), otherOrg = randomUUID();
     const alice = { id: randomUUID(), organisationId: org };
     const admin = { id: randomUUID(), organisationId: org };
@@ -40,5 +41,8 @@ describe.skipIf(!url)("real PostgreSQL Thoughts isolation", () => {
     expect(await store.listThoughtExplorations(admin)).toEqual([]);
     expect(await store.listThoughtExplorations(outsider)).toEqual([]);
     expect((await store.getThought(alice, note.id)).body).toBe("Alice updated fixture");
+    const adminNote = await store.saveThought(admin, { content: { body: "Admin personal fixture" } });
+    expect((await store.listThoughts(admin)).map(n => n.id)).toEqual([adminNote.id]);
+    expect((await store.listThoughts(alice)).map(n => n.id)).toEqual([note.id]);
   });
 });

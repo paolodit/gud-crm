@@ -31,7 +31,7 @@ const privateCheck = (actor: CurrentMember) => assertPrivateThoughtAccess({ ...a
 export async function actionReferences(actor: CurrentMember) {
   assertConversationActor(actor);
   const snapshot = await getBoardSnapshot(actor.organisationId, { opportunityIds: [], includeHistory: false });
-  return { ideas: snapshot.researchThemes.map(({ id, title }) => ({ id, title })), offers: snapshot.offers.filter(x => x.active).map(({ id, name }) => ({ id, name })), stages: snapshot.stages.filter(x => x.terminalType === "open").map(({ id, name }) => ({ id, name })), projectStages: snapshot.deliveryStages ?? [], owners: snapshot.users.map(({ id, name }) => ({ id, name })), activityTypes: snapshot.activityTypes.map(({ id, name }) => ({ id, name })), thoughtsAllowed: !env.publicDemo && !actor.impersonated };
+  return { ideas: snapshot.researchThemes.map(({ id, title }) => ({ id, title })), offers: snapshot.offers.filter(x => x.active).map(({ id, name }) => ({ id, name })), stages: snapshot.stages.filter(x => x.terminalType === "open").map(({ id, name }) => ({ id, name })), projectStages: snapshot.deliveryStages ?? [], owners: snapshot.users.map(({ id, name }) => ({ id, name })), activityTypes: snapshot.activityTypes.map(({ id, name }) => ({ id, name })), thoughtsAllowed: !actor.demoMode && !actor.impersonated };
 }
 export async function searchRecords(actor: CurrentMember, query: string, kind: "all" | "lead" | "project" | "thought" | "idea" | "target") {
   assertConversationActor(actor);

@@ -17,7 +17,14 @@ describe("Thoughts action authentication", () => {
     expect((await exploreThoughtAction({ id: thoughtId, mode: "ai" })).ok).toBe(false);
     expect(mock.list).not.toHaveBeenCalled(); expect(mock.save).not.toHaveBeenCalled(); expect(mock.get).not.toHaveBeenCalled(); expect(mock.generate).not.toHaveBeenCalled();
   });
-  it("blocks a public PostgreSQL demo too", async () => { mock.env.publicDemo = true; expect((await loadThoughtsAction()).ok).toBe(false); expect(mock.list).not.toHaveBeenCalled(); });
+  it.each(["admin", "manager", "member"])("allows a public demo %s account with the same session ownership", async (role) => {
+    mock.env.publicDemo = true;
+    const member = { ...actor, role }; mock.member.mockResolvedValue(member);
+    expect(await loadThoughtsAction()).toMatchObject({ ok: true, publicDemo: true });
+    expect(mock.list).toHaveBeenCalledWith(member);
+    expect((await saveThoughtAction({ content: { body: "Demo thought" } })).ok).toBe(true);
+    expect(mock.save).toHaveBeenCalledWith(member, { content: { body: "Demo thought" } });
+  });
   it("derives the owner exclusively from the authenticated session", async () => {
     await saveThoughtAction({ content: { body: "Note" } });
     expect(mock.save).toHaveBeenCalledWith(actor, { content: { body: "Note" } });

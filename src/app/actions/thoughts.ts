@@ -24,7 +24,7 @@ export async function loadThoughtsAction() {
   try {
     const actor = await privateMember();
     const [thoughts, explorations, aiEnabled] = await Promise.all([listThoughts(actor), listThoughtExplorations(actor), thoughtsAiEnabled(actor)]);
-    return { ok: true as const, thoughts, explorations, aiEnabled, local: actor.storageMode === "sqlite", preferencesKey: `gud-thoughts-view:${actor.organisationId}:${actor.id}` };
+    return { ok: true as const, thoughts, explorations, aiEnabled, publicDemo: env.publicDemo, local: actor.storageMode === "sqlite", preferencesKey: `gud-thoughts-view:${actor.organisationId}:${actor.id}` };
   } catch (error) { return { ok: false as const, error: safeError(error) }; }
 }
 export async function saveThoughtAction(input: unknown) {
