@@ -16,9 +16,9 @@
 
 ## Watch GUD CRM in action
 
-[![Watch the GUD CRM video walkthrough](https://img.youtube.com/vi/HaV0UPhr-kQ/hqdefault.jpg)](https://youtu.be/HaV0UPhr-kQ)
+[![Watch the GUD CRM video walkthrough](https://img.youtube.com/vi/l53A3wtNlig/hqdefault.jpg)](https://youtu.be/l53A3wtNlig)
 
-**[Watch the short video walkthrough →](https://youtu.be/HaV0UPhr-kQ)**
+**[Watch the short video walkthrough →](https://youtu.be/l53A3wtNlig)**
 
 GUD CRM is for small sales teams, agencies, consultancies, SaaS companies and independent specialists who want useful sales discipline without traditional CRM sprawl.
 
