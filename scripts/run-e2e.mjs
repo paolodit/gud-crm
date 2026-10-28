@@ -11,6 +11,9 @@ for (const suffix of ["", "-shm", "-wal"]) rmSync(path.join(root, `data/gud-e2e.
 const server = spawn(process.execPath, [
   path.join(root, "node_modules/next/dist/bin/next"),
   "dev",
+  // Repeated fixture boots hit a Turbopack refresh loop on Linux CI. Keep the
+  // browser checks stable; the production build still validates Turbopack.
+  "--webpack",
   "--hostname", "127.0.0.1",
   "--port", String(port),
 ], {
