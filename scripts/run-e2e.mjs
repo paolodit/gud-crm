@@ -1,19 +1,19 @@
-import { mkdtempSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { tmpdir } from "node:os";
 
 const port = 3100;
 const baseURL = `http://127.0.0.1:${port}`;
 const root = process.cwd();
 
-// Keep mutable SQLite files outside Turbopack's source tree. Reusing an in-tree
-// database across fixture runs can trigger a refresh loop after every write.
-const fixtureDirectory = mkdtempSync(path.join(tmpdir(), "gud-e2e-"));
+for (const suffix of ["", "-shm", "-wal"]) rmSync(path.join(root, `data/gud-e2e.db${suffix}`), { force: true });
 
 const server = spawn(process.execPath, [
   path.join(root, "node_modules/next/dist/bin/next"),
   "dev",
+  // Repeated fixture boots hit a Turbopack refresh loop on Linux CI. Keep the
+  // browser checks stable; the production build still validates Turbopack.
+  "--webpack",
   "--hostname", "127.0.0.1",
   "--port", String(port),
 ], {
@@ -22,7 +22,7 @@ const server = spawn(process.execPath, [
   env: {
     ...process.env,
     DATA_BACKEND: "sqlite",
-    SQLITE_PATH: path.join(fixtureDirectory, "gud-e2e.db"),
+    SQLITE_PATH: "data/gud-e2e.db",
     GUD_DEFAULT_MODEL: "service",
     NEXT_PUBLIC_APP_URL: baseURL,
     BETTER_AUTH_URL: baseURL,
