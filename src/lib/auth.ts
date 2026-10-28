@@ -38,6 +38,7 @@ export const auth = betterAuth({
     updateAge: 60 * 60 * 24,
   },
   rateLimit: {
+    storage: "memory",
     enabled: env.postgresMode,
     window: 60,
     max: 60,
