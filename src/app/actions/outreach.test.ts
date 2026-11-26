@@ -3,9 +3,9 @@ import { rmSync } from "node:fs";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { logOutreachCallAction } from "@/app/actions/crm";
-import { prepareOutreachNumberAction, saveOutreachSettingAction } from "@/app/actions/outreach";
+import { prepareOutreachNumberAction, saveOutreachContactDetailsAction, saveOutreachGuideAction, saveOutreachSettingAction } from "@/app/actions/outreach";
 import { getOutreachList } from "@/lib/data/outreach-repository";
-import { outreachEnabled } from "@/lib/data/outreach-settings";
+import { getOutreachGuide, outreachEnabled } from "@/lib/data/outreach-settings";
 import { getLocalBoardSnapshot, localDatabaseForPrivateData, setLocalSetting, updateLocalBoardSnapshot } from "@/lib/data/local-store";
 import { demoBoardForEdition } from "@/lib/demo-data";
 import type { OutreachCall } from "@/lib/domain/outreach";
@@ -112,6 +112,39 @@ describe("guided outreach", () => {
     expect((await logOutreachCallAction(input)).ok).toBe(false);
     await saveOutreachSettingAction(true);
     expect(getLocalBoardSnapshot().opportunities[0].activities).toHaveLength(1);
+  });
+
+  it("saves only the requested fields on an eligible company and ignores an unsafe website", async () => {
+    const item = boardFixture();
+    const closed = getLocalBoardSnapshot().opportunities[1];
+    const edit = { opportunityId: item.id, websiteUrl: "example.com/contact", switchboardPhone: "020 7946 0959" };
+    expect((await saveOutreachContactDetailsAction(edit)).ok).toBe(false);
+    await saveOutreachSettingAction(true);
+    mocks.member.mockResolvedValue(member);
+    expect((await saveOutreachContactDetailsAction({ ...edit, opportunityId: closed.id })).ok).toBe(false);
+    expect((await saveOutreachContactDetailsAction({ ...edit, websiteUrl: "javascript:alert(1)" })).ok).toBe(false);
+    expect((await saveOutreachContactDetailsAction(edit)).ok).toBe(true);
+    expect((await saveOutreachContactDetailsAction({ opportunityId: item.id, websiteUrl: "example.com/head-office" })).ok).toBe(true);
+    const [updated, unchanged] = getLocalBoardSnapshot().opportunities;
+    expect(updated.company).toMatchObject({ websiteUrl: "https://example.com/head-office", switchboardPhone: "020 7946 0959" });
+    expect(unchanged.company).toEqual(closed.company);
+    updateLocalBoardSnapshot((board) => { board.opportunities[0].company.doNotContact = true; });
+    expect((await saveOutreachContactDetailsAction(edit)).ok).toBe(false);
+  });
+
+  it("keeps the shared guide across re-enable and prevents members and stale editors from overwriting it", async () => {
+    const { guide, revision } = await getOutreachGuide(admin);
+    const update = { guide: { ...guide, opener: "Hi, who manages retail compliance?" }, revision };
+    expect((await saveOutreachGuideAction(update)).ok).toBe(false);
+    await saveOutreachSettingAction(true);
+    mocks.member.mockResolvedValue(member);
+    expect((await saveOutreachGuideAction(update)).ok).toBe(false);
+    mocks.member.mockResolvedValue(admin);
+    expect((await saveOutreachGuideAction(update)).ok).toBe(true);
+    expect((await saveOutreachGuideAction({ guide, revision })).ok).toBe(false);
+    await saveOutreachSettingAction(false);
+    await saveOutreachSettingAction(true);
+    expect((await getOutreachGuide(member)).guide.opener).toBe(update.guide.opener);
   });
 
   it("requires an agreed demo time and applies do-not-contact to the selected scope", async () => {

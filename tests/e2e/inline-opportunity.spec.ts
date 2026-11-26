@@ -71,3 +71,30 @@ test("click-away validates drafts, switches fields, and saves before closing", a
   await expect(details.getByRole("button", { name: "Edit Priority", exact: true })).toContainText("critical");
   await expect(details.getByRole("button", { name: "Edit Opportunity title", exact: true })).toContainText("A better title");
 });
+
+test("types reviewed activity notes and preserves them on a failed save", async ({ page }) => {
+  await page.goto("/pipeline");
+  await page.getByRole("button", { name: "Create a new opportunity" }).click();
+  await page.getByLabel("Company name").fill("DEMO · Reviewed activity");
+  await page.getByLabel("Opportunity title").fill("Reviewed activity notes");
+  await page.getByRole("button", { name: "Create opportunity", exact: true }).click();
+  const composer = page.locator(".compact-composer");
+  await composer.getByRole("button", { name: "Log touch", exact: true }).click();
+  const notes = composer.getByRole("textbox", { name: "Notes (optional)" });
+  const draft = "Asked to speak again after the rollout meeting.";
+  await notes.pressSequentially(draft);
+  const connected = composer.getByRole("radio", { name: "Connected", exact: true });
+  await connected.press("Space");
+  await expect(connected).toBeChecked();
+  await expect(notes).toHaveValue(draft);
+  const rejectSave = "**/pipeline**";
+  await page.route(rejectSave, (route) => route.request().method() === "POST" ? route.abort() : route.continue());
+  await composer.getByRole("button", { name: "Save reviewed update" }).click();
+  await expect(composer.getByRole("alert")).toContainText("Your draft is still here");
+  await expect(notes).toHaveValue(draft);
+  await page.unroute(rejectSave);
+  await composer.getByRole("button", { name: "Save reviewed update" }).click();
+  await expect(page.getByText(draft, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(draft, { exact: true })).toBeVisible();
+});

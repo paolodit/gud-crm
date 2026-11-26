@@ -73,7 +73,7 @@ import {
 } from "@/app/actions/crm";
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { CompanyContactLinks } from "@/components/company-contact-links";
+import { CompanyContactLinks, type CompanyContactField } from "@/components/company-contact-links";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { useExitTransition } from "./use-exit-transition";
@@ -615,8 +615,7 @@ function OpportunityPanel({
   const openTasks = opportunity.tasks.filter((task) => task.status === "open");
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
   const [contactEditor, setContactEditor] = useState<ContactSummary | "new" | null>(null);
-  const [companyEditor, setCompanyEditor] = useState(false);
-  const [focusCompanyPhone, setFocusCompanyPhone] = useState(false);
+  const [companyEditor, setCompanyEditor] = useState<CompanyContactField | false>(false);
   const [opportunityEditor, setOpportunityEditor] = useState(false);
   const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState(false);
@@ -678,7 +677,7 @@ function OpportunityPanel({
 
         <div className="panel-body">
           <div className="panel-contact-row">
-            <CompanyContactLinks company={opportunity.company} contact={opportunity.contacts.find((contact) => contact.primary) ?? opportunity.contacts[0]} showPhone={!archived} onAddPhone={snapshot.demoMode ? undefined : () => { setFocusCompanyPhone(true); setCompanyEditor(true); }} />
+            <CompanyContactLinks company={opportunity.company} contact={opportunity.contacts.find((contact) => contact.primary) ?? opportunity.contacts[0]} showPhone={!archived} onEditDetails={snapshot.demoMode ? undefined : setCompanyEditor} />
             {showOutreach && !archived && !opportunity.company.doNotContact && opportunity.offer?.active !== false && isOutreachStage(stage)
               && outreachNumbers(opportunity.company, opportunity.contacts, suppressedPhones(opportunity.contacts)).length > 0
               && <Link className="btn btn-quiet btn-compact" href={`/outreach?opportunity=${opportunity.id}`}><Phone size={14} aria-hidden="true" />Start calling</Link>}
@@ -779,7 +778,7 @@ function OpportunityPanel({
             </div>
           </div>
         </div>
-        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusPhone={focusCompanyPhone} onClose={() => { setFocusCompanyPhone(false); setCompanyEditor(false); }} onSaved={(company) => { onUpdate({ ...opportunity, company }); setFocusCompanyPhone(false); setCompanyEditor(false); onToast(`${company.name} updated`); }} onArchiveChange={(company, companyArchived) => { const archivedAt = companyArchived ? new Date().toISOString() : null; onArchiveChange({ ...opportunity, company: { ...company, archivedAt }, archivedAt }, companyArchived, true); setFocusCompanyPhone(false); setCompanyEditor(false); }} /> : null}
+        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusField={companyEditor} onClose={() => setCompanyEditor(false)} onSaved={(company) => { onUpdate({ ...opportunity, company }); setCompanyEditor(false); onToast(`${company.name} updated`); }} onArchiveChange={(company, companyArchived) => { const archivedAt = companyArchived ? new Date().toISOString() : null; onArchiveChange({ ...opportunity, company: { ...company, archivedAt }, archivedAt }, companyArchived, true); setCompanyEditor(false); }} /> : null}
         {opportunityEditor ? <OpportunityEditor opportunity={opportunity} snapshot={snapshot} onClose={() => setOpportunityEditor(false)} onSaved={(next) => { onUpdate(next); setOpportunityEditor(false); onToast("Opportunity updated"); }} /> : null}
       </aside>
     </>
@@ -936,7 +935,7 @@ function QuickActivityComposer({
   const [open, setOpen] = useState(false);
   const [typeId, setTypeId] = useState(snapshot.activityTypes.find((type) => type.name === "Other activity / note")?.id ?? snapshot.activityTypes.find((type) => type.channel === "note")?.id ?? snapshot.activityTypes[0]?.id ?? "");
   const [taskOnly, setTaskOnly] = useState(false);
-  const [notes, setNotes] = useState("");
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const [outcome, setOutcome] = useState("");
   const [contactId, setContactId] = useState(opportunity.contacts.find((item) => item.primary)?.id ?? "");
   const [occurredAt, setOccurredAt] = useState(toDateTimeLocal(snapshot.generatedAt));
@@ -959,7 +958,7 @@ function QuickActivityComposer({
     setContactId(matchingContact?.id ?? "");
     setTaskOnly(Boolean(draft.nextActionTitle && !draft.activityTypeName && !draft.activityNotes));
     if (!matchingType && draft.activityTypeName) setSaveError("The activity type was not recognised. Please choose it before saving.");
-    if (draft.activityNotes) setNotes(draft.activityNotes);
+    if (draft.activityNotes && notesRef.current) notesRef.current.value = draft.activityNotes;
     if (draft.activityOutcome) setOutcome(normaliseSpokenOutcome(draft.activityOutcome));
     if (draft.activityOccurredAt) setOccurredAt(toDateTimeLocal(draft.activityOccurredAt));
     if (draft.nextActionTitle) {
@@ -988,6 +987,7 @@ function QuickActivityComposer({
       return;
     }
     if (!type) { setPending(false); return; }
+    const notes = notesRef.current?.value ?? "";
     const input = {
       opportunityId: opportunity.id,
       activityTypeId: type.id,
@@ -1037,7 +1037,7 @@ function QuickActivityComposer({
       tasks: newTask ? [...opportunity.tasks, newTask] : opportunity.tasks,
       recentChannels: [...new Set([type.channel, ...opportunity.recentChannels])].slice(0, 4),
     });
-    setNotes("");
+    if (notesRef.current) notesRef.current.value = "";
     setOutcome("");
     setNextActionTitle("");
     setOpen(false);
@@ -1081,7 +1081,7 @@ function QuickActivityComposer({
               <input className="field" type="datetime-local" value={occurredAt} max={toDateTimeLocal(new Date().toISOString())} onChange={(event) => setOccurredAt(event.target.value)} required={!taskOnly} />
             </label>
             <label className="field-label">Notes (optional)
-              <textarea className="field-textarea composer-notes" rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What happened? Record the useful detail." />
+              <textarea ref={notesRef} className="field-textarea composer-notes" rows={2} maxLength={10_000} readOnly={pending} placeholder="What happened? Record the useful detail." />
             </label>
           </div>
           <label className="checkbox-row">
