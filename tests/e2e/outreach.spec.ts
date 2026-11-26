@@ -35,12 +35,21 @@ test("guides a manually picked call session and records a follow-up in the CRM",
   await expect(page.getByRole("link", { name: "Start calling" })).toBeVisible();
   const secondUrl = await createCompany(page, second);
   await expect(page.getByRole("button", { name: "Add website" })).toBeVisible();
+  const secondPanel = page.getByRole("dialog", { name: `${second} opportunity` });
+  await secondPanel.getByRole("button", { name: "Add", exact: true }).click();
+  const contact = secondPanel.locator("form.contact-editor");
+  await contact.getByLabel("Name", { exact: true }).fill("Example Retail Contact");
+  await contact.getByLabel("Email", { exact: true }).fill("retail@example.com");
+  await contact.getByRole("button", { name: "Save contact" }).click();
+  await expect(contact).toHaveCount(0);
 
   await page.goto("/outreach");
+  await expect(page.getByRole("link", { name: "Connect an email finder" })).toHaveAttribute("href", "/settings?tab=ai&section=email-finding");
   const query = page.getByRole("searchbox", { name: "Find a company or opportunity" });
   await query.fill(second);
   const company = page.locator(".outreach-company-list > li").filter({ hasText: second });
   await expect(company.getByRole("checkbox")).toBeDisabled();
+  await expect(company.getByRole("link", { name: "Email Example Retail Contact" })).toHaveAttribute("href", "mailto:retail@example.com");
   await company.getByRole("button", { name: "Review phone details" }).click();
   const contactDetails = company.getByRole("form", { name: `Contact details for ${second}` });
   await expect(contactDetails.getByLabel("Company phone")).toBeFocused();
@@ -64,6 +73,7 @@ test("guides a manually picked call session and records a follow-up in the CRM",
   await expect(page.getByRole("heading", { name: second })).toBeFocused();
   await page.reload();
   await expect(page.getByRole("heading", { name: second })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Email Example Retail Contact" })).toHaveAttribute("href", "mailto:retail@example.com");
   await page.setViewportSize({ width: 390, height: 844 });
 
   await expect(page.getByRole("button", { name: "Prepare call" })).toBeDisabled();

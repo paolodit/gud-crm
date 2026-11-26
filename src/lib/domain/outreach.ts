@@ -67,6 +67,10 @@ export function isOutreachStage(stage: Pick<StageSummary, "name" | "terminalType
   return stage?.terminalType === "open" && !isResearchStage(stage);
 }
 
+export function hasOutreachContactFullName(name: string) {
+  return name.trim().split(/\s+/).filter((part) => /\p{L}/u.test(part)).length >= 2;
+}
+
 export function outreachNumbers(
   company: Pick<OpportunitySummary["company"], "switchboardPhone">,
   contacts: OpportunitySummary["contacts"],
@@ -129,7 +133,9 @@ export function outreachCandidate(item: OpportunitySummary, stage: StageSummary 
     title: item.title,
     stage: stage.name,
     offer: item.offer?.name ?? null,
-    contact: contact ? { name: contact.name, title: contact.title, linkedinUrl: contact.linkedinUrl } : null,
+    contact: contact ? { id: contact.id, name: contact.name, title: contact.title, linkedinUrl: contact.linkedinUrl } : null,
+    emailContacts: item.contacts.filter((person) => !person.doNotContact)
+      .map(({ id, name, email }) => ({ id, name, email })),
     websiteUrl: item.company.websiteUrl,
     switchboardPhone: item.company.switchboardPhone ?? null,
     linkedinUrl: item.company.linkedinUrl,

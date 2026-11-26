@@ -8,12 +8,14 @@ const url = process.env.GUD_OUTREACH_TEST_DATABASE_URL;
 const actor = vi.hoisted(() => ({ current: null as CurrentMember | null }));
 vi.mock("@/lib/session", () => ({ getCurrentMember: async () => actor.current }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("server-only", () => ({}));
 
 let pool: typeof import("@/db").pool;
 let crm: typeof import("./crm");
 let actions: typeof import("./outreach");
 let repository: typeof import("@/lib/data/outreach-repository");
 let settings: typeof import("@/lib/data/outreach-settings");
+let research: typeof import("./research");
 
 async function fixture(role: CurrentMember["role"]) {
   const organisationId = randomUUID(), id = randomUUID(), pipeline = randomUUID(), stage = randomUUID();
@@ -36,8 +38,10 @@ describe.skipIf(!url)("guided outreach in PostgreSQL", () => {
     vi.stubEnv("DATA_BACKEND", "postgres");
     vi.stubEnv("DEMO_MODE", "false");
     vi.stubEnv("BETTER_AUTH_SECRET", "fixture-only-better-auth-secret-for-postgres");
+    vi.stubEnv("HUNTER_API_KEY", "fixture-hunter-key");
     pool = (await import("@/db")).pool;
     [crm, actions, repository, settings] = await Promise.all([import("./crm"), import("./outreach"), import("@/lib/data/outreach-repository"), import("@/lib/data/outreach-settings")]);
+    research = await import("./research");
   });
 
   afterAll(async () => {
@@ -100,5 +104,31 @@ describe.skipIf(!url)("guided outreach in PostgreSQL", () => {
     expect((await settings.getOutreachGuide(second.member)).guide).toEqual(firstGuide.guide);
     expect((await pool.query("SELECT settings FROM organisations WHERE id = $1", [first.member.organisationId])).rows[0].settings)
       .toMatchObject({ sales_cockpit: true, otherSetting: true });
+  });
+
+  it("enriches only an eligible contact in the signed-in workspace and records FreeMax usage", async () => {
+    const first = await fixture("admin");
+    const second = await fixture("member");
+    const contactId = randomUUID();
+    await pool.query("UPDATE companies SET website_url = 'https://example.com' WHERE id = $1", [first.company]);
+    await pool.query("INSERT INTO contacts (id, organisation_id, company_id, name, normalised_name) VALUES ($1, $2, $3, 'Example Retail Lead', 'example retail lead')", [contactId, first.member.organisationId, first.company]);
+    await pool.query("INSERT INTO opportunity_contacts (opportunity_id, contact_id) VALUES ($1, $2)", [first.opportunity, contactId]);
+    const email = "retail.lead@example.com";
+    const input = { opportunityId: first.opportunity, contactId };
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ data: { email, score: 91 } }));
+    try {
+      actor.current = second.member;
+      expect((await research.enrichOutreachContactAction(input)).ok).toBe(false);
+      expect(fetcher).not.toHaveBeenCalled();
+      actor.current = first.member;
+      expect(await research.enrichOutreachContactAction(input)).toEqual({ ok: true, email, score: 91, provider: "Hunter" });
+      expect(await research.enrichOutreachContactAction(input)).toMatchObject({ ok: true, provider: "Existing record" });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect((await pool.query("SELECT email FROM contacts WHERE id = $1", [contactId])).rows).toEqual([{ email }]);
+      const audit = (await pool.query("SELECT after FROM audit_events WHERE organisation_id = $1 AND action = 'contact.enriched'", [first.member.organisationId])).rows;
+      expect(audit).toEqual([{ after: { opportunityId: first.opportunity, provider: "hunter", score: 91, surface: "outreach" } }]);
+    } finally {
+      fetcher.mockRestore();
+    }
   });
 });

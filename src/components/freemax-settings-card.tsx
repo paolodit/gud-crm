@@ -46,7 +46,7 @@ export function FreeMaxSettingsCard({ status, canManage, ...attributes }: { stat
   return (
     <article {...attributes} className="surface settings-card settings-card-wide enrichment-settings-card enrichment-settings-card-live" id="email-finding" aria-labelledby="email-finding-title">
       <div className="settings-icon settings-icon-enrichment"><Mail /></div>
-      <div><h2 id="email-finding-title">Email finding</h2><p>Connect Hunter or Voila Norbert here. Use Find work email beside a named contact in Targets.</p></div>
+      <div><h2 id="email-finding-title">Email finding</h2><p>Connect Hunter or Voila Norbert here. Use Find work email beside a named contact in Targets or Outreach.</p></div>
       {returnHref ? <Link className="btn btn-quiet settings-card-action" href={returnHref}><ArrowLeft size={14} />Back to target</Link> : null}
       <div className="enrichment-provider-grid">
         <div data-ready={status.hunter.configured}><span><strong>Hunter {status.order[0] === "hunter" ? "· First" : ""}</strong><small>Monthly free allowance</small></span><b>{status.hunter.configured ? `${status.hunter.used}/${status.hunter.limit} used` : "Not connected"}</b></div>
@@ -54,7 +54,7 @@ export function FreeMaxSettingsCard({ status, canManage, ...attributes }: { stat
       </div>
       <div className="freemax-workflow">
         <span><b>1</b><small>Research a real person and company domain</small></span>
-        <span><b>2</b><small>Click Find work email beside the contact in Targets</small></span>
+        <span><b>2</b><small>Click Find work email beside the contact in Targets or Outreach</small></span>
         <span><b>3</b><small>GUD stays inside connected providers and safety caps</small></span>
       </div>
       <p className="freemax-explainer"><ShieldCheck size={15} /><span>GUD tries your preferred provider first and falls back only when needed. Keys are encrypted server-side and never returned to the browser. Successful lookups are counted here; provider dashboards remain authoritative.</span></p>

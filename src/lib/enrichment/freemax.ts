@@ -96,6 +96,6 @@ export async function findWorkEmailFreeMax(
   };
 }
 
-export function providerLabel(provider: FreeMaxProvider) {
+export function providerLabel(provider: FreeMaxProvider): "Hunter" | "Voila Norbert" {
   return provider === "hunter" ? "Hunter" : "Voila Norbert";
 }
