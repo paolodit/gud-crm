@@ -5,6 +5,7 @@ import {
   MonitorPlay,
   Building2,
   LayoutDashboard,
+  Phone,
   ListChecks,
   LogOut,
   Heart,
@@ -33,7 +34,7 @@ const coreNavItems = [
   { href: "/my-work", label: "Today", icon: ListChecks },
 ];
 
-export function AppShell({ member, instanceName, children }: { member: CurrentMember; instanceName: string; children: React.ReactNode }) {
+export function AppShell({ member, instanceName, children, showOutreach = false }: { member: CurrentMember; instanceName: string; children: React.ReactNode; showOutreach?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -54,6 +55,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
   }
 
   async function signOut() {
+    try { sessionStorage.removeItem(`gud-outreach:${member.organisationId}:${member.id}`); } catch { /* Storage is optional. */ }
     for (const prefix of ["gud-voice-draft:", "gud-voice-receipt:"]) {
       try { sessionStorage.removeItem(`${prefix}${member.organisationId}:${member.id}`); } catch { /* Storage is optional. */ }
     }
@@ -68,6 +70,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
 
   const navItems = [
     ...coreNavItems,
+    ...(showOutreach ? [{ href: "/outreach", label: "Outreach", icon: Phone }] : []),
     { href: "/thoughts", label: "Thoughts", icon: Brain },
     { href: "/research", label: "Marketing Ideas", icon: Sparkles },
     { href: "/targets", label: "Targets", icon: Target },
@@ -95,7 +98,7 @@ export function AppShell({ member, instanceName, children }: { member: CurrentMe
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <span key={href} style={{ display: "contents" }}>
-                {index === 3 ? <span className="nav-spacer" aria-hidden="true" /> : null}
+                {index === (showOutreach ? 4 : 3) ? <span className="nav-spacer" aria-hidden="true" /> : null}
                 <Link href={href} aria-label={label} title={sidebarCollapsed ? label : undefined} aria-current={active ? "page" : undefined}>
                   <Icon size={18} aria-hidden="true" />
                   <span>{label}</span>

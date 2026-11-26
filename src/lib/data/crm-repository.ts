@@ -22,6 +22,7 @@ import {
 import { aiCoachModeSchema, aiCoachOutputSchema, aiFeedbackRatingSchema } from "@/lib/ai/schema";
 import { demoBoardForEdition } from "@/lib/demo-data";
 import { getLocalBoardSnapshot } from "@/lib/data/local-store";
+import { companyPhone } from "@/lib/domain/phone";
 import type {
   ActivitySummary,
   BoardSnapshot,
@@ -80,9 +81,9 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
         ownerImage: users.image,
       })
       .from(opportunities)
-      .innerJoin(companies, eq(opportunities.companyId, companies.id))
-      .leftJoin(offers, eq(opportunities.offerId, offers.id))
-      .leftJoin(users, eq(opportunities.ownerId, users.id))
+      .innerJoin(companies, and(eq(opportunities.companyId, companies.id), eq(companies.organisationId, organisationId)))
+      .leftJoin(offers, and(eq(opportunities.offerId, offers.id), eq(offers.organisationId, organisationId)))
+      .leftJoin(users, and(eq(opportunities.ownerId, users.id), eq(users.organisationId, organisationId)))
       .where(
         and(
           eq(opportunities.organisationId, organisationId),
@@ -117,7 +118,7 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
             contact: contacts,
           })
           .from(opportunityContacts)
-          .innerJoin(contacts, eq(opportunityContacts.contactId, contacts.id))
+          .innerJoin(contacts, and(eq(opportunityContacts.contactId, contacts.id), eq(contacts.organisationId, organisationId)))
           .where(inArray(opportunityContacts.opportunityId, opportunityIds)),
         options.includeHistory === false ? Promise.resolve([]) : db
           .select({
@@ -128,9 +129,9 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
           })
           .from(activities)
           .innerJoin(activityTypes, eq(activities.activityTypeId, activityTypes.id))
-          .leftJoin(contacts, eq(activities.contactId, contacts.id))
-          .leftJoin(users, eq(activities.createdById, users.id))
-          .where(inArray(activities.opportunityId, opportunityIds))
+          .leftJoin(contacts, and(eq(activities.contactId, contacts.id), eq(contacts.organisationId, organisationId)))
+          .leftJoin(users, and(eq(activities.createdById, users.id), eq(users.organisationId, organisationId)))
+          .where(and(inArray(activities.opportunityId, opportunityIds), eq(activities.organisationId, organisationId)))
           .orderBy(desc(activities.occurredAt)),
         db
           .select({
@@ -142,7 +143,7 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
           })
           .from(tasks)
           .leftJoin(users, eq(tasks.ownerId, users.id))
-          .where(inArray(tasks.opportunityId, opportunityIds))
+          .where(and(inArray(tasks.opportunityId, opportunityIds), eq(tasks.organisationId, organisationId)))
           .orderBy(asc(tasks.dueAt)),
         options.includeHistory === false ? Promise.resolve([]) : db
           .select()
@@ -244,6 +245,7 @@ export async function getBoardSnapshot(organisationId: string, options: Snapshot
         sector: row.company.sector,
         websiteUrl: row.company.websiteUrl,
         linkedinUrl: row.company.linkedinUrl,
+        switchboardPhone: companyPhone(row.company.importMetadata),
         fitScore: row.company.fitScore,
         scaleNote: row.company.scaleNote,
         doNotContact: row.company.doNotContact,

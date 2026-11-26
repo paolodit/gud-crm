@@ -52,6 +52,7 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
+import { CompanyContactLinks } from "@/components/company-contact-links";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
 import { getResearchTargets, isResearchStage, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
@@ -126,7 +127,6 @@ export function ResearchHub({
     : null;
   const selectedStage = selected ? snapshot.stages.find((stage) => stage.id === selected.stageId) : undefined;
   const selectedReadiness = selected ? researchReadiness(selected, selectedStage) : null;
-  const selectedWebsiteUrl = safeExternalUrl(selected?.company.websiteUrl);
   const selectedSourceUrls = (selected?.company.sourceUrls ?? []).map(safeExternalUrl).filter((url): url is string => Boolean(url));
   const enrichableContact = selected?.contacts.find((contact) => !contact.email) ?? null;
   const firstSalesStage = snapshot.stages.find((stage) => !isResearchStage(stage) && stage.terminalType === "open");
@@ -339,6 +339,9 @@ export function ResearchHub({
                 <div><ResearchStatus status={selectedReadiness} /><h2>{selected.company.name}</h2><p>{selected.company.sector || "Sector not set"}</p></div>
                 <div className="research-inspector-actions"><button className="btn btn-quiet btn-compact target-archive-action" type="button" onClick={() => setConfirmingArchive(true)} aria-label={`Archive ${selected.company.name} target`}><Archive size={14} />Archive</button><button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={closeTarget} aria-label="Close target details"><X size={17} /></button></div>
               </header>
+              <div className="research-section">
+                <CompanyContactLinks company={selected.company} contact={selected.contacts.find((contact) => contact.primary) ?? selected.contacts[0]} onAddPhone={snapshot.demoMode ? undefined : () => setEditingCompany(selected)} />
+              </div>
 
               <div className="research-fit-strip">
                 {availableOffers.length > 1 ? <label><small>Offer</small><select value={selected.offer?.id ?? ""} onChange={(event) => assignSelectedOffer(event.target.value)} disabled={pendingAction !== null}><option value="">Decide after research</option>{availableOffers.map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
@@ -352,12 +355,10 @@ export function ResearchHub({
                 <p className="research-summary">{selected.company.researchNote || "No research note yet. Add one useful fact, why it matters, and the source."}</p>
                 {selected.company.scaleNote ? <div className="research-scale"><Building2 size={16} /><span>{selected.company.scaleNote}</span></div> : null}
                 <div className="research-links">
-                  {selectedWebsiteUrl ? <a href={selectedWebsiteUrl} target="_blank" rel="noopener noreferrer"><Globe2 size={15} />Website<ExternalLink size={13} /></a> : null}
                   <a href={safeExternalUrl(selected.company.linkedinPeopleSearchUrl) ?? `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Users size={14} />LinkedIn people search<ExternalLink size={13} /></a>
                   <a href={`https://find-and-update.company-information.service.gov.uk/search/companies?q=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Building2 size={14} />Companies House<ExternalLink size={13} /></a>
                   <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selected.company.name)}`} target="_blank" rel="noopener noreferrer"><Globe2 size={14} />Maps search<ExternalLink size={13} /></a>
                   {selectedSourceUrls.slice(0, 4).map((url) => <a href={url} target="_blank" rel="noopener noreferrer" key={url}><ExternalLink size={14} />{sourceLabel(url)}</a>)}
-                  {!selectedWebsiteUrl && !selectedSourceUrls.length ? <span>No safe source links recorded</span> : null}
                 </div>
               </section>
 

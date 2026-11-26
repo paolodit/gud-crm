@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { oauthApplications, oauthConsents, organisations } from "@/db/schema";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
 import { getLocalAiEnabled } from "@/lib/data/local-store";
+import { canUseOutreach, outreachEnabled } from "@/lib/data/outreach-settings";
 import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import { env } from "@/lib/env";
 import { previewTrackerImport } from "@/lib/import/tracker";
@@ -61,6 +62,7 @@ export default async function SettingsPage() {
       importStatus={importStatus}
       currentMemberId={member.id}
       currentRole={member.role}
+      outreachSetting={canUseOutreach(member) && member.role === "admin" ? await outreachEnabled(member) : undefined}
     />
   );
 }
