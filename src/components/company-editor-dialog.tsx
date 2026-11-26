@@ -14,6 +14,7 @@ export function CompanyEditorDialog({
   onClose,
   onSaved,
   onArchiveChange,
+  focusPhone = false,
 }: {
   company?: CompanySummary | null;
   offers?: OfferSummary[];
@@ -21,6 +22,7 @@ export function CompanyEditorDialog({
   onClose: () => void;
   onSaved: (company: CompanySummary, opportunityId: string | null) => void;
   onArchiveChange?: (company: CompanySummary, archived: boolean) => void;
+  focusPhone?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +52,7 @@ export function CompanyEditorDialog({
       sector: form.get("sector"),
       websiteUrl: form.get("websiteUrl"),
       linkedinUrl: form.get("linkedinUrl"),
+      switchboardPhone: form.get("switchboardPhone"),
       fitScore: score ? Number(score) : null,
       scaleNote: form.get("scaleNote"),
       researchNote: form.get("researchNote"),
@@ -73,10 +76,11 @@ export function CompanyEditorDialog({
         <form ref={formRef} className="dialog-form" onSubmit={submit}>
           <fieldset><legend>Company details</legend><div className="form-grid">
             {!company && offers.filter((offer) => offer.active).length > 1 ? <label className="field-label form-span-2">Likely offer<select className="field-select" name="offerId" defaultValue=""><option value="">Decide after research</option>{offers.filter((offer) => offer.active).map((offer) => <option key={offer.id} value={offer.id}>{offer.name}</option>)}</select></label> : null}
-            <label className="field-label">Company name<input className="field" name="name" defaultValue={company?.name ?? ""} required minLength={2} autoFocus /></label>
+            <label className="field-label">Company name<input className="field" name="name" defaultValue={company?.name ?? ""} required minLength={2} autoFocus={!focusPhone} /></label>
             <label className="field-label">Sector<input className="field" name="sector" defaultValue={company?.sector ?? ""} placeholder="e.g. Fashion and apparel" /></label>
             <label className="field-label">Website<input className="field" name="websiteUrl" type="text" inputMode="url" defaultValue={company?.websiteUrl ?? ""} placeholder="example.com (optional)" /></label>
             <label className="field-label">LinkedIn company page<input className="field" name="linkedinUrl" type="text" inputMode="url" defaultValue={company?.linkedinUrl ?? ""} placeholder="linkedin.com/company/…" /></label>
+            <label className="field-label form-span-2">Company phone (head office or switchboard)<input className="field" name="switchboardPhone" type="tel" maxLength={80} autoFocus={focusPhone} defaultValue={company?.switchboardPhone ?? ""} /></label>
             <label className="field-label">Fit score<select className="field-select" name="fitScore" defaultValue={company?.fitScore ?? ""}><option value="">Not scored</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select></label>
             <label className="field-label">Scale / qualification note<input className="field" name="scaleNote" defaultValue={company?.scaleNote ?? ""} placeholder="e.g. 69 UK stores" /></label>
             <label className="field-label form-span-2">Research note<textarea className="field textarea" name="researchNote" rows={4} defaultValue={company?.researchNote ?? ""} placeholder="What makes this account relevant?" /></label>

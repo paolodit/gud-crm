@@ -34,7 +34,6 @@ import {
   FilePenLine,
   Filter,
   GripVertical,
-  Link2,
   LoaderCircle,
   ListPlus,
   Mail,
@@ -74,6 +73,7 @@ import {
 } from "@/app/actions/crm";
 import { ActivityIcon, ChannelIcon } from "@/components/channel-icon";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
+import { CompanyContactLinks } from "@/components/company-contact-links";
 import { CreateOpportunityDialog } from "@/components/create-opportunity-dialog";
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { useExitTransition } from "./use-exit-transition";
@@ -87,6 +87,8 @@ import { useBoardPan } from "./use-board-pan";
 import { activeOffers, contextualOffers } from "@/lib/domain/offers";
 import { getActiveOpportunities, getArchivedOpportunities, isArchivedOpportunity } from "@/lib/data/board-selectors";
 import { safeExternalUrl } from "@/lib/domain/normalise";
+import { normaliseDialNumber } from "@/lib/domain/phone";
+import { isOutreachStage, outreachNumbers, suppressedPhones } from "@/lib/domain/outreach";
 import type {
   ActivitySummary,
   BoardSnapshot,
@@ -105,7 +107,7 @@ const CardActionsContext = createContext<{
 
 type DueState = "overdue" | "soon" | "future" | "missing";
 
-export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigured }: { initialSnapshot: BoardSnapshot; currentUserId: string; voiceAiConfigured: boolean }) {
+export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigured, showOutreach = false }: { initialSnapshot: BoardSnapshot; currentUserId: string; voiceAiConfigured: boolean; showOutreach?: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [opportunities, setOpportunities] = useState(initialSnapshot.opportunities);
@@ -376,6 +378,7 @@ export function PipelineBoard({ initialSnapshot, currentUserId, voiceAiConfigure
           onUpdate={updateOpportunity}
           onToast={showToast}
           voiceAiConfigured={voiceAiConfigured}
+          showOutreach={showOutreach}
           onArchiveChange={(next, archived, companyWide = false) => {
             setOpportunities((items) => items.map((item) => companyWide && item.company.id === next.company.id
               ? { ...item, archivedAt: archived ? next.archivedAt : null, company: { ...item.company, archivedAt: archived ? next.company.archivedAt : null } }
@@ -587,6 +590,7 @@ function OpportunityPanel({
   onUpdate,
   onToast,
   voiceAiConfigured,
+  showOutreach,
   onArchiveChange,
 }: {
   opportunity: OpportunitySummary;
@@ -596,6 +600,7 @@ function OpportunityPanel({
   onUpdate: (opportunity: OpportunitySummary) => void;
   onToast: (message: string) => void;
   voiceAiConfigured: boolean;
+  showOutreach: boolean;
   onArchiveChange: (opportunity: OpportunitySummary, archived: boolean, companyWide?: boolean) => void;
 }) {
   const { closing, close } = useExitTransition(onClose);
@@ -611,13 +616,12 @@ function OpportunityPanel({
   const stage = snapshot.stages.find((item) => item.id === opportunity.stageId);
   const [contactEditor, setContactEditor] = useState<ContactSummary | "new" | null>(null);
   const [companyEditor, setCompanyEditor] = useState(false);
+  const [focusCompanyPhone, setFocusCompanyPhone] = useState(false);
   const [opportunityEditor, setOpportunityEditor] = useState(false);
   const searchParams = useSearchParams();
   const [expanded, setExpanded] = useState(false);
   const [archivePending, setArchivePending] = useState(false);
   const archived = isArchivedOpportunity(opportunity);
-  const companyWebsiteUrl = safeExternalUrl(opportunity.company.websiteUrl);
-  const companyLinkedinUrl = safeExternalUrl(opportunity.company.linkedinUrl);
 
   async function toggleArchive() {
     const nextArchived = !archived;
@@ -667,22 +671,18 @@ function OpportunityPanel({
             {contextualOffers(snapshot.offers, snapshot.opportunities).length > 1 && opportunity.offer ? <span className="offer-chip" style={{ "--offer-colour": opportunity.offer.colour } as React.CSSProperties}>{opportunity.offer.name}</span> : null}
           </div>
           <button className="btn btn-quiet" type="button" onClick={() => { const editor = panelRef.current?.querySelector<HTMLFormElement>(".inline-detail-form"); if (editor) { editAfterInlineSave.current = true; editor.requestSubmit(); } else setOpportunityEditor(true); }}><FilePenLine size={16} />Edit</button>
-          {companyWebsiteUrl ? (
-            <a className="icon-button" href={companyWebsiteUrl} target="_blank" rel="noopener noreferrer" aria-label="Open company website">
-              <Link2 size={16} />
-            </a>
-          ) : null}
-          {companyLinkedinUrl ? (
-            <a className="icon-button" href={companyLinkedinUrl} target="_blank" rel="noopener noreferrer" aria-label="Open company LinkedIn">
-              <ExternalLink size={16} />
-            </a>
-          ) : null}
           <button className="icon-button panel-expand" type="button" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace width" : "Expand workspace"} title={expanded ? "Restore width" : "Expand workspace"}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
           <button className="icon-button" type="button" onClick={toggleArchive} disabled={archivePending} aria-label={archived ? "Restore opportunity" : "Archive opportunity"} title={archived ? "Restore opportunity" : "Archive opportunity"}>{archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}</button>
           <button className="icon-button" type="button" onClick={requestClose} aria-label="Close panel"><X size={18} /></button>
         </header>
 
         <div className="panel-body">
+          <div className="panel-contact-row">
+            <CompanyContactLinks company={opportunity.company} contact={opportunity.contacts.find((contact) => contact.primary) ?? opportunity.contacts[0]} showPhone={!archived} onAddPhone={snapshot.demoMode ? undefined : () => { setFocusCompanyPhone(true); setCompanyEditor(true); }} />
+            {showOutreach && !archived && !opportunity.company.doNotContact && opportunity.offer?.active !== false && isOutreachStage(stage)
+              && outreachNumbers(opportunity.company, opportunity.contacts, suppressedPhones(opportunity.contacts)).length > 0
+              && <Link className="btn btn-quiet btn-compact" href={`/outreach?opportunity=${opportunity.id}`}><Phone size={14} aria-hidden="true" />Start calling</Link>}
+          </div>
           {archived ? <div className="archive-notice"><Archive size={16} /><span><strong>Archived opportunity</strong><small>Its stage, contacts, activity and next actions are preserved.</small></span><button className="btn btn-quiet btn-compact" type="button" onClick={toggleArchive} disabled={archivePending}><ArchiveRestore size={14} />Restore</button></div> : null}
           <div className="panel-grid">
             <div className="panel-stack">
@@ -750,11 +750,11 @@ function OpportunityPanel({
                         <span>{contact.title || "Role not recorded"}</span>
                         {contact.preferredChannel ? <small>Prefers {contact.preferredChannel}</small> : null}
                         {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : null}
-                        {contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : null}
+                        {contact.phone ? normaliseDialNumber(contact.phone) && !archived && !opportunity.company.doNotContact && !contact.doNotContact ? <a href={`tel:${normaliseDialNumber(contact.phone)}`}>{contact.phone}</a> : <small>{contact.phone}</small> : null}
                         {!contact.email && !contact.phone ? <small>Email and phone not yet recorded</small> : null}
                       </div>
                       {contact.email ? <a className="icon-button" href={`mailto:${contact.email}`} aria-label={`Email ${contact.name}`}><Mail size={14} /></a> : null}
-                      {contact.phone ? <a className="icon-button" href={`tel:${contact.phone}`} aria-label={`Call ${contact.name}`}><Phone size={14} /></a> : null}
+                      {normaliseDialNumber(contact.phone) && !archived && !opportunity.company.doNotContact && !contact.doNotContact ? <a className="icon-button" href={`tel:${normaliseDialNumber(contact.phone)}`} aria-label={`Call ${contact.name}`}><Phone size={14} /></a> : null}
                       {safeExternalUrl(contact.linkedinUrl) ? <a className="icon-button" href={safeExternalUrl(contact.linkedinUrl)!} target="_blank" rel="noopener noreferrer" aria-label={`Open ${contact.name} on LinkedIn`}><ExternalLink size={14} /></a> : null}
                       <button className="icon-button" type="button" onClick={() => setContactEditor(contact)} aria-label={`Edit ${contact.name}`}><FilePenLine size={14} /></button>
                     </div>
@@ -779,7 +779,7 @@ function OpportunityPanel({
             </div>
           </div>
         </div>
-        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setCompanyEditor(false)} onSaved={(company) => { onUpdate({ ...opportunity, company }); setCompanyEditor(false); onToast(`${company.name} updated`); }} onArchiveChange={(company, companyArchived) => { const archivedAt = companyArchived ? new Date().toISOString() : null; onArchiveChange({ ...opportunity, company: { ...company, archivedAt }, archivedAt }, companyArchived, true); setCompanyEditor(false); }} /> : null}
+        {companyEditor ? <CompanyEditorDialog company={opportunity.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusPhone={focusCompanyPhone} onClose={() => { setFocusCompanyPhone(false); setCompanyEditor(false); }} onSaved={(company) => { onUpdate({ ...opportunity, company }); setFocusCompanyPhone(false); setCompanyEditor(false); onToast(`${company.name} updated`); }} onArchiveChange={(company, companyArchived) => { const archivedAt = companyArchived ? new Date().toISOString() : null; onArchiveChange({ ...opportunity, company: { ...company, archivedAt }, archivedAt }, companyArchived, true); setFocusCompanyPhone(false); setCompanyEditor(false); }} /> : null}
         {opportunityEditor ? <OpportunityEditor opportunity={opportunity} snapshot={snapshot} onClose={() => setOpportunityEditor(false)} onSaved={(next) => { onUpdate(next); setOpportunityEditor(false); onToast("Opportunity updated"); }} /> : null}
       </aside>
     </>

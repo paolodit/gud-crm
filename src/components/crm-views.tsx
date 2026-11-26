@@ -49,6 +49,8 @@ import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
 import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
+import { CompanyContactLinks } from "@/components/company-contact-links";
+import { OutreachSetting } from "@/components/outreach-setting";
 import { DeliveryStageSettings } from "./delivery-stage-settings";
 import { SettingsSections } from "./settings-sections";
 import { FreeMaxSettingsCard } from "./freemax-settings-card";
@@ -72,6 +74,7 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
   const [compact, setCompact] = useCardDensity("companies");
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary["company"] | null>(null);
+  const [focusCompanyPhone, setFocusCompanyPhone] = useState(false);
   const [archiveScope, setArchiveScope] = useState<"current" | "archived">("current");
   const allCompanies = useMemo(() => aggregateCompanies(snapshot.opportunities), [snapshot.opportunities]);
   const companies = allCompanies.filter((item) => archiveScope === "archived" ? Boolean(item.company.archivedAt) : !item.company.archivedAt);
@@ -114,13 +117,14 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
           const stage = snapshot.stages.find((item) => item.id === primary.stageId);
           const inResearch = isResearchStage(stage);
           return (
-            <article className="company-card company-card-clickable" key={company.id} role="link" tabIndex={0} aria-label={`Open ${company.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("a, button, input, select")) return; router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); } }}>
+            <article className="company-card company-card-clickable" key={company.id} role="link" tabIndex={0} aria-label={`Open ${company.name}`} onClick={(event) => { if ((event.target as HTMLElement).closest("a, button, input, select")) return; router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); }} onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); router.push(inResearch ? `/targets?target=${primary.id}` : `/pipeline?opportunity=${primary.id}`); } }}>
               <div className="company-card-head">
                 <div className="company-logo">{initials(company.name)}</div>
                 <div><h2>{company.name}</h2><p>{company.sector || "Sector not set"}</p></div>
                 <span className="fit-score" title="Fit score">{company.fitScore ? `${company.fitScore}/5 fit` : "Unscored"}</span>
-                <button className="icon-button company-manage" type="button" onClick={() => setEditingCompany(company)} aria-label={`Manage ${company.name}`} title="Edit or archive organisation"><Pencil size={14} /></button>
+                <button className="icon-button company-manage" type="button" onClick={() => { setFocusCompanyPhone(false); setEditingCompany(company); }} aria-label={`Manage ${company.name}`} title="Edit or archive organisation"><Pencil size={14} /></button>
               </div>
+              <CompanyContactLinks company={company} contact={contacts.find((contact) => contact.primary) ?? contacts[0]} onAddPhone={snapshot.demoMode ? undefined : () => { setFocusCompanyPhone(true); setEditingCompany(company); }} />
               <p className="company-scale">{company.scaleNote || "Add a scale note to sharpen qualification."}</p>
               <div className="company-facts">
                 <span><Target size={14} /> {relevantOpportunities.length} {relevantOpportunities.length === 1 ? "opportunity" : "opportunities"}</span>
@@ -139,7 +143,7 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
       </section>
       {!sorted.length ? <EmptyResult title={archiveScope === "archived" ? "No archived organisations" : "No companies match"} detail={archiveScope === "archived" ? "Archive an organisation when it should leave day-to-day views without losing its history." : "Try a broader name or clear the sector filter."} /> : null}
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
-      {editingCompany ? <CompanyEditorDialog company={editingCompany} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
+      {editingCompany ? <CompanyEditorDialog company={editingCompany} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusPhone={focusCompanyPhone} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
     </WorkspaceFrame>
   );
 }
@@ -267,7 +271,7 @@ export type RuntimeStatus = {
 };
 export type ImportStatus = { available: boolean; fileName?: string; totalRows?: number; companies?: number; contacts?: number; duplicates?: number; invalid?: number; error?: string };
 
-export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemberId, currentRole }: { snapshot: BoardSnapshot; runtime: RuntimeStatus; importStatus: ImportStatus; currentMemberId: string; currentRole: "admin" | "manager" | "member" }) {
+export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemberId, currentRole, outreachSetting }: { snapshot: BoardSnapshot; runtime: RuntimeStatus; importStatus: ImportStatus; currentMemberId: string; currentRole: "admin" | "manager" | "member"; outreachSetting?: boolean }) {
   const router = useRouter();
   const [workspaceAiEnabled, setWorkspaceAiEnabled] = useState(runtime.workspaceAiEnabled);
   const [aiPending, setAiPending] = useState(false);
@@ -449,6 +453,7 @@ export function SettingsDashboard({ snapshot, runtime, importStatus, currentMemb
         <details><summary>Review setup <ChevronDown size={15} /></summary><div>{readinessChecks.map((item) => <span key={item.label} data-ready={item.ready}>{item.ready ? <Check size={13} /> : <AlertTriangle size={13} />}{item.label}</span>)}</div></details>
       </section>
       <SettingsSections>
+        {outreachSetting !== undefined && <article data-settings-tab="workspace" className="surface settings-card"><OutreachSetting enabled={outreachSetting} /></article>}
         <DeliveryStageSettings data-settings-tab="delivery" initialStages={snapshot.deliveryStages} canEdit={currentRole === "admin"} />
         <article data-settings-tab="workspace" className="surface settings-card settings-card-wide edition-settings-card">
           <div className="settings-icon"><Compass /></div>

@@ -78,6 +78,7 @@ export type CompanySummary = {
   sector: string | null;
   websiteUrl: string | null;
   linkedinUrl: string | null;
+  switchboardPhone?: string | null;
   fitScore: number | null;
   scaleNote: string | null;
   doNotContact: boolean;
@@ -121,6 +122,7 @@ export type ActivitySummary = {
   createdAt: string;
   createdBy: string;
   createdById?: string;
+  outreachReceipt?: string;
 };
 
 export type TaskSummary = {

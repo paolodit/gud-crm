@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+.company-contact-links { display: flex; flex-wrap: wrap; gap: 5px 12px; min-width: 0; }
+.company-contact-links :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 2px 0;
+  color: #19559c;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+.company-contact-links svg { flex: none; }
+.panel-contact-row { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+
 /* A shared voice workspace: capture once, review together, apply deliberately. */
 .workspace-voice-launch { position:fixed; z-index:80; right:24px; bottom:24px; display:flex; align-items:center; gap:9px; padding:13px 18px; border:1px solid #ffffff35; border-radius:999px; color:#fff; background:linear-gradient(120deg,#2534a8,#6351c1); box-shadow:0 6px 24px #26389235; font-size:13px; font-weight:750; cursor:pointer; }
 .workspace-voice-launch:hover { background:#333caa; transform:translateY(-1px); }

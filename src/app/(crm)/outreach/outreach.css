@@ -1,0 +1,126 @@
+.outreach-page {
+  display: grid;
+  gap: 18px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 26px clamp(14px, 3vw, 36px) 36px;
+}
+
+.outreach-heading h1 {
+  margin: 0;
+  font-size: clamp(24px, 4vw, 34px);
+  overflow-wrap: anywhere;
+}
+
+.outreach-heading p,
+.outreach-panel p {
+  margin: 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.outreach-notice {
+  color: #17604a;
+  font-size: 13px;
+}
+
+.outreach-notice:not(:empty) { margin-top: 8px; }
+
+.outreach-pick-grid,
+.outreach-call-grid {
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+
+.outreach-pick-grid { grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr); }
+.outreach-call-grid { grid-template-columns: minmax(215px, 1fr) minmax(300px, 1.4fr) minmax(240px, 1fr); }
+
+.outreach-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.outreach-panel h2,
+.outreach-panel h3 { margin: 0; }
+.outreach-panel h2 { font-size: 17px; }
+.outreach-panel h3 { font-size: 14px; }
+.outreach-panel .btn { justify-self: start; }
+.outreach-panel .search-box { width: 100%; }
+.outreach-panel select { min-width: 0; max-width: 100%; }
+.outreach-panel textarea { resize: vertical; }
+
+.outreach-company-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.outreach-company-list > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border, #e4e9f1);
+}
+
+.outreach-company-list label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.outreach-company-list span { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.outreach-company-list small { color: #48566a; }
+.outreach-company-list a { font-size: 12px; color: #164f9e; }
+.outreach-selection h2 { display: flex; align-items: center; gap: 8px; }
+.outreach-selection ol { margin: 0; padding-left: 22px; list-style: decimal; }
+.outreach-selection li + li { margin-top: 6px; }
+
+.outreach-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border-radius: 7px;
+  background: #f0f5ff;
+  color: #263957;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.outreach-check input { margin-top: 3px; }
+.outreach-guide-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.outreach-guide-options button[aria-pressed="true"] { background: #e9f2ff; color: #1450a0; border-color: #a9c4ea; }
+.outreach-guide blockquote {
+  margin: 0;
+  padding: 12px;
+  border-left: 3px solid #376fbb;
+  background: #f0f5ff;
+  color: #1f3556;
+  line-height: 1.6;
+}
+
+.outreach-objections { display: grid; gap: 6px; }
+.outreach-objections details { padding: 8px; border-bottom: 1px solid var(--border, #e4e9f1); }
+.outreach-objections summary { cursor: pointer; font-weight: 600; }
+.outreach-objections details p { margin: 6px 0; }
+.outreach-result-form { display: grid; gap: 12px; }
+.outreach-last { display: grid; gap: 5px; }
+.outreach-last p { white-space: pre-wrap; }
+
+@media (max-width: 1080px) {
+  .outreach-call-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+  .outreach-guide { grid-column: 2; grid-row: 1 / span 2; }
+}
+
+@media (max-width: 660px) {
+  .outreach-pick-grid,
+  .outreach-call-grid { grid-template-columns: minmax(0, 1fr); }
+  .outreach-guide { grid-column: auto; grid-row: auto; }
+  .outreach-selection { grid-row: 1; }
+  .outreach-panel { padding: 14px; }
+}

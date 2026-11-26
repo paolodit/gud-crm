@@ -53,10 +53,11 @@ jobs:
         run: |
           node --input-type=module -e "import { Pool } from 'pg'; const pool = new Pool(); await pool.query('CREATE DATABASE gud_release_test'); await pool.end();"
           npm run test:release:postgres
-      - name: Verify personal Thoughts isolation on real PostgreSQL
+      - name: Verify Thoughts isolation and guided outreach on real PostgreSQL
         env:
           GUD_THOUGHTS_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test
-        run: npx vitest run src/lib/data/thoughts-integration.test.ts
+          GUD_OUTREACH_TEST_DATABASE_URL: postgresql://gud:gud-ci-password@127.0.0.1:5432/gud_release_test
+        run: npx vitest run src/lib/data/thoughts-integration.test.ts src/app/actions/outreach-postgres.test.ts
       - name: Exercise real PostgreSQL authentication
         env:
           DATA_BACKEND: postgres

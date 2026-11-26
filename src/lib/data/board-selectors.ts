@@ -1,4 +1,5 @@
 import type { BoardSnapshot, OpportunitySummary, StageSummary } from "@/lib/domain/types";
+import { normaliseDialNumber } from "@/lib/domain/phone";
 
 const researchStageNames = new Set(["Researching", "Research holding"]);
 
@@ -40,9 +41,8 @@ export type ResearchReadiness = "ready" | "needs_contact" | "needs_evidence" | "
 export function researchReadiness(opportunity: OpportunitySummary, stage: StageSummary | undefined): ResearchReadiness {
   if (stage?.name === "Research holding") return "held";
   const hasEvidence = Boolean(opportunity.company.researchNote?.trim() || opportunity.company.sourceUrls?.length);
-  const hasContactRoute = opportunity.contacts.some((contact) =>
-    Boolean(contact.email || contact.phone || contact.linkedinUrl),
-  );
+  const hasContactRoute = !opportunity.company.doNotContact && (Boolean(normaliseDialNumber(opportunity.company.switchboardPhone))
+    || opportunity.contacts.some((contact) => !contact.doNotContact && Boolean(contact.email || contact.phone || contact.linkedinUrl)));
   if (!hasEvidence) return "needs_evidence";
   if (!hasContactRoute) return "needs_contact";
   return "ready";

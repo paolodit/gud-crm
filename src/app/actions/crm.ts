@@ -1,11 +1,13 @@
 "use server";
 
-import { and, eq, ne, or } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, eq, ne, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/db";
 import { getBoardSnapshot } from "@/lib/data/crm-repository";
+import { canUseOutreach, lockOutreachEnabled, outreachEnabled } from "@/lib/data/outreach-settings";
 import type { OpportunitySummary } from "@/lib/domain/types";
 import { publicActionError } from "@/lib/action-error";
 import {
@@ -25,9 +27,12 @@ import {
 } from "@/db/schema";
 import { extractDomain, isSafeHttpUrl, normaliseHttpUrlInput, normaliseName } from "@/lib/domain/normalise";
 import { isActivityTimeAllowed } from "@/lib/domain/activity";
+import { companyPhone, normaliseDialNumber, phoneKey } from "@/lib/domain/phone";
+import { isOutreachStage, outreachCallSchema, outreachOutcomes, suppressedPhones, type OutreachCall } from "@/lib/domain/outreach";
+import { voiceLocalToIso } from "@/lib/domain/voice-workspace";
 import { activeOffers } from "@/lib/domain/offers";
 import { recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
-import { getCurrentMember } from "@/lib/session";
+import { getCurrentMember, type CurrentMember } from "@/lib/session";
 import type { ActivityTypeSummary, BoardSnapshot, CompanySummary, ContactSummary, OfferSummary } from "@/lib/domain/types";
 
 type ActionResult = { ok: true; opportunity?: OpportunitySummary } | { ok: false; error: string };
@@ -134,6 +139,7 @@ const saveCompanySchema = z.object({
   sector: z.string().trim().max(160).default(""),
   websiteUrl: optionalUrl.default(""),
   linkedinUrl: optionalUrl.default(""),
+  switchboardPhone: z.string().trim().max(80).refine((value) => !value || normaliseDialNumber(value), "Enter a valid company phone number.").optional(),
   fitScore: z.number().int().min(1).max(5).nullable().default(null),
   scaleNote: z.string().trim().max(2_000).default(""),
   researchNote: z.string().trim().max(10_000).default(""),
@@ -221,6 +227,7 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
           sector: data.sector || null,
           websiteUrl: data.websiteUrl || null,
           linkedinUrl: data.linkedinUrl || null,
+          switchboardPhone: data.switchboardPhone === undefined ? existing?.switchboardPhone : data.switchboardPhone || null,
           fitScore: data.fitScore,
           scaleNote: data.scaleNote || null,
           researchNote: data.researchNote || null,
@@ -269,6 +276,8 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
       });
       revalidatePath("/companies");
       revalidatePath("/pipeline");
+      revalidatePath("/targets");
+      revalidatePath("/outreach");
       return { ok: true, company: saved, opportunityId };
     }
 
@@ -296,14 +305,18 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
         updatedAt: new Date(),
       };
       let row;
+      const phoneMetadata = data.switchboardPhone === undefined ? undefined : { switchboardPhone: data.switchboardPhone || null };
       if (data.companyId) {
-        [row] = await tx.update(companies).set(values).where(and(
+        [row] = await tx.update(companies).set({
+          ...values,
+          importMetadata: phoneMetadata && sql`COALESCE(${companies.importMetadata}, '{}'::jsonb) || ${JSON.stringify(phoneMetadata)}::jsonb`,
+        }).where(and(
           eq(companies.id, data.companyId),
           eq(companies.organisationId, member.organisationId),
         )).returning();
         if (!row) throw new Error("That company is not available.");
       } else {
-        [row] = await tx.insert(companies).values({ ...values, organisationId: member.organisationId }).returning();
+        [row] = await tx.insert(companies).values({ ...values, organisationId: member.organisationId, importMetadata: phoneMetadata }).returning();
         const [pipeline] = await tx.select({ id: pipelines.id }).from(pipelines).where(and(
           eq(pipelines.organisationId, member.organisationId),
           eq(pipelines.active, true),
@@ -340,6 +353,7 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
         sector: row.sector,
         websiteUrl: row.websiteUrl,
         linkedinUrl: row.linkedinUrl,
+        switchboardPhone: companyPhone(row.importMetadata),
         fitScore: row.fitScore,
         scaleNote: row.scaleNote,
         doNotContact: row.doNotContact,
@@ -350,6 +364,8 @@ export async function saveCompanyAction(input: unknown): Promise<SaveCompanyResu
     });
     revalidatePath("/companies");
     revalidatePath("/pipeline");
+    revalidatePath("/targets");
+    revalidatePath("/outreach");
     return { ok: true, company: saved, opportunityId };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "Company could not be saved.") };
@@ -1255,7 +1271,7 @@ export async function reorderOpportunityAction(input: unknown): Promise<ActionRe
 
 function revalidateCrmPaths() {
   revalidatePath("/live");
-  for (const path of ["/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook"]) {
+  for (const path of ["/pipeline", "/research", "/targets", "/companies", "/search", "/reports", "/my-work", "/playbook", "/outreach"]) {
     revalidatePath(path);
   }
 }
@@ -1296,37 +1312,114 @@ export async function createNextActionAction(input: unknown): Promise<ActionResu
 export async function logActivityAction(input: unknown): Promise<ActionResult> {
   const parsed = logActivitySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Check the activity details and try again." };
+  return persistActivity(await requireMember(), parsed.data);
+}
 
-  const member = await requireMember();
+type ActivityInput = Omit<z.infer<typeof logActivitySchema>, "activityTypeId"> & { activityTypeId?: string };
+type OutreachActivity = OutreachCall & { receipt: string };
+
+export async function logOutreachCallAction(input: unknown): Promise<ActionResult> {
+  const member = await getCurrentMember();
+  if (!canUseOutreach(member) || !await outreachEnabled(member)) return { ok: false, error: "Outreach is unavailable." };
+  const parsed = outreachCallSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Check the outcome, screening and follow-up details." };
+  const call = parsed.data;
+  const dueAt = call.dueLocal ? voiceLocalToIso(call.dueLocal, call.timeZone) : null;
+  if (call.dueLocal && !dueAt) return { ok: false, error: "Choose a valid and unambiguous date and time." };
+  const receipt = createHash("sha256").update(JSON.stringify(call)).digest("hex");
+  try {
+    return await persistActivity(member, {
+      opportunityId: call.opportunityId,
+      contactId: call.contactId,
+      outcome: outreachOutcomes[call.outcome],
+      notes: [call.objection && `Objection: ${call.objection}`, call.notes].filter(Boolean).join("\n\n"),
+      occurredAt: new Date(),
+      nextActionTitle: call.outcome === "demo_booked" ? "Attend booked demo" : call.taskTitle || undefined,
+      nextActionAt: dueAt ? new Date(dueAt) : undefined,
+    }, { ...call, receipt });
+  } catch (error) {
+    return { ok: false, error: error instanceof OutreachSaveError ? error.message : "The call could not be saved. Try again." };
+  }
+}
+
+class OutreachSaveError extends Error {}
+
+function assertCallable(
+  stage: Pick<BoardSnapshot["stages"][number], "name" | "terminalType"> | undefined,
+  company: Pick<CompanySummary, "archivedAt" | "doNotContact">,
+  contact: Pick<ContactSummary, "doNotContact"> | undefined,
+  number: string | null,
+  suppressed: string[],
+  call: OutreachActivity,
+) {
+  if (!isOutreachStage(stage) || company.archivedAt || company.doNotContact || contact?.doNotContact
+    || number !== call.number || suppressed.includes(phoneKey(call.number)!)) {
+    throw new OutreachSaveError("This number or opportunity is no longer available for outreach. Refresh the list before calling.");
+  }
+}
+
+function verifyOutreachReceipt(saved: { opportunityId: string; actorId: string | null; receipt: unknown }, actor: CurrentMember, call: OutreachActivity) {
+  if (saved.opportunityId !== call.opportunityId || saved.actorId !== actor.id || saved.receipt !== call.receipt) {
+    throw new OutreachSaveError("This attempt was already used. Reopen the call before saving another outcome.");
+  }
+}
+
+async function persistActivity(member: CurrentMember, data: ActivityInput, outreach?: OutreachActivity): Promise<ActionResult> {
   if (member.storageMode === "sqlite") {
-    const activityId = crypto.randomUUID();
+    const activityId = outreach?.attemptId ?? crypto.randomUUID();
     updateLocalBoardSnapshot((snapshot) => {
-      const opportunity = snapshot.opportunities.find((item) => item.id === parsed.data.opportunityId);
-      if (!opportunity || opportunity.archivedAt || opportunity.company.archivedAt) throw new Error("Opportunity not found or archived.");
-      const type = snapshot.activityTypes.find((item) => item.id === parsed.data.activityTypeId);
+      if (outreach) {
+        for (const item of snapshot.opportunities) {
+          const saved = item.activities.find((activity) => activity.id === activityId);
+          if (saved) {
+            verifyOutreachReceipt({ opportunityId: item.id, actorId: saved.createdById ?? null, receipt: saved.outreachReceipt }, member, outreach);
+            return;
+          }
+        }
+      }
+      const opportunity = snapshot.opportunities.find((item) => item.id === data.opportunityId);
+      if (!opportunity || opportunity.archivedAt || opportunity.company.archivedAt) throw new OutreachSaveError("Opportunity not found or archived.");
+      const type = snapshot.activityTypes.find((item) => outreach ? item.channel === "phone" : item.id === data.activityTypeId);
       if (!type) throw new Error("Activity type not found.");
-      const contact = opportunity.contacts.find((item) => item.id === parsed.data.contactId);
-      if (parsed.data.contactId && !contact) throw new Error("Contact not found on this opportunity.");
-      const occurredAt = parsed.data.occurredAt.toISOString();
+      const contact = opportunity.contacts.find((item) => item.id === data.contactId);
+      if (data.contactId && !contact) throw new OutreachSaveError("Contact not found on this opportunity.");
+      if (outreach) {
+        if (opportunity.offer?.active === false) throw new OutreachSaveError("The offer for this opportunity is archived.");
+        const number = normaliseDialNumber(contact ? contact.phone : opportunity.company.switchboardPhone);
+        assertCallable(snapshot.stages.find((stage) => stage.id === opportunity.stageId), opportunity.company, contact, number,
+          suppressedPhones(snapshot.opportunities.flatMap((item) => item.contacts)), outreach);
+        if (outreach.stopScope) {
+          for (const item of snapshot.opportunities) {
+            if (outreach.stopScope === "company" && item.company.id === opportunity.company.id) item.company.doNotContact = true;
+            if (outreach.stopScope === "contact") {
+              const linked = item.contacts.find((person) => person.id === outreach.contactId);
+              if (linked) linked.doNotContact = true;
+            }
+          }
+          recordLocalAuditEvent({ actorId: member.id, action: "outreach.do_not_contact", entityType: outreach.stopScope, entityId: contact && outreach.stopScope === "contact" ? contact.id : opportunity.company.id, detail: { opportunityId: opportunity.id } });
+        }
+      }
+      const occurredAt = data.occurredAt.toISOString();
       opportunity.activities.unshift({
         id: activityId,
         type,
         contactId: contact?.id ?? null,
         contactName: contact?.name ?? null,
-        outcome: parsed.data.outcome || null,
-        notes: parsed.data.notes || null,
+        outcome: data.outcome || null,
+        notes: data.notes || null,
         occurredAt,
         createdAt: new Date().toISOString(),
         createdBy: member.name,
+        ...(outreach ? { createdById: member.id, outreachReceipt: outreach.receipt } : {}),
       });
       opportunity.activities.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
       opportunity.lastActivityAt = opportunity.activities[0]?.occurredAt ?? occurredAt;
       opportunity.recentChannels = [type.channel, ...opportunity.recentChannels.filter((item) => item !== type.channel)].slice(0, 4);
-      if (parsed.data.nextActionTitle && parsed.data.nextActionAt) {
+      if (data.nextActionTitle && data.nextActionAt) {
         opportunity.tasks.push({
           id: crypto.randomUUID(),
-          title: parsed.data.nextActionTitle,
-          dueAt: parsed.data.nextActionAt.toISOString(),
+          title: data.nextActionTitle,
+          dueAt: data.nextActionAt.toISOString(),
           status: "open",
           owner: opportunity.owner ?? snapshot.users.find((item) => item.id === member.id) ?? null,
           contactId: contact?.id ?? null,
@@ -1334,98 +1427,146 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
         opportunity.nextActionAt = opportunity.tasks.filter((task) => task.status === "open").map((task) => task.dueAt).sort()[0] ?? null;
         opportunity.noNextActionReason = null;
       }
+      if (outreach) recordLocalAuditEvent({ actorId: member.id, action: "activity.created", entityType: "activity", entityId: activityId, detail: { opportunityId: data.opportunityId, source: "outreach", screened: true } });
     });
-    recordLocalAuditEvent({ actorId: member.id, action: "activity.created", entityType: "activity", entityId: activityId, detail: { opportunityId: parsed.data.opportunityId } });
+    if (outreach) {
+      revalidateCrmPaths();
+      return { ok: true };
+    }
+    recordLocalAuditEvent({ actorId: member.id, action: "activity.created", entityType: "activity", entityId: activityId, detail: { opportunityId: data.opportunityId } });
     revalidatePath("/pipeline");
     revalidatePath("/my-work");
-    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [parsed.data.opportunityId] })).opportunities[0] };
+    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [data.opportunityId] })).opportunities[0] };
   }
   if (member.demoMode) return { ok: true };
 
   try {
     await db.transaction(async (tx) => {
+      if (outreach) {
+        if (!await lockOutreachEnabled(tx, member.organisationId)) throw new OutreachSaveError("Outreach is unavailable.");
+        const [locked] = await tx.select({ id: companies.id }).from(companies).innerJoin(opportunities, eq(opportunities.companyId, companies.id))
+          .where(and(eq(opportunities.id, data.opportunityId), eq(opportunities.organisationId, member.organisationId), eq(companies.organisationId, member.organisationId)))
+          .for("update", { of: companies });
+        if (!locked) throw new OutreachSaveError("Opportunity not found or archived.");
+        const [saved] = await tx.select({
+          opportunityId: activities.opportunityId, actorId: activities.createdById, metadata: activities.metadata,
+        }).from(activities).where(and(eq(activities.id, outreach.attemptId), eq(activities.organisationId, member.organisationId))).limit(1);
+        if (saved) {
+          verifyOutreachReceipt({ ...saved, receipt: saved.metadata.outreachReceipt }, member, outreach);
+          return;
+        }
+      }
       const [opportunity] = await tx
         .select()
         .from(opportunities)
         .where(
           and(
-            eq(opportunities.id, parsed.data.opportunityId),
+            eq(opportunities.id, data.opportunityId),
             eq(opportunities.organisationId, member.organisationId),
           ),
         )
         .limit(1).for("update");
-      if (!opportunity || opportunity.archivedAt) throw new Error("Opportunity not found or archived.");
-      const [company] = await tx.select({ archivedAt: companies.archivedAt }).from(companies).where(and(eq(companies.id, opportunity.companyId), eq(companies.organisationId, member.organisationId))).limit(1);
-      if (!company || company.archivedAt) throw new Error("Company not found or archived.");
+      if (!opportunity || opportunity.archivedAt) throw new OutreachSaveError("Opportunity not found or archived.");
+      const [company] = await tx.select().from(companies).where(and(eq(companies.id, opportunity.companyId), eq(companies.organisationId, member.organisationId))).limit(1);
+      if (!company || company.archivedAt) throw new OutreachSaveError("Company not found or archived.");
 
       const [type] = await tx
         .select({ id: activityTypes.id })
         .from(activityTypes)
         .where(
           and(
-            eq(activityTypes.id, parsed.data.activityTypeId),
+            outreach ? eq(activityTypes.channel, "phone") : eq(activityTypes.id, data.activityTypeId!),
             eq(activityTypes.organisationId, member.organisationId),
             eq(activityTypes.active, true),
           ),
         )
+        .orderBy(activityTypes.name)
         .limit(1);
       if (!type) throw new Error("Activity type not found.");
 
-      let contactId: string | null = null;
-      if (parsed.data.contactId) {
-        const [linkedContact] = await tx
-          .select({ id: contacts.id })
+      const contactId = data.contactId ?? null;
+      const contactQuery = contactId ? tx
+          .select({ id: contacts.id, phone: contacts.phone, doNotContact: contacts.doNotContact })
           .from(opportunityContacts)
           .innerJoin(contacts, eq(opportunityContacts.contactId, contacts.id))
           .where(and(
             eq(opportunityContacts.opportunityId, opportunity.id),
-            eq(contacts.id, parsed.data.contactId),
+            eq(contacts.id, contactId),
             eq(contacts.organisationId, member.organisationId),
+            eq(contacts.companyId, opportunity.companyId),
           ))
-          .limit(1);
-        if (!linkedContact) throw new Error("Contact not found on this opportunity.");
-        contactId = linkedContact.id;
+          .limit(1) : null;
+      const [contact] = contactQuery ? await (outreach ? contactQuery.for("update", { of: contacts }) : contactQuery) : [];
+      if (contactId && !contact) throw new OutreachSaveError("Contact not found on this opportunity.");
+      if (outreach) {
+        if (opportunity.offerId) {
+          const [offer] = await tx.select({ id: offers.id }).from(offers)
+            .where(and(eq(offers.id, opportunity.offerId), eq(offers.organisationId, member.organisationId), eq(offers.active, true))).limit(1);
+          if (!offer) throw new OutreachSaveError("The offer for this opportunity is archived.");
+        }
+        const [stage] = await tx.select({ name: stages.name, terminalType: stages.terminalType }).from(stages)
+          .innerJoin(pipelines, eq(pipelines.id, stages.pipelineId))
+          .where(and(eq(stages.id, opportunity.stageId), eq(stages.pipelineId, opportunity.pipelineId), eq(stages.active, true),
+            eq(pipelines.active, true), eq(pipelines.organisationId, member.organisationId))).limit(1);
+        const suppressed = await tx.select({ phone: contacts.phone, doNotContact: contacts.doNotContact }).from(contacts)
+          .where(and(eq(contacts.organisationId, member.organisationId), eq(contacts.doNotContact, true)));
+        const number = normaliseDialNumber(contact ? contact.phone : companyPhone(company.importMetadata));
+        assertCallable(stage, { doNotContact: company.doNotContact }, contact, number, suppressedPhones(suppressed), outreach);
       }
 
       const [created] = await tx
         .insert(activities)
         .values({
+          id: outreach?.attemptId,
           organisationId: member.organisationId,
           opportunityId: opportunity.id,
           companyId: opportunity.companyId,
           contactId,
           activityTypeId: type.id,
-          outcome: parsed.data.outcome || null,
-          notes: parsed.data.notes || null,
-          occurredAt: parsed.data.occurredAt,
+          outcome: data.outcome || null,
+          notes: data.notes || null,
+          occurredAt: data.occurredAt,
           createdById: member.id,
+          metadata: outreach ? { source: "outreach", outreachReceipt: outreach.receipt, outcome: outreach.outcome, screened: true } : undefined,
         })
+        .onConflictDoNothing({ target: activities.id })
         .returning({ id: activities.id });
+      if (!created) throw new OutreachSaveError("This attempt was already used. Reopen the call before saving another outcome.");
+
+      if (outreach?.stopScope) {
+        const companyStop = outreach.stopScope === "company";
+        if (companyStop) await tx.update(companies).set({ doNotContact: true, updatedAt: new Date() }).where(and(eq(companies.id, company.id), eq(companies.organisationId, member.organisationId)));
+        else await tx.update(contacts).set({ doNotContact: true, updatedAt: new Date() }).where(and(eq(contacts.id, contactId!), eq(contacts.organisationId, member.organisationId)));
+        await tx.insert(auditEvents).values({
+          organisationId: member.organisationId, actorId: member.id, action: "outreach.do_not_contact", entityType: outreach.stopScope,
+          entityId: companyStop ? company.id : contactId!, after: { opportunityId: opportunity.id },
+        });
+      }
 
       let nextActionAt = opportunity.nextActionAt;
-      if (parsed.data.nextActionTitle && parsed.data.nextActionAt) {
+      if (data.nextActionTitle && data.nextActionAt) {
         await tx.insert(tasks).values({
           organisationId: member.organisationId,
           opportunityId: opportunity.id,
           contactId,
           ownerId: opportunity.ownerId ?? member.id,
-          title: parsed.data.nextActionTitle,
-          dueAt: parsed.data.nextActionAt,
+          title: data.nextActionTitle,
+          dueAt: data.nextActionAt,
           source: "activity_follow_up",
         });
         const openTasks = await tx.select({ dueAt: tasks.dueAt }).from(tasks).where(and(eq(tasks.opportunityId, opportunity.id), eq(tasks.organisationId, member.organisationId), eq(tasks.status, "open")));
-        nextActionAt = openTasks.reduce((earliest, task) => task.dueAt < earliest ? task.dueAt : earliest, parsed.data.nextActionAt);
+        nextActionAt = openTasks.reduce((earliest, task) => task.dueAt < earliest ? task.dueAt : earliest, data.nextActionAt);
       }
 
       await tx
         .update(opportunities)
         .set({
-          lastActivityAt: opportunity.lastActivityAt && opportunity.lastActivityAt > parsed.data.occurredAt ? opportunity.lastActivityAt : parsed.data.occurredAt,
+          lastActivityAt: opportunity.lastActivityAt && opportunity.lastActivityAt > data.occurredAt ? opportunity.lastActivityAt : data.occurredAt,
           nextActionAt,
           noNextActionReason: nextActionAt ? null : opportunity.noNextActionReason,
           updatedAt: new Date(),
         })
-        .where(eq(opportunities.id, opportunity.id));
+        .where(and(eq(opportunities.id, opportunity.id), eq(opportunities.organisationId, member.organisationId)));
 
       await tx.insert(auditEvents).values({
         organisationId: member.organisationId,
@@ -1433,13 +1574,18 @@ export async function logActivityAction(input: unknown): Promise<ActionResult> {
         action: "activity.created",
         entityType: "activity",
         entityId: created.id,
-        after: { opportunityId: opportunity.id, occurredAt: parsed.data.occurredAt.toISOString() },
+        after: { opportunityId: opportunity.id, occurredAt: data.occurredAt.toISOString(), ...(outreach ? { source: "outreach" } : {}) },
       });
     });
+    if (outreach) {
+      revalidateCrmPaths();
+      return { ok: true };
+    }
     revalidatePath("/pipeline");
     revalidatePath("/my-work");
-    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [parsed.data.opportunityId] })).opportunities[0] };
+    return { ok: true, opportunity: (await getBoardSnapshot(member.organisationId, { opportunityIds: [data.opportunityId] })).opportunities[0] };
   } catch (error) {
+    if (outreach) throw error;
     return { ok: false, error: publicActionError(error, "Activity could not be saved.") };
   }
 }
