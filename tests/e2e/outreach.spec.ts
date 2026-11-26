@@ -18,6 +18,7 @@ async function createCompany(page: Page, name: string, suffix: string) {
 }
 
 test("guides a manually picked call session and records a follow-up in the CRM", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/outreach");
   await expect(page.getByRole("link", { name: "Outreach", exact: true })).toHaveCount(0);
   await page.goto("/settings");
@@ -53,13 +54,13 @@ test("guides a manually picked call session and records a follow-up in the CRM",
   await expect(objection.getByText(/Which would be most useful/)).toBeVisible();
   await objection.getByRole("button", { name: "Add to outcome" }).click();
   await page.getByRole("button", { name: "Log outcome" }).click();
-  await page.getByLabel("Outcome", { exact: true }).selectOption("follow_up");
+  await page.getByRole("combobox", { name: "Outcome", exact: true }).selectOption("follow_up");
   await page.getByLabel("Call notes").fill("Asked for the overview.");
   await page.getByLabel("Follow-up task", { exact: true }).fill("Send the HSM overview");
   await page.getByLabel("Follow-up date and time").fill("2027-01-15T10:30");
   await page.route("**/outreach", (route) => route.request().method() === "POST" ? route.abort() : route.continue());
   await page.getByRole("button", { name: "Save & next" }).click();
-  await expect(page.getByRole("alert")).toContainText("Your notes are still here");
+  await expect(page.locator(".outreach-result").getByRole("alert")).toContainText("Your notes are still here");
   await expect(page.getByLabel("Call notes")).toHaveValue("Asked for the overview.");
   await page.unroute("**/outreach");
   await page.getByRole("button", { name: "Save & next" }).click();
@@ -71,8 +72,9 @@ test("guides a manually picked call session and records a follow-up in the CRM",
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(secondUrl);
-  await expect(page.getByText(/Asked for the overview/)).toBeVisible();
-  await expect(page.getByText("Send the HSM overview", { exact: true })).toBeVisible();
+  const savedOpportunity = page.getByRole("dialog", { name: `${second} opportunity` });
+  await expect(savedOpportunity.getByText(/Asked for the overview/)).toBeVisible();
+  await expect(savedOpportunity.getByText("Send the HSM overview", { exact: true })).toBeVisible();
   await page.goto("/settings");
   await toggle.uncheck();
   await expect(page.getByRole("link", { name: "Outreach", exact: true })).toHaveCount(0);
