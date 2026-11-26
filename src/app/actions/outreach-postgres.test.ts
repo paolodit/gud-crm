@@ -13,6 +13,7 @@ let pool: typeof import("@/db").pool;
 let crm: typeof import("./crm");
 let actions: typeof import("./outreach");
 let repository: typeof import("@/lib/data/outreach-repository");
+let settings: typeof import("@/lib/data/outreach-settings");
 
 async function fixture(role: CurrentMember["role"]) {
   const organisationId = randomUUID(), id = randomUUID(), pipeline = randomUUID(), stage = randomUUID();
@@ -36,7 +37,7 @@ describe.skipIf(!url)("guided outreach in PostgreSQL", () => {
     vi.stubEnv("DEMO_MODE", "false");
     vi.stubEnv("BETTER_AUTH_SECRET", "fixture-only-better-auth-secret-for-postgres");
     pool = (await import("@/db")).pool;
-    [crm, actions, repository] = await Promise.all([import("./crm"), import("./outreach"), import("@/lib/data/outreach-repository")]);
+    [crm, actions, repository, settings] = await Promise.all([import("./crm"), import("./outreach"), import("@/lib/data/outreach-repository"), import("@/lib/data/outreach-settings")]);
   });
 
   afterAll(async () => {
@@ -74,5 +75,30 @@ describe.skipIf(!url)("guided outreach in PostgreSQL", () => {
     expect((await crm.logOutreachCallAction(call)).ok).toBe(false);
     expect((await actions.saveOutreachSettingAction(true)).ok).toBe(true);
     expect((await pool.query("SELECT settings FROM organisations WHERE id = $1", [first.member.organisationId])).rows[0].settings).toEqual({ sales_cockpit: true, otherSetting: true });
+  });
+
+  it("keeps company contact changes and shared call guides inside the current workspace", async () => {
+    const first = await fixture("admin");
+    const second = await fixture("member");
+    const firstGuide = await settings.getOutreachGuide(first.member);
+    const guide = { ...firstGuide.guide, opener: "Hi, who looks after store operations?" };
+    const edit = { opportunityId: first.opportunity, websiteUrl: "example.com/contact", switchboardPhone: "020 7946 0959" };
+    actor.current = second.member;
+    expect((await actions.saveOutreachContactDetailsAction(edit)).ok).toBe(false);
+    expect((await actions.saveOutreachGuideAction({ guide, revision: firstGuide.revision })).ok).toBe(false);
+
+    actor.current = first.member;
+    expect((await actions.saveOutreachContactDetailsAction(edit)).ok).toBe(true);
+    expect((await actions.saveOutreachContactDetailsAction({ opportunityId: first.opportunity, switchboardPhone: "020 7946 0957" })).ok).toBe(true);
+    expect((await repository.getOutreachList(first.member)).candidates[0]).toMatchObject({
+      websiteUrl: "https://example.com/contact", switchboardPhone: "020 7946 0957",
+    });
+    expect((await repository.getOutreachList(second.member)).candidates[0]).toMatchObject({ websiteUrl: null, switchboardPhone: "020 7946 0958" });
+    expect((await actions.saveOutreachGuideAction({ guide, revision: firstGuide.revision })).ok).toBe(true);
+    expect((await actions.saveOutreachGuideAction(firstGuide)).ok).toBe(false);
+    expect((await settings.getOutreachGuide(first.member)).guide).toEqual(guide);
+    expect((await settings.getOutreachGuide(second.member)).guide).toEqual(firstGuide.guide);
+    expect((await pool.query("SELECT settings FROM organisations WHERE id = $1", [first.member.organisationId])).rows[0].settings)
+      .toMatchObject({ sales_cockpit: true, otherSetting: true });
   });
 });

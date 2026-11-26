@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isResearchStage } from "@/lib/data/board-selectors";
+import { normaliseHttpUrlInput, safeExternalUrl } from "@/lib/domain/normalise";
 import { normaliseDialNumber, phoneKey } from "@/lib/domain/phone";
 import type { OpportunitySummary, StageSummary } from "@/lib/domain/types";
 
@@ -28,6 +29,39 @@ export const outreachScripts = {
     { label: "We’re in a contract", reply: "Understood. Do you already have a renewal review planned? If you’d like, I can get back in touch closer to it." },
   ],
 };
+
+export const outreachScriptFields = {
+  opener: "Gatekeeper opener",
+  gatekeeper: "Gatekeeper follow-up",
+  decisionMaker: "Decision-maker",
+  voicemail: "Voicemail",
+};
+
+const scriptText = z.string().trim().min(1).max(2_000);
+export const outreachGuideSchema = z.strictObject({
+  opener: scriptText,
+  gatekeeper: scriptText,
+  decisionMaker: scriptText,
+  voicemail: scriptText,
+  objections: z.array(z.strictObject({ label: z.string().trim().min(1).max(120), reply: scriptText })).max(12),
+}).refine(({ objections }) => new Set(objections.map(({ label }) => label.toLowerCase())).size === objections.length,
+  "Give each objection a distinct label.");
+
+export type OutreachGuide = z.infer<typeof outreachGuideSchema>;
+
+export const outreachContactDetailsSchema = z.strictObject({
+  opportunityId: z.uuid(),
+  websiteUrl: z.string().trim().max(2_000).transform(normaliseHttpUrlInput)
+    .refine((value) => {
+      if (!value) return true;
+      if (!safeExternalUrl(value)) return false;
+      const parsed = new URL(value);
+      return parsed.hostname.includes(".") && !parsed.username && !parsed.password;
+    }, "Enter the company website address.").optional(),
+  switchboardPhone: z.string().trim().max(80).refine(
+    (value) => !value || Boolean(normaliseDialNumber(value)), "Enter a valid company phone number.",
+  ).optional(),
+}).refine((data) => data.websiteUrl !== undefined || data.switchboardPhone !== undefined, "Change the website or phone number.");
 
 export function isOutreachStage(stage: Pick<StageSummary, "name" | "terminalType"> | undefined) {
   return stage?.terminalType === "open" && !isResearchStage(stage);
@@ -67,7 +101,7 @@ export const outreachCallSchema = z.strictObject({
   screened: z.literal(true),
   outcome: z.enum(Object.keys(outreachOutcomes) as [keyof typeof outreachOutcomes, ...Array<keyof typeof outreachOutcomes>]),
   notes: z.string().trim().max(10_000),
-  objection: z.string().max(120).refine((value) => !value || outreachScripts.objections.some((item) => item.label === value)),
+  objection: z.string().trim().max(120),
   taskTitle: z.string().trim().max(240).refine((value) => !value || value.length >= 2),
   dueLocal: z.string().max(16),
   timeZone: z.string().max(100).refine((zone) => {
@@ -97,6 +131,7 @@ export function outreachCandidate(item: OpportunitySummary, stage: StageSummary 
     offer: item.offer?.name ?? null,
     contact: contact ? { name: contact.name, title: contact.title, linkedinUrl: contact.linkedinUrl } : null,
     websiteUrl: item.company.websiteUrl,
+    switchboardPhone: item.company.switchboardPhone ?? null,
     linkedinUrl: item.company.linkedinUrl,
     numbers: outreachNumbers(item.company, item.contacts, suppressed),
   };

@@ -54,15 +54,15 @@
 .outreach-panel textarea { resize: vertical; }
 
 .outreach-company-list { display: grid; margin: 0; padding: 0; list-style: none; }
-.outreach-company-list > li {
+.outreach-company-list > li { border-bottom: 1px solid var(--border, #e4e9f1); }
+.outreach-company-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--border, #e4e9f1);
 }
 
-.outreach-company-list label {
+.outreach-company-row > label {
   display: flex;
   flex: 1;
   align-items: center;
@@ -73,9 +73,29 @@
   cursor: pointer;
 }
 
-.outreach-company-list span { display: grid; gap: 2px; overflow-wrap: anywhere; }
-.outreach-company-list small { color: #48566a; }
-.outreach-company-list a { font-size: 12px; color: #164f9e; }
+.outreach-company-row > label span { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.outreach-company-row > label small { color: #48566a; }
+.outreach-company-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.outreach-heading > .btn { margin-top: 9px; }
+.outreach-contact-editor {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 10px;
+  padding: 12px;
+  border: 1px solid var(--border, #e4e9f1);
+  border-radius: 8px;
+  background: #f8faff;
+  min-width: 0;
+}
+.outreach-contact-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.outreach-call-grid .outreach-contact-fields { grid-template-columns: minmax(0, 1fr); }
+.outreach-guide-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.outreach-guide-editor .field-label small { font-weight: 400; color: #48566a; }
+.outreach-guide-text, .outreach-objection-edit { display: grid; gap: 8px; min-width: 0; }
+.outreach-objection-edit { padding: 10px; border: 1px solid var(--border, #e4e9f1); border-radius: 8px; }
+.outreach-objection-edit legend { font-size: 13px; font-weight: 650; padding: 0 5px; }
+.outreach-suggestion { padding: 10px; border-radius: 7px; background: #eff5ff; }
+.outreach-suggestion .outreach-guide-options { margin-top: 7px; }
 .outreach-selection h2 { display: flex; align-items: center; gap: 8px; }
 .outreach-selection ol { margin: 0; padding-left: 22px; list-style: decimal; }
 .outreach-selection li + li { margin-top: 6px; }
@@ -105,9 +125,9 @@
 }
 
 .outreach-objections { display: grid; gap: 6px; }
-.outreach-objections details { padding: 8px; border-bottom: 1px solid var(--border, #e4e9f1); }
-.outreach-objections summary { cursor: pointer; font-weight: 600; }
-.outreach-objections details p { margin: 6px 0; }
+.outreach-objections ul { margin: 0; padding: 0; list-style: none; }
+.outreach-objections li { padding: 8px 0; border-bottom: 1px solid var(--border, #e4e9f1); }
+.outreach-objections li p { margin: 5px 0; }
 .outreach-result-form { display: grid; gap: 12px; }
 .outreach-last { display: grid; gap: 5px; }
 .outreach-last p { white-space: pre-wrap; }
@@ -123,4 +143,6 @@
   .outreach-guide { grid-column: auto; grid-row: auto; }
   .outreach-selection { grid-row: 1; }
   .outreach-panel { padding: 14px; }
+  .outreach-contact-fields { grid-template-columns: minmax(0, 1fr); }
+  .outreach-company-row { display: grid; gap: 1px; padding-bottom: 9px; }
 }

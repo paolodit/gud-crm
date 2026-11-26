@@ -52,7 +52,7 @@ import { FormEvent, useMemo, useRef, useState } from "react";
 import { archiveOpportunityAction, saveContactAction, moveOpportunityAction, saveOpportunityDetailsAction } from "@/app/actions/crm";
 import { enrichResearchContactAction, importResearchResultsAction, reorderResearchThemesAction } from "@/app/actions/research";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { CompanyContactLinks } from "@/components/company-contact-links";
+import { CompanyContactLinks, type CompanyContactField } from "@/components/company-contact-links";
 import { ResearchThemeDialog as ResearchThemeDialogV2 } from "@/components/research-theme-dialog";
 import { getResearchTargets, isResearchStage, researchReadiness, type ResearchReadiness } from "@/lib/data/board-selectors";
 import { activeOffers } from "@/lib/domain/offers";
@@ -96,6 +96,7 @@ export function ResearchHub({
   const [showHandoff, setShowHandoff] = useState(false);
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary | null>(null);
+  const [focusCompanyField, setFocusCompanyField] = useState<CompanyContactField>();
   const [editingContact, setEditingContact] = useState<ContactSummary | "new" | null>(null);
   const [editingOpportunity, setEditingOpportunity] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
@@ -340,7 +341,7 @@ export function ResearchHub({
                 <div className="research-inspector-actions"><button className="btn btn-quiet btn-compact target-archive-action" type="button" onClick={() => setConfirmingArchive(true)} aria-label={`Archive ${selected.company.name} target`}><Archive size={14} />Archive</button><button className="icon-button" type="button" onClick={() => setEditingCompany(selected)} aria-label={`Edit ${selected.company.name}`}><Pencil size={16} /></button><button className="icon-button" type="button" onClick={closeTarget} aria-label="Close target details"><X size={17} /></button></div>
               </header>
               <div className="research-section">
-                <CompanyContactLinks company={selected.company} contact={selected.contacts.find((contact) => contact.primary) ?? selected.contacts[0]} onAddPhone={snapshot.demoMode ? undefined : () => setEditingCompany(selected)} />
+                <CompanyContactLinks company={selected.company} contact={selected.contacts.find((contact) => contact.primary) ?? selected.contacts[0]} onEditDetails={snapshot.demoMode ? undefined : (field) => { setFocusCompanyField(field); setEditingCompany(selected); }} />
               </div>
 
               <div className="research-fit-strip">
@@ -426,7 +427,7 @@ export function ResearchHub({
 
 
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) selectTarget(opportunityId); router.refresh(); }} /> : null}
-      {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
+      {editingCompany ? <CompanyEditorDialog company={editingCompany.company} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusField={focusCompanyField} onClose={() => { setEditingCompany(null); setFocusCompanyField(undefined); }} onSaved={() => { setEditingCompany(null); setFocusCompanyField(undefined); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); setFocusCompanyField(undefined); router.refresh(); }} /> : null}
       {editingContact && selected ? <ResearchContactDialog opportunity={selected} contact={editingContact === "new" ? null : editingContact} onClose={() => setEditingContact(null)} onSaved={() => { setEditingContact(null); router.refresh(); }} /> : null}
       {editingOpportunity && selected ? <TargetOpportunityDialog opportunity={selected} snapshot={snapshot} onClose={() => setEditingOpportunity(false)} onSaved={() => { setEditingOpportunity(false); router.refresh(); }} /> : null}
       {themeEditor ? <ResearchThemeDialogV2 theme={themeEditor === "new" ? null : themeEditor} offers={availableOffers} onClose={() => setThemeEditor(null)} onSaved={(saved) => { setThemes((items) => items.some((item) => item.id === saved.id) ? items.map((item) => item.id === saved.id ? saved : item) : [saved, ...items]); setSelectedThemeId(saved.id); setThemeEditor(null); }} onDeleted={(id) => { const remaining = themes.filter((item) => item.id !== id); setThemes(remaining); setSelectedThemeId(remaining[0]?.id ?? null); setThemeEditor(null); setNotice("Idea deleted."); }} /> : null}

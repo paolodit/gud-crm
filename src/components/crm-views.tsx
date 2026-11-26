@@ -49,7 +49,7 @@ import { importLocalTrackerAction } from "@/app/actions/import";
 import { prepareSafeUpdateAction } from "@/app/actions/system";
 import { archivePipelineStageAction, deactivateOfferAction, deactivateTeamMemberAction, reorderPipelineStagesAction, revokeMcpConnectionAction, saveOfferAction, savePipelineNameAction, savePipelineStageAction, saveTeamMemberAction, saveWorkspaceEditionAction } from "@/app/actions/workspace";
 import { CompanyEditorDialog } from "@/components/company-editor-dialog";
-import { CompanyContactLinks } from "@/components/company-contact-links";
+import { CompanyContactLinks, type CompanyContactField } from "@/components/company-contact-links";
 import { OutreachSetting } from "@/components/outreach-setting";
 import { DeliveryStageSettings } from "./delivery-stage-settings";
 import { SettingsSections } from "./settings-sections";
@@ -74,7 +74,7 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
   const [compact, setCompact] = useCardDensity("companies");
   const [addingCompany, setAddingCompany] = useState(false);
   const [editingCompany, setEditingCompany] = useState<OpportunitySummary["company"] | null>(null);
-  const [focusCompanyPhone, setFocusCompanyPhone] = useState(false);
+  const [focusCompanyField, setFocusCompanyField] = useState<CompanyContactField>();
   const [archiveScope, setArchiveScope] = useState<"current" | "archived">("current");
   const allCompanies = useMemo(() => aggregateCompanies(snapshot.opportunities), [snapshot.opportunities]);
   const companies = allCompanies.filter((item) => archiveScope === "archived" ? Boolean(item.company.archivedAt) : !item.company.archivedAt);
@@ -122,9 +122,9 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
                 <div className="company-logo">{initials(company.name)}</div>
                 <div><h2>{company.name}</h2><p>{company.sector || "Sector not set"}</p></div>
                 <span className="fit-score" title="Fit score">{company.fitScore ? `${company.fitScore}/5 fit` : "Unscored"}</span>
-                <button className="icon-button company-manage" type="button" onClick={() => { setFocusCompanyPhone(false); setEditingCompany(company); }} aria-label={`Manage ${company.name}`} title="Edit or archive organisation"><Pencil size={14} /></button>
+                <button className="icon-button company-manage" type="button" onClick={() => { setFocusCompanyField(undefined); setEditingCompany(company); }} aria-label={`Manage ${company.name}`} title="Edit or archive organisation"><Pencil size={14} /></button>
               </div>
-              <CompanyContactLinks company={company} contact={contacts.find((contact) => contact.primary) ?? contacts[0]} onAddPhone={snapshot.demoMode ? undefined : () => { setFocusCompanyPhone(true); setEditingCompany(company); }} />
+              <CompanyContactLinks company={company} contact={contacts.find((contact) => contact.primary) ?? contacts[0]} onEditDetails={snapshot.demoMode ? undefined : (field) => { setFocusCompanyField(field); setEditingCompany(company); }} />
               <p className="company-scale">{company.scaleNote || "Add a scale note to sharpen qualification."}</p>
               <div className="company-facts">
                 <span><Target size={14} /> {relevantOpportunities.length} {relevantOpportunities.length === 1 ? "opportunity" : "opportunities"}</span>
@@ -143,7 +143,7 @@ export function CompaniesDirectory({ snapshot, voiceAiConfigured }: { snapshot: 
       </section>
       {!sorted.length ? <EmptyResult title={archiveScope === "archived" ? "No archived organisations" : "No companies match"} detail={archiveScope === "archived" ? "Archive an organisation when it should leave day-to-day views without losing its history." : "Try a broader name or clear the sector filter."} /> : null}
       {addingCompany ? <CompanyEditorDialog company={null} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} onClose={() => setAddingCompany(false)} onSaved={(_, opportunityId) => { setAddingCompany(false); if (opportunityId) router.push(`/targets?target=${opportunityId}`); else router.refresh(); }} /> : null}
-      {editingCompany ? <CompanyEditorDialog company={editingCompany} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusPhone={focusCompanyPhone} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
+      {editingCompany ? <CompanyEditorDialog company={editingCompany} offers={snapshot.offers} voiceAiConfigured={voiceAiConfigured} focusField={focusCompanyField} onClose={() => setEditingCompany(null)} onSaved={() => { setEditingCompany(null); router.refresh(); }} onArchiveChange={() => { setEditingCompany(null); router.refresh(); }} /> : null}
     </WorkspaceFrame>
   );
 }
