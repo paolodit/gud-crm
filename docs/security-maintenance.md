@@ -1,6 +1,6 @@
-# October 2026 security maintenance
+# GUD security maintenance
 
-Containers use Node 24.22.1, Next.js 16.4.3 and Zod 4.6.7 with the committed lockfile.
+Containers use Node 24.22.1, Next.js 16.4.6 and Zod 4.6.7 with the committed lockfile. The November 2026 refresh also pins Hono 4.13.16, its Node server adapter 2.1.6 and fast-xml-parser 5.12.1.
 
 Better Auth remains on the compatible 1.6.33 line because migrating the MCP integration to the new OAuth provider is a separate application change. These advisories remain visible in npm audit:
 
