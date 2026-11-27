@@ -1,19 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { logOutreachCallAction } from "@/app/actions/crm";
 import { prepareOutreachNumberAction, saveOutreachContactDetailsAction, saveOutreachGuideAction, saveOutreachSettingAction } from "@/app/actions/outreach";
+import { enrichOutreachContactAction } from "@/app/actions/research";
 import { getOutreachList } from "@/lib/data/outreach-repository";
 import { getOutreachGuide, outreachEnabled } from "@/lib/data/outreach-settings";
 import { getLocalBoardSnapshot, localDatabaseForPrivateData, setLocalSetting, updateLocalBoardSnapshot } from "@/lib/data/local-store";
 import { demoBoardForEdition } from "@/lib/demo-data";
 import type { OutreachCall } from "@/lib/domain/outreach";
+import { getFreeMaxStatus } from "@/lib/enrichment/usage";
 import type { CurrentMember } from "@/lib/session";
 
-const mocks = vi.hoisted(() => ({ member: vi.fn(), dbPath: `data/outreach-${process.pid}-${Math.random().toString(36).slice(2)}.db` }));
+const mocks = vi.hoisted(() => ({ member: vi.fn(), emailProviders: vi.fn(), dbPath: `data/outreach-${process.pid}-${Math.random().toString(36).slice(2)}.db` }));
 vi.mock("@/db", () => ({ db: {} }));
-vi.mock("@/lib/env", () => ({ env: { sqliteMode: true, demoMode: false, SQLITE_PATH: mocks.dbPath, defaultEdition: "service" } }));
+vi.mock("@/lib/env", () => ({ env: { sqliteMode: true, demoMode: false, SQLITE_PATH: mocks.dbPath, defaultEdition: "service", HUNTER_FREE_MONTHLY_LIMIT: 2, NORBERT_FREE_LIFETIME_LIMIT: 2 } }));
+vi.mock("@/lib/enrichment/config", () => ({ getFreeMaxRuntimeConfiguration: mocks.emailProviders }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/session", () => ({ getCurrentMember: mocks.member }));
 
@@ -48,8 +51,12 @@ function actualCall(opportunityId: string, fields: Partial<OutreachCall> = {}): 
 
 beforeEach(() => {
   mocks.member.mockResolvedValue(admin);
+  mocks.emailProviders.mockResolvedValue({ keys: {}, order: ["hunter", "norbert"] });
   setLocalSetting("sales_cockpit", false);
+  setLocalSetting("freemax_enrichment_usage", null);
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 afterAll(() => {
   localDatabaseForPrivateData().close();
@@ -145,6 +152,42 @@ describe("guided outreach", () => {
     await saveOutreachSettingAction(false);
     await saveOutreachSettingAction(true);
     expect((await getOutreachGuide(member)).guide.opener).toBe(update.guide.opener);
+  });
+
+  it("uses the configured FreeMax order, saves one email and reuses it without a second lookup", async () => {
+    const item = boardFixture();
+    const contactId = item.contacts[0].id;
+    await saveOutreachSettingAction(true);
+    await saveOutreachContactDetailsAction({ opportunityId: item.id, websiteUrl: "https://www.example.com/contact" });
+    mocks.member.mockResolvedValue(member);
+    mocks.emailProviders.mockResolvedValue({ keys: { hunter: "fixture-hunter-key", norbert: "fixture-norbert-key" }, order: ["norbert", "hunter"] });
+    const email = "retail.operations@example.com";
+    const fetcher = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ email: null }))
+      .mockResolvedValueOnce(Response.json({ data: { email, score: 90 } }));
+    expect(await enrichOutreachContactAction({ opportunityId: item.id, contactId })).toEqual({ ok: true, email, score: 90, provider: "Hunter" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(String(fetcher.mock.calls[0][0])).toBe("https://api.voilanorbert.com/2018-01-08/search/name");
+    expect(new URLSearchParams(String(fetcher.mock.calls[0][1]?.body)).get("name")).toBe("Example Contact");
+    expect(new URL(String(fetcher.mock.calls[1][0])).searchParams.get("domain")).toBe("example.com");
+    expect((await getOutreachList(member)).candidates[0].emailContacts).toContainEqual({ id: contactId, name: "Example Contact", email });
+    expect((await getFreeMaxStatus(member.organisationId, "sqlite")).hunter.used).toBe(1);
+    expect(await enrichOutreachContactAction({ opportunityId: item.id, contactId })).toEqual({ ok: true, email, score: null, provider: "Existing record" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("avoids provider calls for disabled Outreach, incomplete identities and opted-out contacts", async () => {
+    const item = boardFixture();
+    const input = { opportunityId: item.id, contactId: item.contacts[0].id };
+    const fetcher = vi.spyOn(globalThis, "fetch");
+    expect((await enrichOutreachContactAction(input)).ok).toBe(false);
+    await saveOutreachSettingAction(true);
+    expect((await enrichOutreachContactAction({ ...input, contactId: randomUUID() })).ok).toBe(false);
+    updateLocalBoardSnapshot((board) => { board.opportunities[0].contacts[0].name = "Example"; });
+    expect(await enrichOutreachContactAction(input)).toMatchObject({ ok: false, error: expect.stringContaining("full name") });
+    updateLocalBoardSnapshot((board) => { board.opportunities[0].contacts[0].doNotContact = true; });
+    expect((await enrichOutreachContactAction(input)).ok).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("requires an agreed demo time and applies do-not-contact to the selected scope", async () => {

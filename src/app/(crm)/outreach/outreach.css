@@ -124,6 +124,10 @@
   line-height: 1.6;
 }
 
+.outreach-work-email { display: grid; justify-items: start; gap: 3px; min-width: 0; }
+.outreach-work-email small { color: var(--muted, #52637c); overflow-wrap: anywhere; }
+.outreach-work-email .outreach-email-error { color: #9f2822; }
+
 .outreach-objections { display: grid; gap: 6px; }
 .outreach-objections ul { margin: 0; padding: 0; list-style: none; }
 .outreach-objections li { padding: 8px 0; border-bottom: 1px solid var(--border, #e4e9f1); }

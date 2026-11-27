@@ -367,6 +367,7 @@ export async function saveFreeMaxConfigurationAction(input: unknown): Promise<Re
     revalidatePath("/settings");
     revalidatePath("/research");
     revalidatePath("/targets");
+    revalidatePath("/outreach");
     return { ok: true };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "FreeMax configuration could not be saved.") };

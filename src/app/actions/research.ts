@@ -18,10 +18,13 @@ import {
   stages,
 } from "@/db/schema";
 import { getLocalBoardSnapshot, recordLocalAuditEvent, updateLocalBoardSnapshot } from "@/lib/data/local-store";
+import { isOutreachEmailContact } from "@/lib/data/outreach-repository";
+import { lockOutreachEnabled, outreachEnabled } from "@/lib/data/outreach-settings";
 import { findWorkEmailFreeMax, providerLabel } from "@/lib/enrichment/freemax";
 import { getFreeMaxStatus, recordLocalFreeMaxSuccess } from "@/lib/enrichment/usage";
 import { getFreeMaxRuntimeConfiguration } from "@/lib/enrichment/config";
 import { extractDomain, isSafeHttpUrl, normaliseName } from "@/lib/domain/normalise";
+import { hasOutreachContactFullName } from "@/lib/domain/outreach";
 import type { CompanySummary, ContactSummary, OfferSummary, ResearchThemeSummary } from "@/lib/domain/types";
 import {
   reconcileResearchContacts,
@@ -172,22 +175,35 @@ export async function deleteResearchThemeAction(input: unknown): Promise<DeleteR
 }
 
 export async function enrichResearchContactAction(input: unknown): Promise<EnrichContactResult> {
+  return enrichContactEmail(input, "research");
+}
+
+export async function enrichOutreachContactAction(input: unknown): Promise<EnrichContactResult> {
+  return enrichContactEmail(input, "outreach");
+}
+
+async function enrichContactEmail(input: unknown, surface: "research" | "outreach"): Promise<EnrichContactResult> {
   const parsed = enrichContactSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Choose a valid research contact." };
+  if (!parsed.success) return { ok: false, error: "Choose a valid contact." };
   const member = await getCurrentMember();
   if (!member) return { ok: false, error: "You must be signed in." };
   if (member.demoMode) return { ok: false, error: "Enrichment is disabled in the reset-on-refresh demo." };
 
   try {
+    const { opportunityId, contactId } = parsed.data;
+    const inOutreach = surface === "outreach";
+    const stillAvailable = async () => !inOutreach || (await outreachEnabled(member) && await isOutreachEmailContact(member, opportunityId, contactId));
+    if (!await stillAvailable()) return { ok: false, error: "This contact is no longer available for Outreach." };
     const freeMaxStatus = await getFreeMaxStatus(member.organisationId, member.storageMode);
     const freeMaxConfiguration = await getFreeMaxRuntimeConfiguration(member.organisationId, member.storageMode);
     if (member.storageMode === "sqlite") {
       const snapshot = getLocalBoardSnapshot();
-      const opportunity = snapshot.opportunities.find((item) => item.id === parsed.data.opportunityId);
-      const contact = opportunity?.contacts.find((item) => item.id === parsed.data.contactId);
+      const opportunity = snapshot.opportunities.find((item) => item.id === opportunityId);
+      const contact = opportunity?.contacts.find((item) => item.id === contactId);
       if (!opportunity || !contact) return { ok: false, error: "That research contact is no longer available." };
       if (opportunity.company.doNotContact || contact.doNotContact) return { ok: false, error: "This record is marked do not contact." };
       if (contact.email) return { ok: true, email: contact.email, score: null, provider: "Existing record" };
+      if (inOutreach && !hasOutreachContactFullName(contact.name)) return { ok: false, error: "Add the contact’s full name before looking up a work email." };
       const domain = extractDomain(opportunity.company.websiteUrl ?? "");
       if (!domain) return { ok: false, error: "Add the company website before looking up a work email." };
       const result = await findWorkEmailFreeMax(
@@ -196,23 +212,30 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
         freeMaxConfiguration.keys,
       );
       if (!result.found) return { ok: false, error: result.message };
-      updateLocalBoardSnapshot((current) => {
-        const currentContact = current.opportunities.find((item) => item.id === opportunity.id)?.contacts.find((item) => item.id === contact.id);
-        if (!currentContact) throw new Error("That research contact is no longer available.");
-        currentContact.email = result.email;
-        currentContact.preferredChannel ??= "email";
-        currentContact.sourceUrls = uniqueUrls(currentContact.sourceUrls, result.sourceUrls);
+      if (!await stillAvailable()) return { ok: false, error: "This contact is no longer available for Outreach." };
+      const saved = updateLocalBoardSnapshot((current) => {
+        const currentOpportunity = current.opportunities.find((item) => item.id === opportunityId);
+        const currentContact = currentOpportunity?.contacts.find((item) => item.id === contactId);
+        if (!currentOpportunity || !currentContact || currentContact.name !== contact.name || currentContact.doNotContact
+          || currentOpportunity.company.doNotContact || extractDomain(currentOpportunity.company.websiteUrl ?? "") !== domain) return null;
+        if (currentContact.email) return { email: currentContact.email, provider: "Existing record" as const, score: null };
+        for (const item of current.opportunities) {
+          const linked = item.contacts.find((person) => person.id === contactId);
+          if (!linked) continue;
+          linked.email = result.email;
+          linked.preferredChannel ??= "email";
+          linked.sourceUrls = uniqueUrls(linked.sourceUrls, result.sourceUrls);
+        }
+        recordLocalFreeMaxSuccess(result.provider);
+        recordLocalAuditEvent({
+          actorId: member.id, action: "contact.enriched", entityType: "contact", entityId: contactId,
+          detail: { opportunityId, provider: result.provider, score: result.score, surface },
+        });
+        return { email: result.email, score: result.score, provider: providerLabel(result.provider) };
       });
-      recordLocalFreeMaxSuccess(result.provider);
-      recordLocalAuditEvent({
-        actorId: member.id,
-        action: "contact.enriched",
-        entityType: "contact",
-        entityId: contact.id,
-        detail: { opportunityId: opportunity.id, provider: result.provider, score: result.score, attempts: result.attempts },
-      });
+      if (!saved) return { ok: false, error: "The contact details changed. Check them before looking up an email again." };
       revalidateResearchPaths();
-      return { ok: true, email: result.email, score: result.score, provider: providerLabel(result.provider) };
+      return { ok: true, ...saved };
     }
 
     const [record] = await db.select({
@@ -220,17 +243,18 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
       contact: contacts,
       opportunityId: opportunities.id,
     }).from(opportunities)
-      .innerJoin(companies, eq(opportunities.companyId, companies.id))
+      .innerJoin(companies, and(eq(opportunities.companyId, companies.id), eq(companies.organisationId, member.organisationId)))
       .innerJoin(opportunityContacts, eq(opportunityContacts.opportunityId, opportunities.id))
-      .innerJoin(contacts, eq(opportunityContacts.contactId, contacts.id))
+      .innerJoin(contacts, and(eq(opportunityContacts.contactId, contacts.id), eq(contacts.organisationId, member.organisationId)))
       .where(and(
-        eq(opportunities.id, parsed.data.opportunityId),
+        eq(opportunities.id, opportunityId),
         eq(opportunities.organisationId, member.organisationId),
-        eq(contacts.id, parsed.data.contactId),
+        eq(contacts.id, contactId),
     )).limit(1);
     if (!record) return { ok: false, error: "That research contact is no longer available." };
     if (record.company.doNotContact || record.contact.doNotContact) return { ok: false, error: "This record is marked do not contact." };
     if (record.contact.email) return { ok: true, email: record.contact.email, score: null, provider: "Existing record" };
+    if (inOutreach && !hasOutreachContactFullName(record.contact.name)) return { ok: false, error: "Add the contact’s full name before looking up a work email." };
     const domain = extractDomain(record.company.websiteUrl ?? "");
     if (!domain) return { ok: false, error: "Add the company website before looking up a work email." };
     const result = await findWorkEmailFreeMax(
@@ -240,24 +264,37 @@ export async function enrichResearchContactAction(input: unknown): Promise<Enric
     );
     if (!result.found) return { ok: false, error: result.message };
 
-    await db.transaction(async (tx) => {
+    if (!await stillAvailable()) return { ok: false, error: "This contact is no longer available for Outreach." };
+    const saved = await db.transaction(async (tx) => {
+      if (inOutreach && !await lockOutreachEnabled(tx, member.organisationId)) return null;
+      const [current] = await tx.select({ company: companies, contact: contacts }).from(opportunities)
+        .innerJoin(companies, and(eq(opportunities.companyId, companies.id), eq(companies.organisationId, member.organisationId)))
+        .innerJoin(opportunityContacts, eq(opportunityContacts.opportunityId, opportunities.id))
+        .innerJoin(contacts, and(eq(opportunityContacts.contactId, contacts.id), eq(contacts.organisationId, member.organisationId)))
+        .where(and(eq(opportunities.id, opportunityId), eq(opportunities.organisationId, member.organisationId), eq(contacts.id, contactId)))
+        .for("update", { of: contacts });
+      if (!current || current.contact.name !== record.contact.name || current.contact.doNotContact || current.company.doNotContact
+        || extractDomain(current.company.websiteUrl ?? "") !== domain) return null;
+      if (current.contact.email) return { email: current.contact.email, provider: "Existing record" as const, score: null };
       await tx.update(contacts).set({
         email: result.email,
-        preferredChannel: record.contact.preferredChannel ?? "email",
-        sourceUrls: uniqueUrls(record.contact.sourceUrls, result.sourceUrls),
+        preferredChannel: current.contact.preferredChannel ?? "email",
+        sourceUrls: uniqueUrls(current.contact.sourceUrls, result.sourceUrls),
         updatedAt: new Date(),
-      }).where(eq(contacts.id, record.contact.id));
+      }).where(and(eq(contacts.id, contactId), eq(contacts.organisationId, member.organisationId)));
       await tx.insert(auditEvents).values({
         organisationId: member.organisationId,
         actorId: member.id,
         action: "contact.enriched",
         entityType: "contact",
         entityId: record.contact.id,
-        after: { opportunityId: record.opportunityId, provider: result.provider, score: result.score, attempts: result.attempts },
+        after: { opportunityId, provider: result.provider, score: result.score, surface },
       });
+      return { email: result.email, score: result.score, provider: providerLabel(result.provider) };
     });
+    if (!saved) return { ok: false, error: "The contact details changed. Check them before looking up an email again." };
     revalidateResearchPaths();
-    return { ok: true, email: result.email, score: result.score, provider: providerLabel(result.provider) };
+    return { ok: true, ...saved };
   } catch (error) {
     return { ok: false, error: publicActionError(error, "The email lookup could not be completed.") };
   }
@@ -724,7 +761,7 @@ function recordLocalAuditEventIfNeeded(storageMode: string, input: { actorId: st
 }
 
 function revalidateResearchPaths() {
-  for (const path of ["/research", "/targets", "/pipeline", "/companies", "/search", "/reports"]) {
+  for (const path of ["/research", "/targets", "/pipeline", "/companies", "/search", "/reports", "/outreach"]) {
     revalidatePath(path);
   }
 }

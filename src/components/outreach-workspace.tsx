@@ -9,6 +9,7 @@ import { logOutreachCallAction } from "@/app/actions/crm";
 import { prepareOutreachNumberAction } from "@/app/actions/outreach";
 import { OutreachContactEditor, type ContactEditField } from "@/components/outreach-contact-editor";
 import { OutreachGuideEditor } from "@/components/outreach-guide-editor";
+import { OutreachWorkEmail } from "@/components/outreach-work-email";
 import { safeExternalUrl } from "@/lib/domain/normalise";
 import { outreachOutcomes, type OutreachCandidate, type OutreachCall, type OutreachGuide } from "@/lib/domain/outreach";
 
@@ -16,7 +17,7 @@ type Session = { queue: string[]; index: number; attemptId: string; saved: numbe
 type CallContext = Extract<Awaited<ReturnType<typeof prepareOutreachNumberAction>>, { ok: true }>;
 type Outcome = OutreachCall["outcome"];
 
-export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialOpportunity, storageKey, guide, revision, aiEnabled, canEditGuide }: {
+export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialOpportunity, storageKey, guide, revision, aiEnabled, emailFindingConfigured, canEditGuide }: {
   candidates: OutreachCandidate[];
   phoneActivityAvailable: boolean;
   initialOpportunity?: string;
@@ -24,6 +25,7 @@ export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialO
   guide: OutreachGuide;
   revision: string;
   aiEnabled: boolean;
+  emailFindingConfigured: boolean;
   canEditGuide: boolean;
 }) {
   const [selection, setSelection] = useState<string[]>(() => initialOpportunity && candidates.some((item) => item.id === initialOpportunity && item.numbers.length) ? [initialOpportunity] : []);
@@ -95,7 +97,7 @@ export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialO
 
     {session ? currentId
       ? current?.numbers.length && phoneActivityAvailable
-        ? <CallCard key={session.attemptId} candidate={current} attemptId={session.attemptId} guide={guide} aiEnabled={aiEnabled}
+        ? <CallCard key={session.attemptId} candidate={current} attemptId={session.attemptId} guide={guide} aiEnabled={aiEnabled} emailFindingConfigured={emailFindingConfigured}
           onEditGuide={canEditGuide && !editingGuide ? () => setEditingGuide(true) : undefined} onAdvance={(saved) => advance(session, saved)} />
         : <section className="surface outreach-panel"><p>This opportunity or number is no longer available for calling.</p><button type="button" className="btn btn-primary" onClick={() => advance(session, false)}>Skip to next company <ArrowRight size={16} /></button></section>
       : <section className="surface outreach-panel">
@@ -120,6 +122,7 @@ export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialO
                       : <button className="btn btn-quiet btn-compact" type="button" onClick={() => setEditingCompany({ id: item.id, field: "website" })}><Globe2 size={14} aria-hidden="true" />Add website</button>}
                     <button type="button" className="btn btn-quiet btn-compact" aria-expanded={isEditing}
                       onClick={() => setEditingCompany(isEditing ? null : { id: item.id, field: "phone" })}>{item.numbers.length ? "Edit contact details" : "Review phone details"}</button>
+                    {item.contact && <OutreachWorkEmail key={item.contact.id} candidate={item} contactId={item.contact.id} configured={emailFindingConfigured} />}
                   </div>
                 </div>
                 {isEditing && <OutreachContactEditor key={editingCompany.field} candidate={item} focus={editingCompany.field} aiEnabled={aiEnabled} onClose={() => setEditingCompany(null)} />}
@@ -131,6 +134,7 @@ export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialO
         <aside className="surface outreach-panel outreach-selection">
           <h2><ListChecks size={19} aria-hidden="true" />Your call list</h2>
           {selected.length > 0 ? <ol>{selected.map((item) => <li key={item.id}>{item.companyName}</li>)}</ol> : <p>Pick a company to add it to the list.</p>}
+          {!emailFindingConfigured && canEditGuide && <Link href="/settings?tab=ai&section=email-finding">Connect an email finder</Link>}
           <button type="button" className="btn btn-primary" disabled={!selected.length || !phoneActivityAvailable} onClick={() => {
             setNotice("");
             updateSession({ queue: selected.map((item) => item.id), index: 0, attemptId: crypto.randomUUID(), saved: 0, skipped: 0, openedFrom: initialOpportunity });
@@ -140,12 +144,13 @@ export function OutreachWorkspace({ candidates, phoneActivityAvailable, initialO
   </div>;
 }
 
-function CallCard({ candidate, attemptId, onAdvance, guide, aiEnabled, onEditGuide }: {
+function CallCard({ candidate, attemptId, onAdvance, guide, aiEnabled, emailFindingConfigured, onEditGuide }: {
   candidate: OutreachCandidate;
   attemptId: string;
   onAdvance: (saved: boolean) => void;
   guide: OutreachGuide;
   aiEnabled: boolean;
+  emailFindingConfigured: boolean;
   onEditGuide?: () => void;
 }) {
   const router = useRouter();
@@ -175,6 +180,7 @@ function CallCard({ candidate, attemptId, onAdvance, guide, aiEnabled, onEditGui
   const screened = screenedNumber === numberKey;
   const context = prepared?.key === numberKey ? prepared.data : null;
   const contactId = number.contactId === "switchboard" ? null : number.contactId;
+  const emailContactId = contactId ?? candidate.contact?.id;
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const companyUrl = safeExternalUrl(candidate.linkedinUrl);
   const contactUrl = safeExternalUrl(candidate.contact?.linkedinUrl);
@@ -253,6 +259,7 @@ function CallCard({ candidate, attemptId, onAdvance, guide, aiEnabled, onEditGui
         {!logging && <button type="button" onClick={() => setContactEdit("phone")}>Edit contact details</button>}
       </div>
       {contactEdit && !logging && <OutreachContactEditor key={contactEdit} candidate={candidate} focus={contactEdit} aiEnabled={aiEnabled} onClose={() => setContactEdit(null)} />}
+      {emailContactId && <OutreachWorkEmail key={emailContactId} candidate={candidate} contactId={emailContactId} configured={emailFindingConfigured} />}
       <label className="field-label">Number to call
         <select className="field-select" value={number.contactId} disabled={pending || logging} onChange={(event) => selectNumber(event.target.value)}>
           {candidate.numbers.map((option) => <option key={option.contactId} value={option.contactId}>{option.label} · {option.display}</option>)}

@@ -31,11 +31,21 @@ export async function getOutreachList(member: CurrentMember) {
   return { candidates, phoneActivityAvailable: snapshot.activityTypes.some((type) => type.channel === "phone") };
 }
 
-export async function getOutreachLookupCompany(member: CurrentMember, opportunityId: string) {
+async function getEligibleOutreachOpportunity(member: CurrentMember, opportunityId: string) {
   const snapshot = await getBoardSnapshot(member.organisationId, { opportunityIds: [opportunityId], includeHistory: false });
   const item = snapshot.opportunities[0];
   if (!item || !outreachCandidate(item, snapshot.stages.find((stage) => stage.id === item.stageId), [])) return null;
-  return { name: item.company.name, websiteUrl: item.company.websiteUrl };
+  return item;
+}
+
+export async function getOutreachLookupCompany(member: CurrentMember, opportunityId: string) {
+  const item = await getEligibleOutreachOpportunity(member, opportunityId);
+  return item ? { name: item.company.name, websiteUrl: item.company.websiteUrl } : null;
+}
+
+export async function isOutreachEmailContact(member: CurrentMember, opportunityId: string, contactId: string) {
+  const item = await getEligibleOutreachOpportunity(member, opportunityId);
+  return item?.contacts.some((contact) => contact.id === contactId && !contact.doNotContact) ?? false;
 }
 
 export async function saveOutreachContactDetails(member: CurrentMember, data: z.infer<typeof outreachContactDetailsSchema>) {
